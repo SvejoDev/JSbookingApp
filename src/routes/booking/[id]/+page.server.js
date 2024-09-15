@@ -6,22 +6,37 @@ export async function load({ params }) {
 		.from('experiences')
 		.select('*')
 		.eq('id', params.id)
-		.single(); // Eftersom vi bara vill ha ett enda resultat
+		.single();
 
 	if (experienceError) {
 		console.error('Error fetching experience:', experienceError);
 	}
-	const { data: addons, error: addonsError } = await supabase
-		.from('addons')
-		.select('*')
+	console.log(experience);
+
+	const { data: experienceAddons, error: eaError } = await supabase
+		.from('experience_addons')
+		.select('experience_id,addon_id,addons(*)')
 		.eq('experience_id', params.id);
 
-	if (addonsError) {
-		console.error('Error fetching addins:', addonsError);
+	if (eaError) {
+		console.error('Error fetching experience addons:', eaError);
 	}
+	const addons = experienceAddons.map((ea) => ea.addons);
+	console.log(addons);
+
+	const { data: startLocations, error: startLocationsError } = await supabase
+		.from('start_locations')
+		.select('id, location, "price"')
+		.eq('experience_id', params.id);
+
+	if (startLocationsError) {
+		console.error('Error fetching start locations:', startLocationsError);
+	}
+	console.log(startLocations);
 
 	return {
-		experience: experience ?? null,
-		addons: addons ?? [] // Skicka tillvalen eller en tom array om inget hittas
+		experience,
+		addons,
+		startLocations
 	};
 }

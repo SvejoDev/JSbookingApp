@@ -4,18 +4,19 @@
 
 {#if data.experience}
 	<h1>{data.experience.name}</h1>
-	<p>{data.experience.description}</p>
 
-	<h2>Tillval</h2>
-	{#if data.addons.length > 0}
-		<ul>
-			{#each data.addons as addon}
-				<li>{addon.name}</li>
-			{/each}
-		</ul>
-	{:else}
-		<p>Inga tillval tillgängliga för denna upplevelse</p>
-	{/if}
+	<label>Välj tillval:</label>
+	<select>
+		{#each data.addons as addon}
+			<option>{addon.name}</option>
+		{/each}
+	</select>
+	<label>Välj startplats:</label>
+	<select>
+		{#each data.startLocations as location}
+			<option>{location.location} - {location.price}kr</option>
+		{/each}
+	</select>
 {:else}
 	<p>Upplevelsen hittades inte</p>
 {/if}
