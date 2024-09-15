@@ -4,7 +4,6 @@
 
 {#if data.experience}
 	<h1>{data.experience.name}</h1>
-	<p>{data.experience.description}</p>
 
 	<h2>Tillval</h2>
 	{#if data.addons.length > 0}
