@@ -8,7 +8,7 @@
 	<label>Välj tillval:</label>
 	<select>
 		{#each data.addons as addon}
-			<option value={addon.id}>{addon.name}</option>
+			<option>{addon.name}</option>
 		{/each}
 	</select>
 	<label>Välj startplats:</label>
