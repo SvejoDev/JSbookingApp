@@ -5,16 +5,12 @@
 {#if data.experience}
 	<h1>{data.experience.name}</h1>
 
-	<h2>Tillval</h2>
-	{#if data.addons.length > 0}
-		<ul>
-			{#each data.addons as addon}
-				<li>{addon.name}</li>
-			{/each}
-		</ul>
-	{:else}
-		<p>Inga tillval tillgängliga för denna upplevelse</p>
-	{/if}
+	<label>Välj tillval:</label>
+	<select>
+		{#each data.addons as addon}
+			<option value={addon.id}>{addon.name}</option>
+		{/each}
+	</select>
 {:else}
 	<p>Upplevelsen hittades inte</p>
 {/if}

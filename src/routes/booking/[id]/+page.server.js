@@ -11,7 +11,7 @@ export async function load({ params }) {
 	if (experienceError) {
 		console.error('Error fetching experience:', experienceError);
 	}
-	
+
 	const { data: experienceAddons, error: eaError } = await supabase
 		.from('experience_addons')
 		.select('experience_id,addon_id,addons(*)')
@@ -22,9 +22,10 @@ export async function load({ params }) {
 	}
 	console.log(experienceAddons);
 	const addons = experienceAddons.map((ea) => ea.addons);
+	console.log(addons);
 
 	return {
-		experience: experience ?? null,
-		addons: addons ?? []
+		experience,
+		addons
 	};
 }
