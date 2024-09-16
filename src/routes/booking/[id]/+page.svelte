@@ -17,6 +17,12 @@
 			<option>{location.location} - {location.price}kr</option>
 		{/each}
 	</select>
+	<label>Välj bokningslängd:</label>
+	<select>
+		{#each data.bookingLengths as duration}
+			<option>{duration.length}</option>
+		{/each}
+	</select>
 {:else}
 	<p>Upplevelsen hittades inte</p>
 {/if}

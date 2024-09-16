@@ -34,9 +34,17 @@ export async function load({ params }) {
 	}
 	console.log(startLocations);
 
+	const { data: bookingLengths, error: bLerror } = await supabase
+		.from('booking_lengths')
+		.select('*')
+		.eq('experience_id', params.id);
+	console.log(bookingLengths);
+	
+
 	return {
 		experience,
 		addons,
-		startLocations
+		startLocations,
+		bookingLengths
 	};
 }
