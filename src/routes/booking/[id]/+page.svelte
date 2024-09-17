@@ -7,19 +7,29 @@
 
 	let blockedDates = [];
 	let startDate = null;
+	let minDate = null;
+	let maxDate = null;
 
 	onMount(() => {
-		// Omvandla blocked_dates till en lista av Date-objekt
-		blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
+		const today = new Date(); // Dagens datum
 
-		console.log(blockedDates); // Kontrollera att blockeringen fungerar som den ska
+		// Konvertera openDates till Date-objekt
+		if (data.openDates.start_date && data.openDates.end_date) {
+			const dbMinDate = new Date(data.openDates.start_date);
+			minDate = dbMinDate > today ? dbMinDate : today; // Välj det senare av dagens datum och startdatum från DB
+			maxDate = new Date(data.openDates.end_date);
+		}
+
+		// Blockera datum som är i "blocked_dates"
+		blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
 
 		flatpickr('#booking-calendar', {
 			disableMobile: 'true',
-			minDate: 'today', // Sätter minimalt valbart datum till idag
+
+			minDate: minDate, // Det senare datumet mellan idag och DB's startdatum
+			maxDate: maxDate, // Sätt slutdatum från experience_availability
+			disable: blockedDates, // Blockera specifika datum
 			dateFormat: 'Y-m-d',
-			disable: blockedDates, // Blockerade datum
-			mode: 'single', // Kan även vara "range" för att tillåta flerdagsbokning
 			onChange: (selectedDates, dateStr) => {
 				startDate = dateStr;
 				console.log('Valt datum:', dateStr);

@@ -37,19 +37,21 @@ export async function load({ params }) {
 		.select('*')
 		.eq('experience_id', params.id);
 
-	if(bLerror) {
+	if (bLerror) {
 		console.error('Error fetching bookingLength', bLerror);
 	}
 
 	// Hämta öppettider
-	const { data: openDates, error: openDatesError} = await supabase
-	.from('experience_open_dates')
-	.select('start_date, end_date')
-	.eq('experience_id', params.id);
+	const { data: openDates, error: openDatesError } = await supabase
+		.from('experience_open_dates')
+		.select('start_date, end_date')
+		.eq('experience_id', params.id)
+		.single();
 
-	if(openDatesError) {
-		console.error('Error fetching ')
+	if (openDatesError) {
+		console.error('Error fetching open dates', openDatesError);
 	}
+	console.log(openDates);
 
 	// Hämta blockerade datum från Supabase
 	const { data: blockedDates, error: blockedDatesError } = await supabase
@@ -67,6 +69,7 @@ export async function load({ params }) {
 		addons,
 		startLocations,
 		bookingLengths,
-		blocked_dates: blockedDates
+		blocked_dates: blockedDates,
+		openDates
 	};
 }
