@@ -16,12 +16,11 @@ export async function load({ params }) {
 		.from('experience_addons')
 		.select('experience_id,addon_id,addons(*)')
 		.eq('experience_id', params.id);
+	console.log(experienceAddons);
 
 	if (eaError) {
 		console.error('Error fetching experience addons:', eaError);
 	}
-
-	const addons = experienceAddons.map((ea) => ea.addons);
 
 	const { data: startLocations, error: startLocationsError } = await supabase
 		.from('start_locations')
@@ -66,7 +65,7 @@ export async function load({ params }) {
 
 	return {
 		experience,
-		addons,
+		experienceAddons,
 		startLocations,
 		bookingLengths,
 		blocked_dates: blockedDates,

@@ -42,11 +42,12 @@
 	<h1>{data.experience.name}</h1>
 
 	<label>Välj tillval:</label>
-	<select>
-		{#each data.addons as addon}
-			<option>{addon.name}</option>
-		{/each}
-	</select>
+	{#each data.experienceAddons as addon}
+		<div>
+			<label>{addon.addons.name} (Max {addon.addons.max_quantity} st):</label> <!-- Accessing the name and max_quantity correctly -->
+			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
+		</div>
+	{/each}
 
 	<label>Välj startplats:</label>
 	<select>
