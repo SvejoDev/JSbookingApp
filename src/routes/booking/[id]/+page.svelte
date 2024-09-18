@@ -28,13 +28,6 @@
 			return []; // Om öppettider inte finns, returnera tom lista
 		}
 
-		// Kontrollera att startdatum är satt
-		if (!startDate) {
-			console.error('Start date is not set');
-			return [];
-		}
-
-		// Skapa öppnings- och stängningstider för valt datum
 		const openTime = new Date(`${startDate}T${data.openHours.open_time}`);
 		const closeTime = new Date(`${startDate}T${data.openHours.close_time}`);
 
@@ -46,19 +39,21 @@
 		console.log('Open time:', openTime);
 		console.log('Close time:', closeTime);
 
-		let currentTime = new Date(openTime);
 		const startTimes = [];
-
+		let currentTime = new Date(openTime);
 		while (currentTime <= closeTime) {
 			startTimes.push(currentTime.toTimeString().substring(0, 5)); // Format HH:mm
-			currentTime.setMinutes(currentTime.getMinutes() + 30); // Öka tiden med 30 minuter
+			currentTime.setMinutes(currentTime.getMinutes() + 30);
 		}
 
 		console.log('Generated start times:', startTimes);
 
-		const bookingLengthHours = selectedBookingLength ? parseInt(selectedBookingLength) : 0;
-		const latestStartTime = new Date(closeTime);
-		latestStartTime.setHours(latestStartTime.getHours() - bookingLengthHours);
+		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
+		let latestStartTime = new Date(closeTime); // Default to closing time
+
+		if (bookingLength && !bookingLength.overnight && bookingLength.length !== 'Hela dagen') {
+			latestStartTime.setHours(latestStartTime.getHours() - parseInt(bookingLength.length));
+		}
 
 		console.log('Latest possible start time:', latestStartTime);
 
@@ -70,36 +65,43 @@
 		console.log('Valid start times:', validStartTimes);
 		return validStartTimes;
 	}
-
 	// Funktion för att hantera bokningslängd och beräkna returdatum och tid
 	function calculateReturnDate() {
-		console.log('Calculating return date...'); // Lägg till för att se om funktionen körs
-		if (selectedBookingLength && startTime) {
-			const bookingLength = data.bookingLengths.find(
-				(length) => length.length === selectedBookingLength
-			);
-
-			if (bookingLength) {
-				// Om det är en övernattningsbokning
-				if (bookingLength.overnight) {
-					const selectedDate = new Date(startDate);
-					selectedDate.setDate(selectedDate.getDate() + bookingLength.return_day_offset);
-					returnDate = selectedDate.toISOString().split('T')[0]; // Sätt returdatum som en sträng i Y-m-d format
-					returnTime = data.openHours.close_time; // Retur innan stängningstid
-				} else if (bookingLength.length === 'hela dagen') {
-					// Om det är en "hela dagen"-bokning, retur innan stängning
-					returnDate = startDate; // Samma dag som bokningsstart
-					returnTime = data.openHours.close_time; // Retur innan stängningstid
-				} else {
-					// För kortare bokningar (t.ex. 2 timmar, 3 timmar etc.)
-					const selectedDate = new Date(startDate + ' ' + startTime); // Kombinera startdatum och starttid
-					selectedDate.setHours(selectedDate.getHours() + parseInt(bookingLength.length)); // Lägg till bokningslängden till starttiden
-
-					returnDate = selectedDate.toISOString().split('T')[0]; // Sätt returdatum (samma dag)
-					returnTime = selectedDate.toTimeString().substring(0, 5); // Retur-tid i "HH:mm" format
-				}
-			}
+		if (!selectedBookingLength || !startTime || !startDate) {
+			console.error('Missing data for calculating return date.');
+			return; // Förhindrar fel om viktig data saknas
 		}
+
+		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
+		if (!bookingLength) {
+			console.error('Booking length data is missing');
+			return; // Returnerar tidigt om data inte finns
+		}
+
+		const startDateTime = new Date(`${startDate}T${startTime}`);
+		if (isNaN(startDateTime.getTime())) {
+			console.error('Invalid start date or time');
+			return; // Kontrollerar ogiltigt datum eller tid
+		}
+
+		let returnDateTime = new Date(startDateTime); // Börjar med startdatum och tid
+
+		// Hantera olika scenarier baserat på bokningstyp
+		if (bookingLength.overnight) {
+			returnDateTime.setDate(returnDateTime.getDate() + bookingLength.return_day_offset);
+			returnDateTime.setHours(17, 0, 0, 0); // Stänger klockan 17:00
+		} else if (bookingLength.length === 'Hela dagen') {
+			returnDateTime.setHours(17, 0, 0, 0); // Samma dag, stänger klockan 17:00
+		} else {
+			// För specifika timmar, lägg till timmarna till starttiden
+			const hoursToAdd = parseInt(bookingLength.length);
+			returnDateTime.setHours(returnDateTime.getHours() + hoursToAdd);
+		}
+
+		returnDate = returnDateTime.toISOString().split('T')[0];
+		returnTime = returnDateTime.toTimeString().substring(0, 5);
+
+		console.log('Return date:', returnDate, 'Return time:', returnTime);
 	}
 
 	// Generera starttider och beräkna returdatum när ett datum och bokningslängd är valt
