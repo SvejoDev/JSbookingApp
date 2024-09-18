@@ -1,7 +1,6 @@
 import { supabase } from '$lib/supabaseClient.js';
 
 export async function load({ params }) {
-	// Hämta den specifika upplevelsen baserat på ID från URL:en
 	const { data: experience, error: experienceError } = await supabase
 		.from('experiences')
 		.select('*')
@@ -21,11 +20,9 @@ export async function load({ params }) {
 		console.error('Error fetching experience addons:', eaError);
 	}
 
-	const addons = experienceAddons.map((ea) => ea.addons);
-
 	const { data: startLocations, error: startLocationsError } = await supabase
 		.from('start_locations')
-		.select('id, location, "price"')
+		.select('id, location, price')
 		.eq('experience_id', params.id);
 
 	if (startLocationsError) {
@@ -41,19 +38,17 @@ export async function load({ params }) {
 		console.error('Error fetching bookingLength', bLerror);
 	}
 
-	// Hämta öppettider
-	const { data: openDates, error: openDatesError } = await supabase
+	// Hämta öppettider och öppet-datum
+	const { data: openHours, error: openHoursError } = await supabase
 		.from('experience_open_dates')
-		.select('start_date, end_date')
+		.select('start_date, end_date, open_time, close_time')
 		.eq('experience_id', params.id)
 		.single();
 
-	if (openDatesError) {
-		console.error('Error fetching open dates', openDatesError);
+	if (openHoursError) {
+		console.error('Error fetching open dates', openHoursError);
 	}
-	console.log(openDates);
 
-	// Hämta blockerade datum från Supabase
 	const { data: blockedDates, error: blockedDatesError } = await supabase
 		.from('blocked_dates')
 		.select('blocked_date')
@@ -62,14 +57,14 @@ export async function load({ params }) {
 	if (blockedDatesError) {
 		console.error('Error fetching blocked dates:', blockedDatesError);
 	}
-	console.log(blockedDates);
 
+	// Returnera all relevant data till frontend
 	return {
 		experience,
-		addons,
+		experienceAddons,
 		startLocations,
 		bookingLengths,
-		blocked_dates: blockedDates,
-		openDates
+		blocked_dates: blockedDates || [], // Returnera en tom array om blocked_dates är null
+		openHours // Returnera både datum och öppettider i en struktur
 	};
 }
