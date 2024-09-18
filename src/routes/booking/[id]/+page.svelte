@@ -41,21 +41,6 @@
 {#if data.experience}
 	<h1>{data.experience.name}</h1>
 
-	<label>Välj tillval:</label>
-	{#each data.experienceAddons as addon}
-		<div>
-			<label>{addon.addons.name} (Max {addon.addons.max_quantity} st):</label> <!-- Accessing the name and max_quantity correctly -->
-			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
-		</div>
-	{/each}
-
-	<label>Välj startplats:</label>
-	<select>
-		{#each data.startLocations as location}
-			<option>{location.location} - {location.price}kr</option>
-		{/each}
-	</select>
-
 	<label>Välj bokningslängd:</label>
 	<select>
 		{#each data.bookingLengths as duration}
@@ -70,6 +55,23 @@
 	{#if startDate}
 		<p>Valt datum: {startDate}</p>
 	{/if}
+
+	<label>Välj tillval:</label>
+	{#each data.experienceAddons as addon}
+		<div>
+			<label>{addon.addons.name}:</label>
+			<!-- Accessing the name and max_quantity correctly -->
+			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
+		</div>
+	{/each}
+
+	<label>Välj startplats:</label>
+	<select>
+		{#each data.startLocations as location}
+			<option>{location.location} - {location.price}kr</option>
+		{/each}
+	</select>
+
 {:else}
 	<p>Upplevelsen hittades inte</p>
 {/if}
