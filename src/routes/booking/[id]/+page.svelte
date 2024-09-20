@@ -272,22 +272,12 @@
 	{/each}
 
 	<!-- Startplats -->
-	{#if data.startLocations.length === 1}
-		<!-- Automatically select the only start location -->
-		<p>Startplats: {data.startLocations[0].location} - {data.startLocations[0].price}kr</p>
-		<script>
-			// Automatically set selectedStartLocation to the price of the only start location
-			selectedStartLocation = data.startLocations[0].price;
-			updatePrice(); // Update price immediately
-		</script>
-	{:else}
-		<label>Välj startplats:</label>
-		<select bind:value={selectedStartLocation} on:change={updatePrice}>
-			{#each data.startLocations as location}
-				<option value={location.price}>{location.location} - {location.price}kr</option>
-			{/each}
-		</select>
-	{/if}
+	<label>Välj startplats:</label>
+	<select bind:value={selectedStartLocation} on:change={updatePrice}>
+		{#each data.startLocations as location}
+			<option value={location.price}>{location.location} - {location.price}kr</option>
+		{/each}
+	</select>
 
 	<!-- New section for prices -->
 	{#if selectedStartLocation}
