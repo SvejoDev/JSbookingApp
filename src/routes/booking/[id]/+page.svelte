@@ -22,6 +22,12 @@
 	let returnDate = null; // Beräknat returdatum
 	let returnTime = null; // Beräknad returtid
 
+	// New variables for prices
+	let selectedStartLocation = null; // New variable for selected start location
+	let numAdults = 0; // Number of adults
+	let numChildren = 0; // Number of children
+	let totalPrice = 0; // Total price
+
 	/**
 	 * Generera starttider baserat på öppettider och vald bokningslängd.
 	 * Starttider skapas varje halvtimme från öppettiden, men slutar
@@ -204,6 +210,14 @@
 			}
 		});
 	});
+
+	// Function to update the price based on selected start location and number of adults
+	function updatePrice() {
+		if (selectedStartLocation) {
+			totalPrice = numAdults * selectedStartLocation; // Calculate total price
+			console.log('Total Price:', totalPrice); // Log the total price
+		}
+	}
 </script>
 
 {#if data.experience}
@@ -243,7 +257,7 @@
 			<p>Vald starttid: {startTime}</p>
 			{#if returnDate && returnTime}
 				<p>Returdatum: {returnDate}</p>
-				<p>Returtid: {returnTime}</p>
+				<p>Returtid senast: {returnTime}</p>
 			{/if}
 		{/if}
 	{/if}
@@ -259,11 +273,23 @@
 
 	<!-- Startplats -->
 	<label>Välj startplats:</label>
-	<select>
+	<select bind:value={selectedStartLocation} on:change={updatePrice}>
 		{#each data.startLocations as location}
-			<option>{location.location} - {location.price}kr</option>
+			<option value={location.price}>{location.location} - {location.price}kr</option>
 		{/each}
 	</select>
+
+	<!-- New section for prices -->
+	{#if selectedStartLocation}
+		<label>Antal vuxna:</label>
+		<input type="number" min="0" bind:value={numAdults} on:input={updatePrice} />
+
+		<label>Antal barn (gratis):</label>
+		<input type="number" min="0" bind:value={numChildren} />
+
+		<p>Totalt pris: {totalPrice}kr</p>
+	{/if}
+
 {:else}
 	<p>Upplevelsen hittades inte</p>
 {/if}
