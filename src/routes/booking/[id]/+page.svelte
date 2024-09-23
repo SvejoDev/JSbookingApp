@@ -221,14 +221,21 @@
 </script>
 
 {#if data.experience}
-	<h1>{data.experience.name}</h1>
+<h1>{data.experience.name}</h1>
 
-	<!-- Bokningslängd -->
+<!-- Startplats -->
+<label>Välj startplats:</label>
+<select bind:value={selectedStartLocation} on:change={updatePrice}>
+	{#each data.startLocations as location}
+		<option value={location.price}>{location.location} - {location.price}kr</option>
+	{/each}
+</select>
+<!-- Bokningslängd -->
 	<label>Välj bokningslängd:</label>
 	<select bind:value={selectedBookingLength}>
 		<option value="" disabled selected>Välj längd</option>
 		{#each sortedBookingLengths as duration}
-			<option value={duration.length}>{duration.length}</option>
+		<option value={duration.length}>{duration.length}</option>
 		{/each}
 	</select>
 
@@ -271,13 +278,6 @@
 		</div>
 	{/each}
 
-	<!-- Startplats -->
-	<label>Välj startplats:</label>
-	<select bind:value={selectedStartLocation} on:change={updatePrice}>
-		{#each data.startLocations as location}
-			<option value={location.price}>{location.location} - {location.price}kr</option>
-		{/each}
-	</select>
 
 	<!-- New section for prices -->
 	{#if selectedStartLocation}

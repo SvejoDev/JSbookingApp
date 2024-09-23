@@ -31,8 +31,7 @@ export async function load({ params }) {
 
 	const { data: bookingLengths, error: bLerror } = await supabase
 		.from('booking_lengths')
-		.select('*')
-		.eq('experience_id', params.id);
+		.select('*');
 
 	if (bLerror) {
 		console.error('Error fetching bookingLength', bLerror);
