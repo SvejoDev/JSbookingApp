@@ -157,9 +157,10 @@
 		calculateReturnDate(); // Beräkna returdatum och returtid
 	}
 
-	// Funktion för att sortera bokningslängderna
+	// Function to sort booking lengths
 	function sortBookingLengths(bookingLengths) {
 		return bookingLengths.sort((a, b) => {
+			// Your sorting logic
 			// Om a och b är timmar (Xh)
 			if (a.length.includes('h') && b.length.includes('h')) {
 				return parseInt(a.length) - parseInt(b.length); // Sortera timmar stigande
@@ -178,8 +179,19 @@
 			// Om vi kommer hit är det övernattningar eller andra textbaserade längder
 			return 0;
 		});
-	} // Sortera bokningslängderna när komponenten laddas
-	let sortedBookingLengths = sortBookingLengths(data.bookingLengths);
+	}
+
+	// Initialize sortedBookingLengths
+	let sortedBookingLengths = [];
+
+	// Reactive statement to filter and sort booking lengths
+	$: if (selectedStartLocation) {
+		sortedBookingLengths = sortBookingLengths(
+			data.bookingLengths.filter((bl) => bl.location_id == selectedStartLocation)
+		);
+	} else {
+		sortedBookingLengths = [];
+	}
 
 	// Initiera kalender med Flatpickr vid komponentens mount
 	onMount(() => {
@@ -221,21 +233,22 @@
 </script>
 
 {#if data.experience}
-<h1>{data.experience.name}</h1>
+	<h1>{data.experience.name}</h1>
 
-<!-- Startplats -->
-<label>Välj startplats:</label>
-<select bind:value={selectedStartLocation} on:change={updatePrice}>
-	{#each data.startLocations as location}
-		<option value={location.price}>{location.location} - {location.price}kr</option>
-	{/each}
-</select>
-<!-- Bokningslängd -->
+	<!-- Startplats -->
+	<label>Välj startplats:</label>
+	<select bind:value={selectedStartLocation}>
+		{#each data.startLocations as location}
+			<option value={location.id}>{location.location} - {location.price}kr</option>
+		{/each}
+	</select>
+
+	<!-- Bokningslängd -->
 	<label>Välj bokningslängd:</label>
 	<select bind:value={selectedBookingLength}>
 		<option value="" disabled selected>Välj längd</option>
 		{#each sortedBookingLengths as duration}
-		<option value={duration.length}>{duration.length}</option>
+			<option value={duration.length}>{duration.length}</option>
 		{/each}
 	</select>
 
@@ -277,7 +290,6 @@
 			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
 		</div>
 	{/each}
-
 
 	<!-- New section for prices -->
 	{#if selectedStartLocation}
