@@ -148,9 +148,24 @@
 
 	// Uppdaterar totalpriset baserat på antal vuxna och vald startplats
 	function updatePrice() {
-		if (selectedStartLocation) {
-			totalPrice = numAdults * selectedStartLocation;
+		if (selectedStartLocation && data.startLocations) {
+			const selectedLocation = data.startLocations.find(
+				(location) => location.id === selectedStartLocation
+			);
+			if (selectedLocation) {
+				totalPrice = numAdults * selectedLocation.price;
+			} else {
+				console.error('Vald startplats hittades inte');
+				totalPrice = 0;
+			}
+		} else {
+			totalPrice = 0;
 		}
+	}
+
+	// Reaktivt uttalande för att uppdatera priset när antalet vuxna eller startplats ändras
+	$: {
+		updatePrice();
 	}
 
 	// Reaktiva uttalanden för att uppdatera starttider och returdatum
@@ -167,7 +182,7 @@
 	<h1>{data.experience.name}</h1>
 
 	<label>Välj startplats:</label>
-	<select bind:value={selectedStartLocation}>
+	<select bind:value={selectedStartLocation} on:change={updatePrice}>
 		{#each data.startLocations as location}
 			<option value={location.id}>{location.location} - {location.price}kr</option>
 		{/each}
