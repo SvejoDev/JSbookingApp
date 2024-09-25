@@ -62,7 +62,7 @@ export async function load({ params }) {
 		.from('blocked_start_times')
 		.select('blocked_date, blocked_time')
 		.eq('experience_id', params.id);
-		console.log(blockedStartTimes)
+	console.log(blockedStartTimes);
 
 	if (blockedStartTimesError) {
 		console.error('Error fetching blocked start times:', blockedStartTimesError);

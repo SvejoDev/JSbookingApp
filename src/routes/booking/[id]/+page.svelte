@@ -48,9 +48,17 @@
 			latestStartTime.setHours(latestStartTime.getHours() - parseInt(bookingLength.length));
 		}
 
+		// Filter out blocked start times
+		const blockedStartTimes = data.blocked_start_times.filter(
+			(blockedTime) => blockedTime.blocked_date === startDate
+		);
+
 		return startTimes.filter((time) => {
 			const timeDate = new Date(`${startDate}T${time}`);
-			return timeDate <= latestStartTime;
+			const isNotBlocked = !blockedStartTimes.some(
+				(blockedTime) => blockedTime.blocked_time.substring(0, 5) === time
+			);
+			return timeDate <= latestStartTime && isNotBlocked;
 		});
 	}
 
@@ -119,8 +127,6 @@
 	} else {
 		sortedBookingLengths = [];
 	}
-
-	
 
 	onMount(() => {
 		const today = new Date();
