@@ -120,6 +120,8 @@
 		sortedBookingLengths = [];
 	}
 
+	
+
 	onMount(() => {
 		const today = new Date();
 
