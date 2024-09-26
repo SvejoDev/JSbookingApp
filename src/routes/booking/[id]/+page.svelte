@@ -268,7 +268,7 @@
 		<label>Epostadress:</label>
 		<input type="email" bind:value={userEmail} required />
 
-		<label>Kommentar (optional):</label>
+		<label>Kommentar (valfri):</label>
 		<textarea bind:value={userComment}></textarea>
 
 		<div>
