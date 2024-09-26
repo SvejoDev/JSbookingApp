@@ -19,6 +19,14 @@
 	let numChildren = 0;
 	let totalPrice = 0;
 
+	//Kunduppgifter:
+	let userName = '';
+	let userLastname = '';
+	let userPhone = '';
+	let userEmail = '';
+	let userComment = '';
+	let acceptTerms = false;
+
 	// Genererar möjliga starttider baserat på öppettider och vald bokningslängd
 	function generateStartTimes() {
 		if (!data.openHours || !data.openHours.open_time || !data.openHours.close_time) {
@@ -154,7 +162,6 @@
 		});
 	});
 
-	// Uppdaterar totalpriset baserat på antal vuxna och vald startplats
 	function updatePrice() {
 		if (selectedStartLocation && data.startLocations) {
 			const selectedLocation = data.startLocations.find(
@@ -170,14 +177,13 @@
 			totalPrice = 0;
 		}
 	}
-
-	// Reaktivt uttalande för att uppdatera priset när antalet vuxna eller startplats ändras
 	$: {
-		updatePrice();
+		if (selectedStartLocation || numAdults) {
+			updatePrice();
+		}
 	}
 
-	// Reaktiva uttalanden för att uppdatera starttider och returdatum
-	$: if (startDate && selectedBookingLength) {
+		$: if (startDate && selectedBookingLength) {
 		possibleStartTimes = generateStartTimes();
 	}
 
@@ -241,12 +247,38 @@
 
 	{#if selectedStartLocation}
 		<label>Antal vuxna:</label>
-		<input type="number" min="0" bind:value={numAdults} on:input={updatePrice} />
+		<input type="number" min="0" bind:value={numAdults} />
 
 		<label>Antal barn (gratis):</label>
 		<input type="number" min="0" bind:value={numChildren} />
 
 		<p>Totalt pris: {totalPrice}kr</p>
+	{/if}
+	{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
+		<h2>Contact Details</h2>
+		<label>Förnamn:</label>
+		<input type="text" bind:value={userName} required />
+
+		<label>Efternamn:</label>
+		<input type="text" bind:value={userLastname} required />
+
+		<label>Telefonnummer:</label>
+		<input type="tel" bind:value={userPhone} pattern="^\+?[1-9]\d{(1, 14)}$" required />
+
+		<label>Epostadress:</label>
+		<input type="email" bind:value={userEmail} required />
+
+		<label>Kommentar (valfri):</label>
+		<textarea bind:value={userComment}></textarea>
+
+		<div>
+			<input type="checkbox" bind:checked={acceptTerms} required />
+			<label>I accept the booking agreement and the terms of purchase</label>
+		</div>
+
+		<button disabled={!acceptTerms}>
+			Go to payment ({totalPrice}kr)
+		</button>
 	{/if}
 {:else}
 	<p>Upplevelsen hittades inte</p>
