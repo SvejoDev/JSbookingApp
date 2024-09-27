@@ -20,8 +20,10 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@stripe/stripe-js": "^4.5.0",
 		"@supabase/supabase-js": "^2.45.4",
 		"dotenv": "^16.4.5",
-		"flatpickr": "^4.6.13"
+		"flatpickr": "^4.6.13",
+		"stripe": "^16.12.0"
 	}
 }
