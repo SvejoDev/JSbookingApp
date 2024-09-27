@@ -2,7 +2,6 @@
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
-	import { loadStripe } from '@stripe/stripe-js';
 
 	export let data;
 
@@ -193,11 +192,58 @@
 	}
 
 	//Stripe
+
+	import { loadStripe } from '@stripe/stripe-js';
+
 	let stripePromise;
 
 	onMount(async () => {
-		stripePromise = await loadStripe('your_publishable_key_here');
+		stripePromise = await loadStripe(
+			'pk_live_51Q3N7cP8OFkPaMUNLIlPPTn4FqlQfeqLHbyFdjjsSzengbs8PsZzwRPPfwvQSK8KEKhDQrXsdZZx2fpoeoJssnuX00IIYOVXRJ'
+		);
 	});
+
+	async function handleCheckout() {
+		try {
+			const stripe = await stripePromise;
+			console.log('Sending request to create-checkout-session...');
+			const response = await fetch('/api/create-checkout-session', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					amount: totalPrice,
+					name: data.experience.name
+				})
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('Server response:', response.status, errorText);
+				throw new Error(`Server error: ${response.status} ${errorText}`);
+			}
+
+			const session = await response.json();
+			console.log('Received session:', session);
+
+			if (!session.id) {
+				throw new Error('Invalid session data received from server');
+			}
+
+			const result = await stripe.redirectToCheckout({
+				sessionId: session.id
+			});
+
+			if (result.error) {
+				console.error('Stripe redirect error:', result.error);
+				throw new Error(result.error.message);
+			}
+		} catch (error) {
+			console.error('Checkout error:', error);
+			// Here you might want to show an error message to the user
+		}
+	}
 </script>
 
 {#if data.experience}
@@ -284,7 +330,7 @@
 			<label>I accept the booking agreement and the terms of purchase</label>
 		</div>
 
-		<button disabled={!acceptTerms}>
+		<button disabled={!acceptTerms} on:click={handleCheckout}>
 			Go to payment ({totalPrice}kr)
 		</button>
 	{/if}
