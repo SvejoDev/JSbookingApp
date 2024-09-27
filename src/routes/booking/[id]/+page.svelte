@@ -2,6 +2,7 @@
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
+	import { loadStripe } from '@stripe/stripe-js';
 
 	export let data;
 
@@ -183,13 +184,20 @@
 		}
 	}
 
-		$: if (startDate && selectedBookingLength) {
+	$: if (startDate && selectedBookingLength) {
 		possibleStartTimes = generateStartTimes();
 	}
 
 	$: if (startDate && startTime && selectedBookingLength) {
 		calculateReturnDate();
 	}
+
+	//Stripe
+	let stripePromise;
+
+	onMount(async () => {
+		stripePromise = await loadStripe('your_publishable_key_here');
+	});
 </script>
 
 {#if data.experience}
@@ -255,7 +263,7 @@
 		<p>Totalt pris: {totalPrice}kr</p>
 	{/if}
 	{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
-		<h2>Contact Details</h2>
+		<h2>Kontaktuppgifter</h2>
 		<label>Förnamn:</label>
 		<input type="text" bind:value={userName} required />
 
