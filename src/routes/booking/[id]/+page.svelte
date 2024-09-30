@@ -199,7 +199,7 @@
 
 	onMount(async () => {
 		stripePromise = await loadStripe(
-			'pk_live_51Q3N7cP8OFkPaMUNLIlPPTn4FqlQfeqLHbyFdjjsSzengbs8PsZzwRPPfwvQSK8KEKhDQrXsdZZx2fpoeoJssnuX00IIYOVXRJ'
+			'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig'
 		);
 	});
 
