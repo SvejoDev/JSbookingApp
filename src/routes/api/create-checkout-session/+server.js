@@ -42,3 +42,39 @@ export async function POST({ request }) {
 		return json({ error: error.message }, { status: 500 });
 	}
 }
+
+//Kollar om betlaningen har gått igenom i stripe:
+export async function POST({ request }) {
+	const payload = await request.text();
+	const sig = request.headers.get('stripe-signature');
+
+	let event;
+
+	try {
+		event = stripe.webhooks.constructEvent(
+			payload,
+			sig,
+			process.env.STRIPE_WEBHOOK_SECRET // Du måste skapa en ny webhook i ditt Stripe Dashboard
+		);
+	} catch (err) {
+		console.error(`Webhook Error: ${err.message}`);
+		return json({ error: 'Webhook Error' }, { status: 400 });
+	}
+
+	// Hantera olika typer av events
+	if (event.type === 'checkout.session.completed') {
+		const session = event.data.object;
+
+		// Här skickar du bokningsinformationen till Supabase eller annan databas
+		await supabase.from('bookings').insert({
+			stripe_session_id: session.id,
+			customer_email: session.customer_email,
+			amount_total: session.amount_total,
+			status: 'betald'
+		});
+
+		console.log('Bokning har skapats efter betalning.');
+	}
+
+	return json({ received: true }, { status: 200 });
+}
