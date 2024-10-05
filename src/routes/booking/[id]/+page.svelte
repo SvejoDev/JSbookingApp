@@ -5,6 +5,11 @@
 
 	export let data;
 
+	//Addon variabler
+	let amountCanoes = 0;
+	let amountKayaks = 0;
+	let amountSUPs = 0;
+
 	let blockedDates = [];
 	let startDate = null;
 	let minDate = null;
@@ -292,12 +297,18 @@
 	{/if}
 
 	<label>Välj tillval:</label>
-	{#each data.experienceAddons as addon}
-		<div>
-			<label>{addon.addons.name}:</label>
-			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
-		</div>
-	{/each}
+	<div>
+		<label>Antal kanadensare:</label>
+		<input type="number" min="0" bind:value={amountCanoes} />
+	</div>
+	<div>
+		<label>Antal kajaker:</label>
+		<input type="number" min="0" bind:value={amountKayaks} />
+	</div>
+	<div>
+		<label>Antal SUP:ar:</label>
+		<input type="number" min="0" bind:value={amountSUPs} />
+	</div>
 
 	{#if selectedStartLocation}
 		<label>Antal vuxna:</label>
