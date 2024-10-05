@@ -1,7 +1,7 @@
-// src/routes/api/webhook/+server.js
 import { json } from '@sveltejs/kit';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
+import { supabase } from '$lib/supabaseClient.js';
 
 dotenv.config();
 
@@ -15,24 +15,58 @@ export async function POST({ request }) {
 
 	try {
 		event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
+		console.log('Stripe event constructed:', event);
 	} catch (err) {
 		console.error(`Webhook Error: ${err.message}`);
 		return json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
 	}
 
-	// Hantera olika typer av events från Stripe
 	if (event.type === 'checkout.session.completed') {
 		const session = event.data.object;
+		console.log('Checkout session completed:', session);
 
-		// Skapa bokning i Supabase eller annan databas
-		await supabase.from('bookings').insert({
+		const {
+			experience_id,
+			start_date,
+			start_time,
+			end_date,
+			end_time,
+			number_of_adults,
+			number_of_children,
+			amount_canoes,
+			amount_kayak,
+			amount_sup,
+			booking_name,
+			booking_lastname,
+			customer_comment
+		} = session.metadata;
+
+		const { error } = await supabase.from('bookings').insert({
 			stripe_session_id: session.id,
 			customer_email: session.customer_email,
 			amount_total: session.amount_total,
-			status: 'betald'
+			status: 'betald',
+			experience_id,
+			start_date,
+			start_time,
+			end_date,
+			end_time,
+			number_of_adults,
+			number_of_children,
+			amount_canoes,
+			amount_kayak,
+			amount_sup, // Changed from amount_SUP to amount_sup
+			booking_name,
+			booking_lastname,
+			customer_comment
 		});
 
-		console.log('Bokning har skapats efter betalning.');
+		if (error) {
+			console.error('Error inserting into Supabase:', error);
+			return json({ error: 'Error inserting into Supabase' }, { status: 500 });
+		}
+
+		console.log('Booking inserted into Supabase successfully.');
 	}
 
 	return json({ received: true }, { status: 200 });

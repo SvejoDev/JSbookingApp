@@ -8,7 +8,23 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST({ request }) {
 	try {
-		const { amount, name } = await request.json();
+		const {
+			amount,
+			name,
+			experience_id,
+			start_date,
+			start_time,
+			end_date,
+			end_time,
+			number_of_adults,
+			number_of_children,
+			amount_canoes,
+			amount_kayak,
+			amount_SUP,
+			booking_name,
+			booking_lastname,
+			customer_comment
+		} = await request.json();
 
 		if (!amount || !name) {
 			return json({ error: 'Missing required fields: amount or name' }, { status: 400 });
@@ -28,7 +44,22 @@ export async function POST({ request }) {
 			],
 			mode: 'payment',
 			success_url: 'http://localhost:5173/success',
-			cancel_url: 'http://localhost:5173/cancel'
+			cancel_url: 'http://localhost:5173/cancel',
+			metadata: {
+				experience_id,
+				start_date,
+				start_time,
+				end_date,
+				end_time,
+				number_of_adults,
+				number_of_children,
+				amount_canoes,
+				amount_kayak,
+				amount_SUP,
+				booking_name,
+				booking_lastname,
+				customer_comment
+			}
 		});
 
 		return json({ id: session.id });

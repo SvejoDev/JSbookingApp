@@ -5,6 +5,8 @@
 
 	export let data;
 
+	console.log(data.experience.id);
+
 	//Addon variabler
 	let amountCanoes = 0;
 	let amountKayaks = 0;
@@ -212,15 +214,33 @@
 		try {
 			const stripe = await stripePromise;
 			console.log('Sending request to create-checkout-session...');
+
+			// Log the data being sent
+			const requestData = {
+				amount: totalPrice,
+				name: data.experience.name,
+				experience_id: data.experience.id,
+				start_date: startDate,
+				start_time: startTime,
+				end_date: returnDate,
+				end_time: returnTime,
+				number_of_adults: numAdults,
+				number_of_children: numChildren,
+				amount_canoes: amountCanoes,
+				amount_kayak: amountKayaks,
+				amount_SUP: amountSUPs,
+				booking_name: userName,
+				booking_lastname: userLastname,
+				customer_comment: userComment
+			};
+			console.log('Request Data:', requestData);
+
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({
-					amount: totalPrice,
-					name: data.experience.name
-				})
+				body: JSON.stringify(requestData)
 			});
 
 			if (!response.ok) {
