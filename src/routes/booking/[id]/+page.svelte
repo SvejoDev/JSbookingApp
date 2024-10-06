@@ -5,8 +5,6 @@
 
 	export let data;
 
-	console.log(data.experience.id);
-
 	//Addon variabler
 	let amountCanoes = 0;
 	let amountKayaks = 0;
@@ -25,6 +23,16 @@
 	let numAdults = 0;
 	let numChildren = 0;
 	let totalPrice = 0;
+
+	//Hitta namnet till tillvalsprodukten
+	let selectedStartLocationName = '';
+
+	$: {
+		const selectedLocation = data.startLocations.find(
+			(location) => location.id === selectedStartLocation		
+		);
+		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
+	}
 
 	//Kunduppgifter:
 	let userName = '';
@@ -220,6 +228,8 @@
 				amount: totalPrice,
 				name: data.experience.name,
 				experience_id: data.experience.id,
+				experience: data.experience.name,
+				startLocation: selectedStartLocationName,
 				start_date: startDate,
 				start_time: startTime,
 				end_date: returnDate,
@@ -231,7 +241,8 @@
 				amount_SUP: amountSUPs,
 				booking_name: userName,
 				booking_lastname: userLastname,
-				customer_comment: userComment
+				customer_comment: userComment,
+				customer_email: userEmail
 			};
 			console.log('Request Data:', requestData);
 

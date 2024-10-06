@@ -15,7 +15,7 @@ export async function POST({ request }) {
 
 	try {
 		event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
-		console.log('Stripe event constructed:', event);
+		console.log('Stripe event constructed:');
 	} catch (err) {
 		console.error(`Webhook Error: ${err.message}`);
 		return json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
@@ -23,10 +23,12 @@ export async function POST({ request }) {
 
 	if (event.type === 'checkout.session.completed') {
 		const session = event.data.object;
-		console.log('Checkout session completed:', session);
+		console.log('Checkout session completed:');
 
 		const {
 			experience_id,
+			experience,
+			startLocation,
 			start_date,
 			start_time,
 			end_date,
@@ -38,15 +40,18 @@ export async function POST({ request }) {
 			amount_sup,
 			booking_name,
 			booking_lastname,
-			customer_comment
+			customer_comment,
+			customer_email
 		} = session.metadata;
 
 		const { error } = await supabase.from('bookings').insert({
 			stripe_session_id: session.id,
 			customer_email: session.customer_email,
-			amount_total: session.amount_total,
+			amount_total: session.amount_total / 100,
 			status: 'betald',
 			experience_id,
+			experience,
+			startLocation,
 			start_date,
 			start_time,
 			end_date,
@@ -55,10 +60,11 @@ export async function POST({ request }) {
 			number_of_children,
 			amount_canoes,
 			amount_kayak,
-			amount_sup, // Changed from amount_SUP to amount_sup
+			amount_sup,
 			booking_name,
 			booking_lastname,
-			customer_comment
+			customer_comment,
+			customer_email
 		});
 
 		if (error) {

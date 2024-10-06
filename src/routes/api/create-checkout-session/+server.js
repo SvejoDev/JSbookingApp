@@ -12,6 +12,8 @@ export async function POST({ request }) {
 			amount,
 			name,
 			experience_id,
+			experience,
+			startLocation,
 			start_date,
 			start_time,
 			end_date,
@@ -23,7 +25,8 @@ export async function POST({ request }) {
 			amount_SUP,
 			booking_name,
 			booking_lastname,
-			customer_comment
+			customer_comment,
+			customer_email
 		} = await request.json();
 
 		if (!amount || !name) {
@@ -47,6 +50,8 @@ export async function POST({ request }) {
 			cancel_url: 'http://localhost:5173/cancel',
 			metadata: {
 				experience_id,
+				experience,
+				startLocation,
 				start_date,
 				start_time,
 				end_date,
@@ -58,7 +63,8 @@ export async function POST({ request }) {
 				amount_SUP,
 				booking_name,
 				booking_lastname,
-				customer_comment
+				customer_comment,
+				customer_email
 			}
 		});
 
