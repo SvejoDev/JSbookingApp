@@ -5,6 +5,11 @@
 
 	export let data;
 
+	//Addon variabler
+	let amountCanoes = 0;
+	let amountKayaks = 0;
+	let amountSUPs = 0;
+
 	let blockedDates = [];
 	let startDate = null;
 	let minDate = null;
@@ -18,6 +23,16 @@
 	let numAdults = 0;
 	let numChildren = 0;
 	let totalPrice = 0;
+
+	//Hitta namnet till tillvalsprodukten
+	let selectedStartLocationName = '';
+
+	$: {
+		const selectedLocation = data.startLocations.find(
+			(location) => location.id === selectedStartLocation		
+		);
+		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
+	}
 
 	//Kunduppgifter:
 	let userName = '';
@@ -199,7 +214,7 @@
 
 	onMount(async () => {
 		stripePromise = await loadStripe(
-			'pk_live_51Q3N7cP8OFkPaMUNLIlPPTn4FqlQfeqLHbyFdjjsSzengbs8PsZzwRPPfwvQSK8KEKhDQrXsdZZx2fpoeoJssnuX00IIYOVXRJ'
+			'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig'
 		);
 	});
 
@@ -207,15 +222,36 @@
 		try {
 			const stripe = await stripePromise;
 			console.log('Sending request to create-checkout-session...');
+
+			// Log the data being sent
+			const requestData = {
+				amount: totalPrice,
+				name: data.experience.name,
+				experience_id: data.experience.id,
+				experience: data.experience.name,
+				startLocation: selectedStartLocationName,
+				start_date: startDate,
+				start_time: startTime,
+				end_date: returnDate,
+				end_time: returnTime,
+				number_of_adults: numAdults,
+				number_of_children: numChildren,
+				amount_canoes: amountCanoes,
+				amount_kayak: amountKayaks,
+				amount_SUP: amountSUPs,
+				booking_name: userName,
+				booking_lastname: userLastname,
+				customer_comment: userComment,
+				customer_email: userEmail
+			};
+			console.log('Request Data:', requestData);
+
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({
-					amount: totalPrice,
-					name: data.experience.name
-				})
+				body: JSON.stringify(requestData)
 			});
 
 			if (!response.ok) {
@@ -292,12 +328,18 @@
 	{/if}
 
 	<label>Välj tillval:</label>
-	{#each data.experienceAddons as addon}
-		<div>
-			<label>{addon.addons.name}:</label>
-			<input type="number" min="0" max={addon.addons.max_quantity} bind:value={addon.quantity} />
-		</div>
-	{/each}
+	<div>
+		<label>Antal kanadensare:</label>
+		<input type="number" min="0" bind:value={amountCanoes} />
+	</div>
+	<div>
+		<label>Antal kajaker:</label>
+		<input type="number" min="0" bind:value={amountKayaks} />
+	</div>
+	<div>
+		<label>Antal SUP:ar:</label>
+		<input type="number" min="0" bind:value={amountSUPs} />
+	</div>
 
 	{#if selectedStartLocation}
 		<label>Antal vuxna:</label>
