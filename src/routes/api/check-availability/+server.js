@@ -1,25 +1,3 @@
-import { json } from '@sveltejs/kit';
-import { supabase } from '$lib/supabaseClient.js';
-
-export async function POST({ request }) {
-	try {
-		const { experienceId, date, bookingLength, selectedEquipment } = await request.json();
-
-		const availableStartTimes = await checkAvailability(
-			supabase,
-			experienceId,
-			date,
-			bookingLength,
-			selectedEquipment
-		);
-
-		return json({ availableStartTimes });
-	} catch (error) {
-		console.error('Server error:', error);
-		return json({ error: error.message }, { status: 500 });
-	}
-}
-
 async function checkAvailability(supabase, experienceId, date, bookingLength, selectedEquipment) {
 	console.log('Checking availability with:', {
 		experienceId,
@@ -80,6 +58,26 @@ async function checkAvailability(supabase, experienceId, date, bookingLength, se
 		throw new Error('Error fetching bookings data');
 	}
 
+	// Calculate total booked equipment for the day
+	let totalBookedCanoes = 0;
+	let totalBookedKayaks = 0;
+	let totalBookedSups = 0;
+
+	bookings.forEach((booking) => {
+		totalBookedCanoes += booking.amount_canoes;
+		totalBookedKayaks += booking.amount_kayak;
+		totalBookedSups += booking.amount_sup;
+	});
+
+	// Check if there's enough equipment available for the whole day
+	if (
+		totalBookedCanoes + selectedEquipment.canoes > totalEquipment.canoes ||
+		totalBookedKayaks + selectedEquipment.kayaks > totalEquipment.kayaks ||
+		totalBookedSups + selectedEquipment.sups > totalEquipment.sups
+	) {
+		return []; // No available times if there's not enough equipment
+	}
+
 	// Fetch opening hours for the experience
 	const { data: openHours, error: openHoursError } = await supabase
 		.from('experience_open_dates')
@@ -122,11 +120,7 @@ async function checkAvailability(supabase, experienceId, date, bookingLength, se
 			return false;
 		}
 
-		// Check availability against existing bookings
-		let availableCanoes = totalEquipment.canoes;
-		let availableKayaks = totalEquipment.kayaks;
-		let availableSups = totalEquipment.sups;
-
+		// Check for time conflicts with existing bookings
 		for (const booking of bookings) {
 			const bookingStartTime = new Date(`${booking.start_date}T${booking.start_time}`);
 			const bookingEndTime = new Date(`${booking.end_date}T${booking.end_time}`);
@@ -136,17 +130,11 @@ async function checkAvailability(supabase, experienceId, date, bookingLength, se
 				(bookingEnd > bookingStartTime && bookingEnd <= bookingEndTime) ||
 				(bookingStart <= bookingStartTime && bookingEnd >= bookingEndTime)
 			) {
-				availableCanoes -= booking.amount_canoes;
-				availableKayaks -= booking.amount_kayak;
-				availableSups -= booking.amount_sup;
+				return false; // Time conflict, this start time is not available
 			}
 		}
 
-		return (
-			availableCanoes >= selectedEquipment.canoes &&
-			availableKayaks >= selectedEquipment.kayaks &&
-			availableSups >= selectedEquipment.sups
-		);
+		return true; // This start time is available
 	});
 
 	return availableStartTimes;
