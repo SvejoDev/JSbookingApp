@@ -13,8 +13,9 @@ export async function load({ params }) {
 
 	const { data: experienceAddons, error: eaError } = await supabase
 		.from('experience_addons')
-		.select('experience_id,addon_id,addons(*)')
+		.select('experience_id,addon_id,addons(id, name, max_quantity)')
 		.eq('experience_id', params.id);
+	console.log(experienceAddons);
 
 	if (eaError) {
 		console.error('Error fetching experience addons:', eaError);
