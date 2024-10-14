@@ -2,6 +2,7 @@
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
+	import { loadStripe } from '@stripe/stripe-js';
 
 	export let data;
 	let maxCanoes = 0;
@@ -18,9 +19,6 @@
 		maxSUPs = supsAddon ? supsAddon.addons.max_quantity : 0;
 	}
 
-	let showStartTimes = false;
-
-	//Addon variabler
 	let amountCanoes = 0;
 	let amountKayaks = 0;
 	let amountSUPs = 0;
@@ -38,7 +36,6 @@
 	let numChildren = 0;
 	let totalPrice = 0;
 
-	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
 
 	$: {
@@ -48,7 +45,6 @@
 		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
 	}
 
-	//Kunduppgifter:
 	let userName = '';
 	let userLastname = '';
 	let userPhone = '';
@@ -56,7 +52,6 @@
 	let userComment = '';
 	let acceptTerms = false;
 
-	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate) {
 			console.error('Data saknas för att beräkna returdatum.');
@@ -98,7 +93,6 @@
 		returnTime = returnDateTime.toTimeString().substring(0, 5);
 	}
 
-	// Sorterar bokningslängder baserat på varaktighet och typ
 	function sortBookingLengths(bookingLengths) {
 		return bookingLengths.sort((a, b) => {
 			if (a.length.includes('h') && b.length.includes('h')) {
@@ -177,20 +171,9 @@
 		}
 	}
 
-	$: if (startDate && selectedBookingLength) {
-		allStartTimes = generateAllStartTimes();
-		fetchAvailableStartTimes().then((times) => {
-			availableStartTimes = times;
-		});
-	}
-
 	$: if (startDate && startTime && selectedBookingLength) {
 		calculateReturnDate();
 	}
-
-	//Stripe
-
-	import { loadStripe } from '@stripe/stripe-js';
 
 	let stripePromise;
 
@@ -205,7 +188,6 @@
 			const stripe = await stripePromise;
 			console.log('Sending request to create-checkout-session...');
 
-			// Log the data being sent
 			const requestData = {
 				amount: totalPrice,
 				name: data.experience.name,
@@ -263,11 +245,6 @@
 		}
 	}
 
-	let allStartTimes = [];
-	let availableStartTimes = [];
-	let equipmentSelected = false;
-
-	//kollar om allt är valt
 	function checkEquipmentChanged() {
 		if (startDate && selectedBookingLength) {
 			allStartTimes = generateAllStartTimes();
@@ -277,11 +254,6 @@
 		}
 	}
 
-	// Modify the existing reactive statement
-	$: if (startDate && selectedBookingLength) {
-		checkEquipmentChanged();
-	}
-	// Function to generate all possible start times
 	function generateAllStartTimes() {
 		if (!data.openHours || !data.openHours.open_time || !data.openHours.close_time) {
 			console.error('Data för öppettider saknas eller är ofullständig');
@@ -306,13 +278,22 @@
 		return times;
 	}
 
-	// Fetch available start times
-	async function fetchAvailableStartTimes() {
-		if (!startDate || !selectedBookingLength) {
+	let showStartTimes = false;
+	let allStartTimes = [];
+	let availableStartTimes = [];
+
+	async function handleNextButton() {
+		if (!startDate || !selectedBookingLength || (!amountCanoes && !amountKayaks && !amountSUPs)) {
 			console.error('Missing data for availability check');
-			return [];
+			return;
 		}
 
+		showStartTimes = true;
+		allStartTimes = generateAllStartTimes();
+		availableStartTimes = await fetchAvailableStartTimes();
+	}
+
+	async function fetchAvailableStartTimes() {
 		try {
 			const response = await fetch('/api/check-availability', {
 				method: 'POST',
@@ -352,180 +333,235 @@
 		}
 	}
 
-	// Update start times when necessary
-	$: if (startDate && selectedBookingLength) {
-		allStartTimes = generateAllStartTimes();
-		fetchAvailableStartTimes().then((times) => {
-			availableStartTimes = times;
-		});
-	}
+	$: canProceed = amountCanoes > 0 || amountKayaks > 0 || amountSUPs > 0;
 </script>
 
-{#if data.experience}
-	<h1>{data.experience.name}</h1>
+<main>
+	{#if data.experience}
+		<h1>{data.experience.name}</h1>
 
-	<!-- Step 1: Choose start place -->
-	<label for="startLocation">Välj startplats:</label>
-	<select id="startLocation" bind:value={selectedStartLocation} on:change={updatePrice}>
-		<option value="" disabled selected>Välj startplats</option>
-		{#each data.startLocations as location}
-			<option value={location.id}>{location.location} - {location.price}kr</option>
-		{/each}
-	</select>
-
-	{#if selectedStartLocation}
-		<!-- Step 2: Choose date -->
-		<label for="bookingDate">Välj datum:</label>
-		<input id="bookingDate" bind:this={calendarInput} type="text" placeholder="Välj datum" />
-
-		{#if startDate}
-			<!-- Step 3: Choose booking length -->
-			<label for="bookingLength">Välj bokningslängd:</label>
-			<select id="bookingLength" bind:value={selectedBookingLength}>
-				<option value="" disabled selected>Välj längd</option>
-				{#each sortedBookingLengths as duration}
-					<option value={duration.length}>{duration.length}</option>
+		<!-- Step 1: Choose start place -->
+		<div class="booking-step">
+			<h2>1. Välj startplats</h2>
+			<label for="startLocation">Startplats:</label>
+			<select id="startLocation" bind:value={selectedStartLocation} on:change={updatePrice}>
+				<option value="" disabled selected>Välj startplats</option>
+				{#each data.startLocations as location}
+					<option value={location.id}>{location.location} - {location.price}kr</option>
 				{/each}
 			</select>
+		</div>
 
-			{#if selectedBookingLength}
-				<!-- Step 4: Choose amount of canoe/kayak/sup -->
-				<h2>Välj tillval:</h2>
-				<div>
-					<label for="canoes">Antal kanadensare:</label>
-					<input
-						id="canoes"
-						type="number"
-						min="0"
-						max={maxCanoes}
-						bind:value={amountCanoes}
-						on:change={checkEquipmentChanged}
-					/>
-				</div>
-				<div>
-					<label for="kayaks">Antal kajaker:</label>
-					<input
-						id="kayaks"
-						type="number"
-						min="0"
-						max={maxKayaks}
-						bind:value={amountKayaks}
-						on:change={checkEquipmentChanged}
-					/>
-				</div>
-				<div>
-					<label for="sups">Antal SUP:ar:</label>
-					<input
-						id="sups"
-						type="number"
-						min="0"
-						max={maxSUPs}
-						bind:value={amountSUPs}
-						on:change={checkEquipmentChanged}
-					/>
-				</div>
+		{#if selectedStartLocation}
+			<!-- Step 2: Choose date -->
+			<div class="booking-step">
+				<h2>2. Välj datum</h2>
+				<label for="bookingDate">Datum:</label>
+				<input id="bookingDate" bind:this={calendarInput} type="text" placeholder="Välj datum" />
+			</div>
 
-				<button on:click={() => (showStartTimes = true)}>Next</button>
-
-				<!-- Step 5: Show possible start times -->
-				{#if showStartTimes && allStartTimes.length > 0}
-					<label>Välj starttid:</label>
-					<div class="start-times">
-						{#each allStartTimes as time}
-							<button
-								class="time-button {availableStartTimes.includes(time)
-									? 'available'
-									: 'unavailable'}"
-								on:click={() => (startTime = time)}
-								disabled={!availableStartTimes.includes(time)}
-							>
-								{time}
-							</button>
+			{#if startDate}
+				<!-- Step 3: Choose booking length -->
+				<div class="booking-step">
+					<h2>3. Välj bokningslängd</h2>
+					<label for="bookingLength">Bokningslängd:</label>
+					<select id="bookingLength" bind:value={selectedBookingLength}>
+						<option value="" disabled selected>Välj längd</option>
+						{#each sortedBookingLengths as duration}
+							<option value={duration.length}>{duration.length}</option>
 						{/each}
-					</div>
-				{/if}
+					</select>
+				</div>
 
-				{#if startTime}
-					<p>Vald starttid: {startTime}</p>
-					{#if returnDate && returnTime}
-						<p>Returdatum: {returnDate}</p>
-						<p>Returtid senast: {returnTime}</p>
+				{#if selectedBookingLength}
+					<!-- Step 4: Choose amount of canoe/kayak/sup -->
+					<div class="booking-step">
+						<h2>4. Välj utrustning</h2>
+						<div class="equipment-selection">
+							<div>
+								<label for="canoes">Antal kanadensare:</label>
+								<input
+									id="canoes"
+									type="number"
+									min="0"
+									max={maxCanoes}
+									bind:value={amountCanoes}
+									on:change={checkEquipmentChanged}
+								/>
+							</div>
+							<div>
+								<label for="kayaks">Antal kajaker:</label>
+								<input
+									id="kayaks"
+									type="number"
+									min="0"
+									max={maxKayaks}
+									bind:value={amountKayaks}
+									on:change={checkEquipmentChanged}
+								/>
+							</div>
+							<div>
+								<label for="sups">Antal SUP:ar:</label>
+								<input
+									id="sups"
+									type="number"
+									min="0"
+									max={maxSUPs}
+									bind:value={amountSUPs}
+									on:change={checkEquipmentChanged}
+								/>
+							</div>
+						</div>
+						<button on:click={handleNextButton} disabled={!canProceed}
+							>Visa tillgängliga tider</button
+						>
+					</div>
+
+					<!-- Step 5: Show possible start times -->
+					{#if showStartTimes}
+						<div class="booking-step">
+							<h2>5. Välj starttid</h2>
+							{#if allStartTimes.length > 0}
+								<div class="start-times">
+									{#each allStartTimes as time}
+										<button
+											class="time-button {availableStartTimes.includes(time)
+												? 'available'
+												: 'unavailable'}"
+											on:click={() => (startTime = time)}
+											disabled={!availableStartTimes.includes(time)}
+										>
+											{time}
+										</button>
+									{/each}
+								</div>
+							{:else}
+								<p>Inga tider tillgängliga för valt datum och utrustning.</p>
+							{/if}
+						</div>
 					{/if}
 
-					<!-- Step 6: Choose amount of adults/children -->
-					<div>
-						<label for="adults">Antal vuxna:</label>
-						<input
-							id="adults"
-							type="number"
-							min="0"
-							bind:value={numAdults}
-							on:change={updatePrice}
-						/>
-					</div>
-					<div>
-						<label for="children">Antal barn (gratis):</label>
-						<input
-							id="children"
-							type="number"
-							min="0"
-							bind:value={numChildren}
-							on:change={updatePrice}
-						/>
-					</div>
+					{#if startTime}
+						<div class="booking-summary">
+							<h2>Bokningsöversikt</h2>
+							<p>Vald starttid: {startTime}</p>
+							{#if returnDate && returnTime}
+								<p>Returdatum: {returnDate}</p>
+								<p>Returtid senast: {returnTime}</p>
+							{/if}
+						</div>
 
-					<p>Totalt pris: {totalPrice}kr</p>
+						<!-- Step 6: Choose amount of adults/children -->
+						<div class="booking-step">
+							<h2>6. Antal personer</h2>
+							<div>
+								<label for="adults">Antal vuxna:</label>
+								<input
+									id="adults"
+									type="number"
+									min="0"
+									bind:value={numAdults}
+									on:change={updatePrice}
+								/>
+							</div>
+							<div>
+								<label for="children">Antal barn (gratis):</label>
+								<input
+									id="children"
+									type="number"
+									min="0"
+									bind:value={numChildren}
+									on:change={updatePrice}
+								/>
+							</div>
+						</div>
 
-					<!-- Step 7: Display "Kontaktuppgifter" and payment -->
-					<h2>Kontaktuppgifter</h2>
-					<div>
-						<label for="firstName">Förnamn:</label>
-						<input id="firstName" type="text" bind:value={userName} required />
-					</div>
-					<div>
-						<label for="lastName">Efternamn:</label>
-						<input id="lastName" type="text" bind:value={userLastname} required />
-					</div>
-					<div>
-						<label for="phone">Telefonnummer:</label>
-						<input
-							id="phone"
-							type="tel"
-							bind:value={userPhone}
-							pattern="^\+?[1-9]\d{(1, 14)}$"
-							required
-						/>
-					</div>
-					<div>
-						<label for="email">Epostadress:</label>
-						<input id="email" type="email" bind:value={userEmail} required />
-					</div>
-					<div>
-						<label for="comment">Kommentar (valfri):</label>
-						<textarea id="comment" bind:value={userComment}></textarea>
-					</div>
+						<div class="price-summary">
+							<p>Totalt pris: {totalPrice}kr</p>
+						</div>
 
-					<div>
-						<input id="terms" type="checkbox" bind:checked={acceptTerms} required />
-						<label for="terms">I accept the booking agreement and the terms of purchase</label>
-					</div>
+						<!-- Step 7: Display "Kontaktuppgifter" and payment -->
+						<div class="booking-step">
+							<h2>7. Kontaktuppgifter</h2>
+							<div class="contact-form">
+								<div>
+									<label for="firstName">Förnamn:</label>
+									<input id="firstName" type="text" bind:value={userName} required />
+								</div>
+								<div>
+									<label for="lastName">Efternamn:</label>
+									<input id="lastName" type="text" bind:value={userLastname} required />
+								</div>
+								<div>
+									<label for="phone">Telefonnummer:</label>
+									<input
+										id="phone"
+										type="tel"
+										bind:value={userPhone}
+										pattern="^\+?[1-9]\d{(1, 14)}$"
+										required
+									/>
+								</div>
+								<div>
+									<label for="email">Epostadress:</label>
+									<input id="email" type="email" bind:value={userEmail} required />
+								</div>
+								<div>
+									<label for="comment">Kommentar (valfri):</label>
+									<textarea id="comment" bind:value={userComment}></textarea>
+								</div>
+							</div>
+						</div>
 
-					<button disabled={!acceptTerms} on:click={handleCheckout}>
-						Go to payment ({totalPrice}kr)
-					</button>
+						<div class="terms-and-checkout">
+							<div>
+								<input id="terms" type="checkbox" bind:checked={acceptTerms} required />
+								<label for="terms">Jag accepterar bokningsavtalet och köpvillkoren</label>
+							</div>
+
+							<button disabled={!acceptTerms} on:click={handleCheckout}>
+								Gå till betalning ({totalPrice}kr)
+							</button>
+						</div>
+					{/if}
 				{/if}
 			{/if}
 		{/if}
+	{:else}
+		<p>Upplevelsen hittades inte</p>
 	{/if}
-{:else}
-	<p>Upplevelsen hittades inte</p>
-{/if}
+</main>
 
 <style>
+	main {
+		max-width: 800px;
+		margin: 0 auto;
+		padding: 20px;
+	}
+
+	.booking-step {
+		margin-bottom: 20px;
+		padding: 15px;
+		border: 1px solid #ddd;
+		border-radius: 5px;
+	}
+
+	.equipment-selection {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 15px;
+	}
+
+	.equipment-selection > div {
+		flex: 1;
+		margin-right: 10px;
+	}
+
 	.start-times {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
+		margin-top: 10px;
 	}
 
 	.time-button {
@@ -537,7 +573,7 @@
 	}
 
 	.time-button.available {
-		background-color: #e0f7e0;
+		background-color: green;
 	}
 
 	.time-button.unavailable {
@@ -545,5 +581,52 @@
 		text-decoration: line-through;
 		opacity: 0.7;
 		cursor: not-allowed;
+	}
+
+	.booking-summary,
+	.price-summary {
+		background-color: #f8f8f8;
+		padding: 10px;
+		border-radius: 5px;
+		margin-bottom: 20px;
+	}
+
+	.contact-form {
+		display: grid;
+		gap: 10px;
+	}
+
+	.terms-and-checkout {
+		margin-top: 20px;
+	}
+
+	button {
+		padding: 10px 15px;
+		background-color: #4caf50;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	button:disabled {
+		background-color: #cccccc;
+		cursor: not-allowed;
+	}
+
+	input[type='text'],
+	input[type='tel'],
+	input[type='email'],
+	input[type='number'],
+	select,
+	textarea {
+		width: 100%;
+		padding: 8px;
+		margin-top: 5px;
+		margin-bottom: 10px;
+		display: inline-block;
+		border: 1px solid #ccc;
+		border-radius: 4px;
+		box-sizing: border-box;
 	}
 </style>
