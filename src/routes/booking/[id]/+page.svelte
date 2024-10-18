@@ -282,18 +282,12 @@
 	let allStartTimes = [];
 	let availableStartTimes = [];
 
-	async function handleNextButton() {
+	async function fetchAvailableStartTimes() {
 		if (!startDate || !selectedBookingLength || (!amountCanoes && !amountKayaks && !amountSUPs)) {
 			console.error('Missing data for availability check');
-			return;
+			return [];
 		}
 
-		showStartTimes = true;
-		allStartTimes = generateAllStartTimes();
-		availableStartTimes = await fetchAvailableStartTimes();
-	}
-
-	async function fetchAvailableStartTimes() {
 		try {
 			const response = await fetch('/api/check-availability', {
 				method: 'POST',
@@ -301,36 +295,31 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					experienceId: data.experience.id,
 					date: startDate,
 					bookingLength: selectedBookingLength,
-					selectedEquipment: {
-						canoes: amountCanoes,
-						kayaks: amountKayaks,
-						sups: amountSUPs
-					}
+					canoes: amountCanoes,
+					kayaks: amountKayaks,
+					sups: amountSUPs
 				})
 			});
 
 			if (!response.ok) {
-				const errorText = await response.text();
-				console.error(`Server error (${response.status}):`, errorText);
-				throw new Error(`Server error: ${response.status} ${errorText}`);
+				throw new Error(`Server error: ${response.status}`);
 			}
 
 			const result = await response.json();
-			console.log('Server response:', result);
-
-			if (!result.availableStartTimes) {
-				console.error('Unexpected server response:', result);
-				throw new Error('Unexpected server response');
-			}
-
 			return result.availableStartTimes;
 		} catch (error) {
 			console.error('Error fetching available start times:', error);
 			return [];
 		}
+	}
+
+	// Uppdatera din handleNextButton funktion
+	async function handleNextButton() {
+		showStartTimes = true;
+		allStartTimes = generateAllStartTimes();
+		availableStartTimes = await fetchAvailableStartTimes();
 	}
 
 	$: canProceed = amountCanoes > 0 || amountKayaks > 0 || amountSUPs > 0;
