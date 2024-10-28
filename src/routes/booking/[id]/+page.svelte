@@ -1,4 +1,6 @@
 <script>
+	import { supabase } from '$lib/supabaseClient.js';
+
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
@@ -25,6 +27,25 @@
 	let amountCanoes = 0;
 	let amountKayaks = 0;
 	let amountSUPs = 0;
+
+	let maxCanoes = 0;
+	let maxKayaks = 0;
+	let maxSUPs = 0;
+
+	async function fetchMaxQuantities() {
+		const { data: addons, error } = await supabase.from('addons').select('id, max_quantity');
+
+		if (error) {
+			console.error('Error fetching max quantities:', error);
+			return;
+		}
+
+		addons.forEach((addon) => {
+			if (addon.id === 1) maxCanoes = addon.max_quantity;
+			if (addon.id === 2) maxKayaks = addon.max_quantity;
+			if (addon.id === 3) maxSUPs = addon.max_quantity;
+		});
+	}
 
 	let blockedDates = [];
 	let startDate = null;
@@ -171,7 +192,8 @@
 		}
 	}
 
-	onMount(() => {
+	onMount(async () => {
+		await fetchMaxQuantities();
 		const today = new Date();
 
 		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
@@ -366,16 +388,49 @@
 							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
 								<div class="space-y-2">
-									<Label for="canoes">Antal kanadensare</Label>
-									<Input type="number" id="canoes" min="0" bind:value={amountCanoes} />
+									<Label for="canoes">Antal kanadensare (max {maxCanoes})</Label>
+									<Input
+										type="number"
+										id="canoes"
+										min="0"
+										max={maxCanoes}
+										bind:value={amountCanoes}
+										on:input={(e) => {
+											if (e.target.value > maxCanoes) {
+												amountCanoes = maxCanoes;
+											}
+										}}
+									/>
 								</div>
 								<div class="space-y-2">
-									<Label for="kayaks">Antal kajaker</Label>
-									<Input type="number" id="kayaks" min="0" bind:value={amountKayaks} />
+									<Label for="kayaks">Antal kajaker (max {maxKayaks})</Label>
+									<Input
+										type="number"
+										id="kayaks"
+										min="0"
+										max={maxKayaks}
+										bind:value={amountKayaks}
+										on:input={(e) => {
+											if (e.target.value > maxKayaks) {
+												amountKayaks = maxKayaks;
+											}
+										}}
+									/>
 								</div>
 								<div class="space-y-2">
-									<Label for="sups">Antal SUP:ar</Label>
-									<Input type="number" id="sups" min="0" bind:value={amountSUPs} />
+									<Label for="sups">Antal SUP:ar (max {maxSUPs})</Label>
+									<Input
+										type="number"
+										id="sups"
+										min="0"
+										max={maxSUPs}
+										bind:value={amountSUPs}
+										on:input={(e) => {
+											if (e.target.value > maxSUPs) {
+												amountSUPs = maxSUPs;
+											}
+										}}
+									/>
 								</div>
 							</div>
 						</div>
