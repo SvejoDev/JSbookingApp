@@ -1,4 +1,20 @@
 <script>
+	import { Button } from '$lib/components/ui/button';
+	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
+	import { Label } from '$lib/components/ui/label';
+	import { Input } from '$lib/components/ui/input';
+	import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
+	import {
+		Select,
+		SelectTrigger,
+		SelectContent,
+		SelectItem,
+		SelectValue
+	} from '$lib/components/ui/select';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Loader2 } from 'lucide-svelte';
+
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
@@ -23,13 +39,14 @@
 	let numAdults = 0;
 	let numChildren = 0;
 	let totalPrice = 0;
+	let isLoadingTimes = false;
 
 	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
 
 	$: {
 		const selectedLocation = data.startLocations.find(
-			(location) => location.id === selectedStartLocation		
+			(location) => location.id === selectedStartLocation
 		);
 		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
 	}
@@ -43,46 +60,44 @@
 	let acceptTerms = false;
 
 	// Genererar möjliga starttider baserat på öppettider och vald bokningslängd
-	function generateStartTimes() {
-		if (!data.openHours || !data.openHours.open_time || !data.openHours.close_time) {
-			console.error('Data för öppettider saknas eller är ofullständig');
-			return [];
+	async function generateStartTimes() {
+		if (!startDate || !selectedBookingLength) {
+			possibleStartTimes = [];
+			return;
 		}
 
-		const openTime = new Date(`${startDate}T${data.openHours.open_time}`);
-		const closeTime = new Date(`${startDate}T${data.openHours.close_time}`);
+		isLoadingTimes = true;
+		startTime = null; // Reset vald starttid när nya tider genereras
 
-		if (isNaN(openTime.getTime()) || isNaN(closeTime.getTime())) {
-			console.error('Ogiltig öppnings- eller stängningstid', openTime, closeTime);
-			return [];
+		try {
+			const response = await fetch('/api/check-availability', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					date: startDate,
+					bookingLength: selectedBookingLength,
+					addons: {
+						amountCanoes,
+						amountKayaks,
+						amountSUPs
+					}
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error('Failed to check availability');
+			}
+
+			const { availableStartTimes } = await response.json();
+			possibleStartTimes = availableStartTimes;
+		} catch (error) {
+			console.error('Error checking availability:', error);
+			possibleStartTimes = [];
+		} finally {
+			isLoadingTimes = false;
 		}
-
-		const startTimes = [];
-		let currentTime = new Date(openTime);
-		while (currentTime <= closeTime) {
-			startTimes.push(currentTime.toTimeString().substring(0, 5));
-			currentTime.setMinutes(currentTime.getMinutes() + 30);
-		}
-
-		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
-		let latestStartTime = new Date(closeTime);
-
-		if (bookingLength && !bookingLength.overnight && bookingLength.length !== 'Hela dagen') {
-			latestStartTime.setHours(latestStartTime.getHours() - parseInt(bookingLength.length));
-		}
-
-		// Filter out blocked start times
-		const blockedStartTimes = data.blocked_start_times.filter(
-			(blockedTime) => blockedTime.blocked_date === startDate
-		);
-
-		return startTimes.filter((time) => {
-			const timeDate = new Date(`${startDate}T${time}`);
-			const isNotBlocked = !blockedStartTimes.some(
-				(blockedTime) => blockedTime.blocked_time.substring(0, 5) === time
-			);
-			return timeDate <= latestStartTime && isNotBlocked;
-		});
 	}
 
 	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
@@ -143,12 +158,17 @@
 
 	let sortedBookingLengths = [];
 
-	$: if (selectedStartLocation) {
-		sortedBookingLengths = sortBookingLengths(
-			data.bookingLengths.filter((bl) => bl.location_id == selectedStartLocation)
-		);
-	} else {
-		sortedBookingLengths = [];
+	$: {
+		if (selectedStartLocation) {
+			// Kontrollera om location_id är string eller number
+			const filtered = data.bookingLengths.filter((bl) => {
+				return Number(bl.location_id) === Number(selectedStartLocation);
+			});
+
+			sortedBookingLengths = sortBookingLengths(filtered);
+		} else {
+			sortedBookingLengths = [];
+		}
 	}
 
 	onMount(() => {
@@ -196,10 +216,6 @@
 		if (selectedStartLocation || numAdults) {
 			updatePrice();
 		}
-	}
-
-	$: if (startDate && selectedBookingLength) {
-		possibleStartTimes = generateStartTimes();
 	}
 
 	$: if (startDate && startTime && selectedBookingLength) {
@@ -283,99 +299,236 @@
 </script>
 
 {#if data.experience}
-	<h1>{data.experience.name}</h1>
+	<div class="container mx-auto p-4 space-y-6">
+		<Card>
+			<CardHeader>
+				<CardTitle>{data.experience.name}</CardTitle>
+			</CardHeader>
+			<CardContent class="space-y-6">
+				<!-- Startplats -->
+				<div class="space-y-2">
+					<Label for="startLocation">Välj startplats</Label>
+					<select
+						id="startLocation"
+						bind:value={selectedStartLocation}
+						on:change={updatePrice}
+						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<option value="">Välj startplats</option>
+						{#each data.startLocations as location}
+							<option value={location.id}>
+								{location.location} - {location.price}kr
+							</option>
+						{/each}
+					</select>
+				</div>
 
-	<label>Välj startplats:</label>
-	<select bind:value={selectedStartLocation} on:change={updatePrice}>
-		{#each data.startLocations as location}
-			<option value={location.id}>{location.location} - {location.price}kr</option>
-		{/each}
-	</select>
+				<!-- Bokningslängd -->
+				<div class="space-y-2">
+					<Label for="bookingLength">Välj bokningslängd</Label>
+					<select
+						id="bookingLength"
+						bind:value={selectedBookingLength}
+						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+						disabled={!selectedStartLocation}
+					>
+						<option value="">Välj längd</option>
+						{#each sortedBookingLengths as duration}
+							<option value={duration.length}>
+								{duration.length}
+							</option>
+						{/each}
+					</select>
+				</div>
 
-	<label>Välj bokningslängd:</label>
-	<select bind:value={selectedBookingLength}>
-		<option value="" disabled selected>Välj längd</option>
-		{#each sortedBookingLengths as duration}
-			<option value={duration.length}>{duration.length}</option>
-		{/each}
-	</select>
+				<!-- Datum -->
+				<div class="space-y-2">
+					<Label for="booking-calendar">Välj datum</Label>
+					<Input
+						id="booking-calendar"
+						type="text"
+						placeholder="Välj datum"
+						class="flatpickr-input"
+					/>
+				</div>
+			</CardContent>
+		</Card>
 
-	<label>Välj datum:</label>
-	<input id="booking-calendar" type="text" placeholder="Välj datum" />
+		{#if startDate && selectedBookingLength}
+			<Card>
+				<CardHeader>
+					<CardTitle>Välj utrustning och tid</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div class="grid gap-6">
+						<!-- Tillval -->
+						<div class="space-y-4">
+							<Label>Välj tillval:</Label>
+							<div class="grid gap-4 sm:grid-cols-3">
+								<div class="space-y-2">
+									<Label for="canoes">Antal kanadensare</Label>
+									<Input type="number" id="canoes" min="0" bind:value={amountCanoes} />
+								</div>
+								<div class="space-y-2">
+									<Label for="kayaks">Antal kajaker</Label>
+									<Input type="number" id="kayaks" min="0" bind:value={amountKayaks} />
+								</div>
+								<div class="space-y-2">
+									<Label for="sups">Antal SUP:ar</Label>
+									<Input type="number" id="sups" min="0" bind:value={amountSUPs} />
+								</div>
+							</div>
+						</div>
 
-	{#if startDate && selectedBookingLength}
-		<p>Valt datum: {startDate}</p>
+						<!-- Sök tider knapp -->
+						<Button
+							on:click={generateStartTimes}
+							disabled={!startDate || !selectedBookingLength || isLoadingTimes}
+							variant={isLoadingTimes ? 'outline' : 'default'}
+							class="w-full sm:w-auto"
+						>
+							{#if isLoadingTimes}
+								<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+								Söker tillgängliga tider...
+							{:else}
+								Visa tillgängliga tider
+							{/if}
+						</Button>
 
-		{#if possibleStartTimes.length > 0}
-			<label>Välj starttid:</label>
-			<select bind:value={startTime}>
-				<option value="" disabled selected>Välj en starttid</option>
-				{#each possibleStartTimes as time}
-					<option value={time}>{time}</option>
-				{/each}
-			</select>
-		{:else}
-			<p>Inga tillgängliga starttider.</p>
+						<!-- Tillgängliga tider -->
+						{#if possibleStartTimes.length > 0}
+							<div class="space-y-2">
+								<Label>Tillgängliga starttider:</Label>
+								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+									{#each possibleStartTimes as time}
+										<Button
+											variant={startTime === time ? 'default' : 'outline'}
+											on:click={() => (startTime = time)}
+											class="w-full"
+										>
+											{time}
+										</Button>
+									{/each}
+								</div>
+							</div>
+						{:else if !isLoadingTimes && possibleStartTimes.length === 0}
+							<Alert variant="destructive">
+								<AlertTitle>Inga tillgängliga tider</AlertTitle>
+								<AlertDescription>
+									Inga tillgängliga starttider hittades för valda produkter.
+								</AlertDescription>
+							</Alert>
+						{/if}
+
+						<!-- Vald tid info -->
+						{#if startTime}
+							<Alert>
+								<AlertTitle>Vald tid</AlertTitle>
+								<AlertDescription>
+									Starttid: {startTime}
+									{#if returnDate && returnTime}
+										<br />
+										Returdatum: {returnDate}
+										<br />
+										Returtid senast: {returnTime}
+									{/if}
+								</AlertDescription>
+							</Alert>
+						{/if}
+					</div>
+				</CardContent>
+			</Card>
 		{/if}
 
-		{#if startTime}
-			<p>Vald starttid: {startTime}</p>
-			{#if returnDate && returnTime}
-				<p>Returdatum: {returnDate}</p>
-				<p>Returtid senast: {returnTime}</p>
-			{/if}
+		{#if selectedStartLocation}
+			<Card>
+				<CardHeader>
+					<CardTitle>Antal deltagare</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<div class="space-y-2">
+						<Label for="adults">Antal vuxna</Label>
+						<Input type="number" id="adults" min="0" bind:value={numAdults} />
+					</div>
+					<div class="space-y-2">
+						<Label for="children">Antal barn (gratis)</Label>
+						<Input type="number" id="children" min="0" bind:value={numChildren} />
+					</div>
+					<Alert>
+						<AlertTitle>Totalt pris</AlertTitle>
+						<AlertDescription>{totalPrice}kr</AlertDescription>
+					</Alert>
+				</CardContent>
+			</Card>
 		{/if}
-	{/if}
 
-	<label>Välj tillval:</label>
-	<div>
-		<label>Antal kanadensare:</label>
-		<input type="number" min="0" bind:value={amountCanoes} />
+		{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
+			<Card>
+				<CardHeader>
+					<CardTitle>Kontaktuppgifter</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<Label for="firstName">Förnamn</Label>
+							<Input type="text" id="firstName" bind:value={userName} required />
+						</div>
+						<div class="space-y-2">
+							<Label for="lastName">Efternamn</Label>
+							<Input type="text" id="lastName" bind:value={userLastname} required />
+						</div>
+					</div>
+					<div class="space-y-2">
+						<Label for="phone">Telefonnummer</Label>
+						<Input
+							type="tel"
+							id="phone"
+							bind:value={userPhone}
+							pattern="^\+?[1-9]\d{(1, 14)}$"
+							required
+						/>
+					</div>
+					<div class="space-y-2">
+						<Label for="email">E-postadress</Label>
+						<Input type="email" id="email" bind:value={userEmail} required />
+					</div>
+					<div class="space-y-2">
+						<Label for="comment">Kommentar (valfri)</Label>
+						<Textarea id="comment" bind:value={userComment} />
+					</div>
+					<div class="flex items-center space-x-2">
+						<Checkbox bind:checked={acceptTerms} id="terms" />
+						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+					</div>
+					<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+						Go to payment ({totalPrice}kr)
+					</Button>
+				</CardContent>
+			</Card>
+		{/if}
 	</div>
-	<div>
-		<label>Antal kajaker:</label>
-		<input type="number" min="0" bind:value={amountKayaks} />
-	</div>
-	<div>
-		<label>Antal SUP:ar:</label>
-		<input type="number" min="0" bind:value={amountSUPs} />
-	</div>
-
-	{#if selectedStartLocation}
-		<label>Antal vuxna:</label>
-		<input type="number" min="0" bind:value={numAdults} />
-
-		<label>Antal barn (gratis):</label>
-		<input type="number" min="0" bind:value={numChildren} />
-
-		<p>Totalt pris: {totalPrice}kr</p>
-	{/if}
-	{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
-		<h2>Kontaktuppgifter</h2>
-		<label>Förnamn:</label>
-		<input type="text" bind:value={userName} required />
-
-		<label>Efternamn:</label>
-		<input type="text" bind:value={userLastname} required />
-
-		<label>Telefonnummer:</label>
-		<input type="tel" bind:value={userPhone} pattern="^\+?[1-9]\d{(1, 14)}$" required />
-
-		<label>Epostadress:</label>
-		<input type="email" bind:value={userEmail} required />
-
-		<label>Kommentar (valfri):</label>
-		<textarea bind:value={userComment}></textarea>
-
-		<div>
-			<input type="checkbox" bind:checked={acceptTerms} required />
-			<label>I accept the booking agreement and the terms of purchase</label>
-		</div>
-
-		<button disabled={!acceptTerms} on:click={handleCheckout}>
-			Go to payment ({totalPrice}kr)
-		</button>
-	{/if}
 {:else}
-	<p>Upplevelsen hittades inte</p>
+	<Alert variant="destructive" class="m-4">
+		<AlertTitle>Error</AlertTitle>
+		<AlertDescription>Upplevelsen hittades inte</AlertDescription>
+	</Alert>
 {/if}
+
+<style>
+	/* Stil för att matcha flatpickr med shadcn design */
+	:global(.flatpickr-input) {
+		background-color: hsl(var(--background));
+		border: 1px solid hsl(var(--border));
+		border-radius: var(--radius);
+		padding: 0.5rem;
+		font-size: 0.875rem;
+		line-height: 1.25rem;
+		width: 100%;
+	}
+
+	:global(.flatpickr-input:focus) {
+		outline: none;
+		border-color: hsl(var(--ring));
+		ring: 1px solid hsl(var(--ring));
+	}
+</style>
