@@ -1,20 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { supabase } from '$lib/supabaseClient.js';
 
-// Lägg till OPTIONS hantering för CORS om det behövs
-export async function OPTIONS() {
-	return new Response(null, {
-		headers: {
-			Allow: 'POST'
-		}
-	});
-}
-
 export async function POST({ request }) {
 	try {
 		const { date, bookingLength, addons } = await request.json();
 
-		// Convert hours from bookingLength string to number
 		const durationHours = bookingLength.includes('h')
 			? parseInt(bookingLength)
 			: bookingLength === 'Hela dagen'
@@ -30,32 +20,30 @@ export async function POST({ request }) {
 }
 
 async function checkAvailability(date, durationHours, addons) {
-	// Start with all possible 30-minute slots between opening and closing
 	const openTime = '10:00';
 	const closeTime = '17:00';
 	const possibleTimes = [];
 	let currentTime = new Date(`${date}T${openTime}`);
 	const endTime = new Date(`${date}T${closeTime}`);
 
-	// Generate possible start times at 30-minute intervals
 	while (currentTime < endTime) {
 		possibleTimes.push(currentTime.toTimeString().slice(0, 5));
 		currentTime.setMinutes(currentTime.getMinutes() + 30);
 	}
 
-	// Check each addon type if requested
 	const availableTimes = [];
 	for (const time of possibleTimes) {
 		let isTimeAvailable = true;
 
-		// Convert time to interval index (0-95)
+		// Alternativt, för tydligare läsning:
 		const timeToIndex = (timeStr) => {
 			const [hours, minutes] = timeStr.split(':').map(Number);
-			return hours * 4 + Math.floor(minutes / 15);
+			const intervalsPerHour = 4;
+			return hours * intervalsPerHour * 15 + minutes;
 		};
 
 		const startIndex = timeToIndex(time);
-		const intervalsNeeded = durationHours * 4; // 4 fifteen-minute intervals per hour
+		const intervalsNeeded = durationHours * 4;
 
 		// Check canoes if requested
 		if (addons.amountCanoes > 0) {
@@ -65,30 +53,32 @@ async function checkAvailability(date, durationHours, addons) {
 				.eq('id', 1)
 				.single();
 
-			if (!maxCanoes) {
-				console.error('Could not fetch max quantity for canoes');
+			if (!maxCanoes || addons.amountCanoes > maxCanoes.max_quantity) {
 				isTimeAvailable = false;
-			} else {
-				const { data: canoeAvail } = await supabase
-					.from('canoe_availability')
-					.select('*')
-					.eq('date', date)
-					.single();
+				continue;
+			}
 
-				if (!canoeAvail) {
-					// If no availability record exists, check against max capacity
-					if (addons.amountCanoes > maxCanoes.max_quantity) {
+			const { data: canoeAvail } = await supabase
+				.from('canoe_availability')
+				.select('*')
+				.eq('date', date)
+				.single();
+
+			if (canoeAvail) {
+				const endIndex = startIndex + intervalsNeeded;
+				for (let i = startIndex; i < endIndex; i++) {
+					const columnName = i.toString();
+					const booked = Math.abs(canoeAvail[columnName] || 0);
+					console.log(
+						`Checking canoes at ${time}, interval ${i}, booked: ${booked}, requesting: ${addons.amountCanoes}, max: ${maxCanoes.max_quantity}`
+					);
+
+					if (booked + addons.amountCanoes > maxCanoes.max_quantity) {
+						console.log(
+							`Not available: Would exceed max canoes (${booked} + ${addons.amountCanoes} > ${maxCanoes.max_quantity})`
+						);
 						isTimeAvailable = false;
-					}
-				} else {
-					// Check each 15-minute interval
-					for (let i = 0; i < intervalsNeeded; i++) {
-						const columnName = (startIndex + i).toString();
-						const booked = Math.abs(canoeAvail[columnName] || 0);
-						if (booked + addons.amountCanoes > maxCanoes.max_quantity) {
-							isTimeAvailable = false;
-							break;
-						}
+						break;
 					}
 				}
 			}
@@ -102,28 +92,35 @@ async function checkAvailability(date, durationHours, addons) {
 				.eq('id', 2)
 				.single();
 
-			if (!maxKayaks) {
-				console.error('Could not fetch max quantity for kayaks');
+			if (!maxKayaks || addons.amountKayaks > maxKayaks.max_quantity) {
+				console.log(
+					`Not available: Requested kayaks (${addons.amountKayaks}) exceeds max (${maxKayaks?.max_quantity})`
+				);
 				isTimeAvailable = false;
-			} else {
-				const { data: kayakAvail } = await supabase
-					.from('kayak_availability')
-					.select('*')
-					.eq('date', date)
-					.single();
+				continue;
+			}
 
-				if (!kayakAvail) {
-					if (addons.amountKayaks > maxKayaks.max_quantity) {
+			const { data: kayakAvail } = await supabase
+				.from('kayak_availability')
+				.select('*')
+				.eq('date', date)
+				.single();
+
+			if (kayakAvail) {
+				const endIndex = startIndex + intervalsNeeded;
+				for (let i = startIndex; i < endIndex; i++) {
+					const columnName = i.toString();
+					const booked = Math.abs(kayakAvail[columnName] || 0);
+					console.log(
+						`Checking kayaks at ${time}, interval ${i}, booked: ${booked}, requesting: ${addons.amountKayaks}, max: ${maxKayaks.max_quantity}`
+					);
+
+					if (booked + addons.amountKayaks > maxKayaks.max_quantity) {
+						console.log(
+							`Not available: Would exceed max kayaks (${booked} + ${addons.amountKayaks} > ${maxKayaks.max_quantity})`
+						);
 						isTimeAvailable = false;
-					}
-				} else {
-					for (let i = 0; i < intervalsNeeded; i++) {
-						const columnName = (startIndex + i).toString();
-						const booked = Math.abs(kayakAvail[columnName] || 0);
-						if (booked + addons.amountKayaks > maxKayaks.max_quantity) {
-							isTimeAvailable = false;
-							break;
-						}
+						break;
 					}
 				}
 			}
@@ -137,35 +134,45 @@ async function checkAvailability(date, durationHours, addons) {
 				.eq('id', 3)
 				.single();
 
-			if (!maxSUPs) {
-				console.error('Could not fetch max quantity for SUPs');
+			if (!maxSUPs || addons.amountSUPs > maxSUPs.max_quantity) {
+				console.log(
+					`Not available: Requested SUPs (${addons.amountSUPs}) exceeds max (${maxSUPs?.max_quantity})`
+				);
 				isTimeAvailable = false;
-			} else {
-				const { data: supAvail } = await supabase
-					.from('sup_availability')
-					.select('*')
-					.eq('date', date)
-					.single();
+				continue;
+			}
 
-				if (!supAvail) {
-					if (addons.amountSUPs > maxSUPs.max_quantity) {
+			const { data: supAvail } = await supabase
+				.from('sup_availability')
+				.select('*')
+				.eq('date', date)
+				.single();
+
+			if (supAvail) {
+				const endIndex = startIndex + intervalsNeeded;
+				for (let i = startIndex; i < endIndex; i++) {
+					const columnName = i.toString();
+					const booked = Math.abs(supAvail[columnName] || 0);
+					console.log(
+						`Checking SUPs at ${time}, interval ${i}, booked: ${booked}, requesting: ${addons.amountSUPs}, max: ${maxSUPs.max_quantity}`
+					);
+
+					if (booked + addons.amountSUPs > maxSUPs.max_quantity) {
+						console.log(
+							`Not available: Would exceed max SUPs (${booked} + ${addons.amountSUPs} > ${maxSUPs.max_quantity})`
+						);
 						isTimeAvailable = false;
-					}
-				} else {
-					for (let i = 0; i < intervalsNeeded; i++) {
-						const columnName = (startIndex + i).toString();
-						const booked = Math.abs(supAvail[columnName] || 0);
-						if (booked + addons.amountSUPs > maxSUPs.max_quantity) {
-							isTimeAvailable = false;
-							break;
-						}
+						break;
 					}
 				}
 			}
 		}
 
 		if (isTimeAvailable) {
+			console.log(`Time ${time} is available for booking`);
 			availableTimes.push(time);
+		} else {
+			console.log(`Time ${time} is NOT available for booking`);
 		}
 	}
 

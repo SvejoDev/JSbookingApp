@@ -83,20 +83,30 @@ async function updateAvailability(booking) {
 		return hours * 4 + Math.floor(minutes / 15);
 	};
 
-	const startIndex = timeToIndex(booking.start_time);
-	const endIndex = booking.end_date === booking.start_date ? timeToIndex(booking.end_time) : 96; // End of day if overnight
+	async function updateProductAvailability(tableName, quantity) {
+		if (quantity <= 0) return;
 
-	// Uppdatera canoe availability
-	if (booking.amount_canoes > 0) {
-		const canoeUpdates = {};
+		const startIndex = timeToIndex(booking.start_time);
+		const endIndex = booking.end_date === booking.start_date ? timeToIndex(booking.end_time) : 96;
+
+		// Först hämta befintlig rad om den finns
+		const { data: existingRow } = await supabase
+			.from(tableName)
+			.select('*')
+			.eq('date', booking.start_date)
+			.single();
+
+		const updates = {};
 		for (let i = startIndex; i < endIndex; i++) {
-			canoeUpdates[i.toString()] = supabase.raw(`COALESCE("${i}", 0) - ${booking.amount_canoes}`);
+			const columnName = i.toString();
+			const existingValue = existingRow ? existingRow[columnName] || 0 : 0;
+			updates[columnName] = existingValue - quantity;
 		}
 
-		const { error: canoeError } = await supabase.from('canoe_availability').upsert(
+		const { error } = await supabase.from(tableName).upsert(
 			{
 				date: booking.start_date,
-				...canoeUpdates
+				...updates
 			},
 			{
 				onConflict: 'date',
@@ -104,77 +114,30 @@ async function updateAvailability(booking) {
 			}
 		);
 
-		if (canoeError) {
-			console.error('Error updating canoe availability:', canoeError);
-			throw canoeError;
-		}
-	}
+		if (error) throw error;
 
-	// Uppdatera kayak availability
-	if (booking.amount_kayak > 0) {
-		const kayakUpdates = {};
-		for (let i = startIndex; i < endIndex; i++) {
-			kayakUpdates[i.toString()] = supabase.raw(`COALESCE("${i}", 0) - ${booking.amount_kayak}`);
-		}
+		// Om det är en övernattningsbokning, uppdatera även nästa dag
+		if (booking.end_date !== booking.start_date) {
+			const nextDayEndIndex = timeToIndex(booking.end_time);
 
-		const { error: kayakError } = await supabase.from('kayak_availability').upsert(
-			{
-				date: booking.start_date,
-				...kayakUpdates
-			},
-			{
-				onConflict: 'date',
-				returning: 'minimal'
-			}
-		);
+			// Hämta befintlig rad för nästa dag om den finns
+			const { data: existingNextDayRow } = await supabase
+				.from(tableName)
+				.select('*')
+				.eq('date', booking.end_date)
+				.single();
 
-		if (kayakError) {
-			console.error('Error updating kayak availability:', kayakError);
-			throw kayakError;
-		}
-	}
-
-	// Uppdatera SUP availability
-	if (booking.amount_sup > 0) {
-		const supUpdates = {};
-		for (let i = startIndex; i < endIndex; i++) {
-			supUpdates[i.toString()] = supabase.raw(`COALESCE("${i}", 0) - ${booking.amount_sup}`);
-		}
-
-		const { error: supError } = await supabase.from('sup_availability').upsert(
-			{
-				date: booking.start_date,
-				...supUpdates
-			},
-			{
-				onConflict: 'date',
-				returning: 'minimal'
-			}
-		);
-
-		if (supError) {
-			console.error('Error updating SUP availability:', supError);
-			throw supError;
-		}
-	}
-
-	// Om det är en övernattningsbokning, uppdatera även nästa dag
-	if (booking.end_date !== booking.start_date) {
-		const nextDayEndIndex = timeToIndex(booking.end_time);
-
-		// Uppdatera canoe availability för nästa dag
-		if (booking.amount_canoes > 0) {
-			const nextDayCanoeUpdates = {};
+			const nextDayUpdates = {};
 			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayCanoeUpdates[i.toString()] = supabase.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_canoes}`
-				);
+				const columnName = i.toString();
+				const existingValue = existingNextDayRow ? existingNextDayRow[columnName] || 0 : 0;
+				nextDayUpdates[columnName] = existingValue - quantity;
 			}
 
-			const { error: canoeError } = await supabase.from('canoe_availability').upsert(
+			const { error: nextDayError } = await supabase.from(tableName).upsert(
 				{
 					date: booking.end_date,
-					...nextDayCanoeUpdates
+					...nextDayUpdates
 				},
 				{
 					onConflict: 'date',
@@ -182,62 +145,14 @@ async function updateAvailability(booking) {
 				}
 			);
 
-			if (canoeError) {
-				console.error('Error updating next day canoe availability:', canoeError);
-				throw canoeError;
-			}
-		}
-
-		// Uppdatera kayak availability för nästa dag
-		if (booking.amount_kayak > 0) {
-			const nextDayKayakUpdates = {};
-			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayKayakUpdates[i.toString()] = supabase.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_kayak}`
-				);
-			}
-
-			const { error: kayakError } = await supabase.from('kayak_availability').upsert(
-				{
-					date: booking.end_date,
-					...nextDayKayakUpdates
-				},
-				{
-					onConflict: 'date',
-					returning: 'minimal'
-				}
-			);
-
-			if (kayakError) {
-				console.error('Error updating next day kayak availability:', kayakError);
-				throw kayakError;
-			}
-		}
-
-		// Uppdatera SUP availability för nästa dag
-		if (booking.amount_sup > 0) {
-			const nextDaySupUpdates = {};
-			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDaySupUpdates[i.toString()] = supabase.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_sup}`
-				);
-			}
-
-			const { error: supError } = await supabase.from('sup_availability').upsert(
-				{
-					date: booking.end_date,
-					...nextDaySupUpdates
-				},
-				{
-					onConflict: 'date',
-					returning: 'minimal'
-				}
-			);
-
-			if (supError) {
-				console.error('Error updating next day SUP availability:', supError);
-				throw supError;
-			}
+			if (nextDayError) throw nextDayError;
 		}
 	}
+
+	// Uppdatera alla produkttyper
+	await Promise.all([
+		updateProductAvailability('canoe_availability', booking.amount_canoes),
+		updateProductAvailability('kayak_availability', booking.amount_kayak),
+		updateProductAvailability('sup_availability', booking.amount_sup)
+	]);
 }
