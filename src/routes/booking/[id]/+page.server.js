@@ -37,7 +37,6 @@ export async function load({ params }) {
 		console.error('Error fetching bookingLength', bLerror);
 	}
 
-	// Hämta öppettider och öppet-datum
 	const { data: openHours, error: openHoursError } = await supabase
 		.from('experience_open_dates')
 		.select('start_date, end_date, open_time, close_time')
@@ -57,25 +56,22 @@ export async function load({ params }) {
 		console.error('Error fetching blocked dates:', blockedDatesError);
 	}
 
-	// Fetch blocked start times
 	const { data: blockedStartTimes, error: blockedStartTimesError } = await supabase
 		.from('blocked_start_times')
 		.select('blocked_date, blocked_time')
 		.eq('experience_id', params.id);
-	console.log(blockedStartTimes);
 
 	if (blockedStartTimesError) {
 		console.error('Error fetching blocked start times:', blockedStartTimesError);
 	}
 
-	// Returnera all relevant data till frontend
 	return {
 		experience,
 		experienceAddons,
 		startLocations,
 		bookingLengths,
-		blocked_dates: blockedDates || [], // Returnera en tom array om blocked_dates är null
-		blocked_start_times: blockedStartTimes || [], // Return an empty array if blocked_start_times is null
-		openHours // Returnera både datum och öppettider i en struktur
+		blocked_dates: blockedDates || [],
+		blocked_start_times: blockedStartTimes || [],
+		openHours
 	};
 }
