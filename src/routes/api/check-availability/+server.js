@@ -39,7 +39,7 @@ async function checkAvailability(date, durationHours, addons) {
 		const getTimeIndices = (timeStr) => {
 			const [hours, minutes] = timeStr.split(':').map(Number);
 			const totalMinutes = hours * 60 + minutes;
-			return totalMinutes.toString(); // Returns e.g. "600" for 10:00
+			return totalMinutes.toString();
 		};
 
 		const startIndex = parseInt(getTimeIndices(time));
@@ -75,18 +75,18 @@ async function checkAvailability(date, durationHours, addons) {
 				.eq('date', date)
 				.single();
 
+			// Om det finns bokningsdata, kontrollera tillgängligheten
 			if (canoeAvail) {
 				for (let i = startIndex; i < endIndex; i += 15) {
-					// Step by 15 for each 15-minute interval
 					const columnName = i.toString();
 					const booked = Math.abs(canoeAvail[columnName] || 0);
 					const available = maxCanoes.max_quantity - booked;
 
 					console.log(`Checking canoes at ${time}, interval ${i}:
-                        - Currently booked: ${booked}
-                        - Max capacity: ${maxCanoes.max_quantity}
-                        - Available: ${available}
-                        - Requested: ${addons.amountCanoes}`);
+						- Currently booked: ${booked}
+						- Max capacity: ${maxCanoes.max_quantity}
+						- Available: ${available}
+						- Requested: ${addons.amountCanoes}`);
 
 					if (available < addons.amountCanoes) {
 						console.log(
@@ -97,12 +97,13 @@ async function checkAvailability(date, durationHours, addons) {
 					}
 				}
 			} else {
-				console.error('No availability data found for canoes on this date');
-				isTimeAvailable = false;
+				// Om det inte finns bokningsdata, alla tider är tillgängliga
+				console.log(`No bookings for canoes on ${date}, checking against max capacity only`);
+				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
 			}
 		}
 
-		// Check kayaks if requested
+		// Check kayaks if requested and if previous checks passed
 		if (isTimeAvailable && addons.amountKayaks > 0) {
 			const { data: maxKayaks } = await supabaseAdmin
 				.from('addons')
@@ -137,10 +138,10 @@ async function checkAvailability(date, durationHours, addons) {
 					const available = maxKayaks.max_quantity - booked;
 
 					console.log(`Checking kayaks at ${time}, interval ${i}:
-                        - Currently booked: ${booked}
-                        - Max capacity: ${maxKayaks.max_quantity}
-                        - Available: ${available}
-                        - Requested: ${addons.amountKayaks}`);
+						- Currently booked: ${booked}
+						- Max capacity: ${maxKayaks.max_quantity}
+						- Available: ${available}
+						- Requested: ${addons.amountKayaks}`);
 
 					if (available < addons.amountKayaks) {
 						console.log(
@@ -151,12 +152,13 @@ async function checkAvailability(date, durationHours, addons) {
 					}
 				}
 			} else {
-				console.error('No availability data found for kayaks on this date');
-				isTimeAvailable = false;
+				// Om det inte finns bokningsdata, alla tider är tillgängliga
+				console.log(`No bookings for kayaks on ${date}, checking against max capacity only`);
+				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
 			}
 		}
 
-		// Check SUPs if requested
+		// Check SUPs if requested and if previous checks passed
 		if (isTimeAvailable && addons.amountSUPs > 0) {
 			const { data: maxSUPs } = await supabaseAdmin
 				.from('addons')
@@ -191,10 +193,10 @@ async function checkAvailability(date, durationHours, addons) {
 					const available = maxSUPs.max_quantity - booked;
 
 					console.log(`Checking SUPs at ${time}, interval ${i}:
-                        - Currently booked: ${booked}
-                        - Max capacity: ${maxSUPs.max_quantity}
-                        - Available: ${available}
-                        - Requested: ${addons.amountSUPs}`);
+						- Currently booked: ${booked}
+						- Max capacity: ${maxSUPs.max_quantity}
+						- Available: ${available}
+						- Requested: ${addons.amountSUPs}`);
 
 					if (available < addons.amountSUPs) {
 						console.log(
@@ -205,8 +207,9 @@ async function checkAvailability(date, durationHours, addons) {
 					}
 				}
 			} else {
-				console.error('No availability data found for SUPs on this date');
-				isTimeAvailable = false;
+				// Om det inte finns bokningsdata, alla tider är tillgängliga
+				console.log(`No bookings for SUPs on ${date}, checking against max capacity only`);
+				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
 			}
 		}
 
