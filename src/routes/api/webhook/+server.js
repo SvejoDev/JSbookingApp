@@ -98,7 +98,8 @@ export async function POST({ request }) {
 async function updateAvailability(booking) {
 	const timeToIndex = (timeStr) => {
 		const [hours, minutes] = timeStr.split(':').map(Number);
-		return hours * 4 + Math.floor(minutes / 15);
+		const totalMinutes = hours * 60 + minutes;
+		return Math.floor(totalMinutes / 15);
 	};
 
 	const startIndex = timeToIndex(booking.start_time);
@@ -106,20 +107,13 @@ async function updateAvailability(booking) {
 
 	// Uppdatera canoe availability
 	if (booking.amount_canoes > 0) {
-		const canoeUpdates = {};
-		for (let i = startIndex; i < endIndex; i++) {
-			canoeUpdates[i.toString()] = -booking.amount_canoes;
-		}
-
-		const { error: canoeError } = await supabaseAdmin.from('canoe_availability').upsert(
-			{
-				date: booking.start_date,
-				...canoeUpdates
-			},
-			{
-				onConflict: 'date'
-			}
-		);
+		const { error: canoeError } = await supabaseAdmin.rpc('update_addon_availability', {
+			addon_type: 'canoe',
+			booking_date: booking.start_date,
+			start_index: startIndex,
+			end_index: endIndex,
+			booking_amount: booking.amount_canoes
+		});
 
 		if (canoeError) {
 			console.error('Error updating canoe availability:', canoeError);
@@ -129,20 +123,13 @@ async function updateAvailability(booking) {
 
 	// Uppdatera kayak availability
 	if (booking.amount_kayak > 0) {
-		const kayakUpdates = {};
-		for (let i = startIndex; i < endIndex; i++) {
-			kayakUpdates[i.toString()] = -booking.amount_kayak;
-		}
-
-		const { error: kayakError } = await supabaseAdmin.from('kayak_availability').upsert(
-			{
-				date: booking.start_date,
-				...kayakUpdates
-			},
-			{
-				onConflict: 'date'
-			}
-		);
+		const { error: kayakError } = await supabaseAdmin.rpc('update_addon_availability', {
+			addon_type: 'kayak',
+			booking_date: booking.start_date,
+			start_index: startIndex,
+			end_index: endIndex,
+			booking_amount: booking.amount_kayak
+		});
 
 		if (kayakError) {
 			console.error('Error updating kayak availability:', kayakError);
@@ -152,20 +139,13 @@ async function updateAvailability(booking) {
 
 	// Uppdatera SUP availability
 	if (booking.amount_sup > 0) {
-		const supUpdates = {};
-		for (let i = startIndex; i < endIndex; i++) {
-			supUpdates[i.toString()] = -booking.amount_sup;
-		}
-
-		const { error: supError } = await supabaseAdmin.from('sup_availability').upsert(
-			{
-				date: booking.start_date,
-				...supUpdates
-			},
-			{
-				onConflict: 'date'
-			}
-		);
+		const { error: supError } = await supabaseAdmin.rpc('update_addon_availability', {
+			addon_type: 'sup',
+			booking_date: booking.start_date,
+			start_index: startIndex,
+			end_index: endIndex,
+			booking_amount: booking.amount_sup
+		});
 
 		if (supError) {
 			console.error('Error updating SUP availability:', supError);
@@ -177,22 +157,14 @@ async function updateAvailability(booking) {
 	if (booking.end_date !== booking.start_date) {
 		const nextDayEndIndex = timeToIndex(booking.end_time);
 
-		// Uppdatera canoe availability för nästa dag
 		if (booking.amount_canoes > 0) {
-			const nextDayCanoeUpdates = {};
-			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayCanoeUpdates[i.toString()] = -booking.amount_canoes;
-			}
-
-			const { error: canoeError } = await supabaseAdmin.from('canoe_availability').upsert(
-				{
-					date: booking.end_date,
-					...nextDayCanoeUpdates
-				},
-				{
-					onConflict: 'date'
-				}
-			);
+			const { error: canoeError } = await supabaseAdmin.rpc('update_addon_availability', {
+				addon_type: 'canoe',
+				booking_date: booking.end_date,
+				start_index: 0,
+				end_index: nextDayEndIndex,
+				booking_amount: booking.amount_canoes
+			});
 
 			if (canoeError) {
 				console.error('Error updating next day canoe availability:', canoeError);
@@ -200,22 +172,14 @@ async function updateAvailability(booking) {
 			}
 		}
 
-		// Uppdatera kayak availability för nästa dag
 		if (booking.amount_kayak > 0) {
-			const nextDayKayakUpdates = {};
-			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayKayakUpdates[i.toString()] = -booking.amount_kayak;
-			}
-
-			const { error: kayakError } = await supabaseAdmin.from('kayak_availability').upsert(
-				{
-					date: booking.end_date,
-					...nextDayKayakUpdates
-				},
-				{
-					onConflict: 'date'
-				}
-			);
+			const { error: kayakError } = await supabaseAdmin.rpc('update_addon_availability', {
+				addon_type: 'kayak',
+				booking_date: booking.end_date,
+				start_index: 0,
+				end_index: nextDayEndIndex,
+				booking_amount: booking.amount_kayak
+			});
 
 			if (kayakError) {
 				console.error('Error updating next day kayak availability:', kayakError);
@@ -223,22 +187,14 @@ async function updateAvailability(booking) {
 			}
 		}
 
-		// Uppdatera SUP availability för nästa dag
 		if (booking.amount_sup > 0) {
-			const nextDaySupUpdates = {};
-			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDaySupUpdates[i.toString()] = -booking.amount_sup;
-			}
-
-			const { error: supError } = await supabaseAdmin.from('sup_availability').upsert(
-				{
-					date: booking.end_date,
-					...nextDaySupUpdates
-				},
-				{
-					onConflict: 'date'
-				}
-			);
+			const { error: supError } = await supabaseAdmin.rpc('update_addon_availability', {
+				addon_type: 'sup',
+				booking_date: booking.end_date,
+				start_index: 0,
+				end_index: nextDayEndIndex,
+				booking_amount: booking.amount_sup
+			});
 
 			if (supError) {
 				console.error('Error updating next day SUP availability:', supError);
