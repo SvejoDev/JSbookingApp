@@ -24,10 +24,10 @@ export async function POST({ request }) {
 	if (event.type === 'checkout.session.completed') {
 		const session = event.data.object;
 		console.log('Checkout session completed:', session.id);
+		console.log('Session metadata:', session.metadata);
 
 		try {
-			// Först spara bokningen i bookings-tabellen
-			const { error: bookingError } = await supabaseAdmin.from('bookings').insert({
+			const bookingData = {
 				stripe_session_id: session.id,
 				customer_email: session.metadata.customer_email,
 				amount_total: session.amount_total / 100,
@@ -47,30 +47,49 @@ export async function POST({ request }) {
 				booking_name: session.metadata.booking_name,
 				booking_lastname: session.metadata.booking_lastname,
 				customer_comment: session.metadata.customer_comment || ''
-			});
+			};
+
+			console.log('Booking data to insert:', bookingData);
+
+			const { data, error: bookingError } = await supabaseAdmin
+				.from('bookings')
+				.insert([bookingData])
+				.select();
 
 			if (bookingError) {
 				console.error('Error inserting booking:', bookingError);
 				return json({ error: 'Error inserting booking' }, { status: 500 });
 			}
 
-			// Sedan uppdatera tillgängligheten
-			await updateAvailability({
-				start_date: session.metadata.start_date,
-				start_time: session.metadata.start_time,
-				end_date: session.metadata.end_date,
-				end_time: session.metadata.end_time,
-				amount_canoes: parseInt(session.metadata.amount_canoes || 0),
-				amount_kayak: parseInt(session.metadata.amount_kayak || 0),
-				amount_sup: parseInt(session.metadata.amount_SUP || 0)
-			});
+			console.log('Booking inserted successfully:', data);
 
-			console.log('Booking and availability updated successfully');
-			return json({ received: true });
+			if (data?.[0]) {
+				await updateAvailability({
+					start_date: session.metadata.start_date,
+					start_time: session.metadata.start_time,
+					end_date: session.metadata.end_date,
+					end_time: session.metadata.end_time,
+					amount_canoes: parseInt(session.metadata.amount_canoes || 0),
+					amount_kayak: parseInt(session.metadata.amount_kayak || 0),
+					amount_sup: parseInt(session.metadata.amount_SUP || 0)
+				});
+
+				console.log('Availability updated successfully');
+			} else {
+				console.error('No booking data returned after insert');
+			}
+
+			return json({
+				received: true,
+				bookingId: data?.[0]?.id,
+				message: 'Booking processed successfully'
+			});
 		} catch (error) {
 			console.error('Error processing booking:', error);
-			return json({ error: 'Error processing booking' }, { status: 500 });
+			return json({ error: 'Error processing booking', details: error.message }, { status: 500 });
 		}
+	} else {
+		console.log('Received non-checkout event:', event.type);
 	}
 
 	return json({ received: true });
@@ -83,15 +102,13 @@ async function updateAvailability(booking) {
 	};
 
 	const startIndex = timeToIndex(booking.start_time);
-	const endIndex = booking.end_date === booking.start_date ? timeToIndex(booking.end_time) : 96; // End of day if overnight
+	const endIndex = booking.end_date === booking.start_date ? timeToIndex(booking.end_time) : 96;
 
 	// Uppdatera canoe availability
 	if (booking.amount_canoes > 0) {
 		const canoeUpdates = {};
 		for (let i = startIndex; i < endIndex; i++) {
-			canoeUpdates[i.toString()] = supabaseAdmin.raw(
-				`COALESCE("${i}", 0) - ${booking.amount_canoes}`
-			);
+			canoeUpdates[i.toString()] = -booking.amount_canoes;
 		}
 
 		const { error: canoeError } = await supabaseAdmin.from('canoe_availability').upsert(
@@ -100,8 +117,7 @@ async function updateAvailability(booking) {
 				...canoeUpdates
 			},
 			{
-				onConflict: 'date',
-				returning: 'minimal'
+				onConflict: 'date'
 			}
 		);
 
@@ -115,9 +131,7 @@ async function updateAvailability(booking) {
 	if (booking.amount_kayak > 0) {
 		const kayakUpdates = {};
 		for (let i = startIndex; i < endIndex; i++) {
-			kayakUpdates[i.toString()] = supabaseAdmin.raw(
-				`COALESCE("${i}", 0) - ${booking.amount_kayak}`
-			);
+			kayakUpdates[i.toString()] = -booking.amount_kayak;
 		}
 
 		const { error: kayakError } = await supabaseAdmin.from('kayak_availability').upsert(
@@ -126,8 +140,7 @@ async function updateAvailability(booking) {
 				...kayakUpdates
 			},
 			{
-				onConflict: 'date',
-				returning: 'minimal'
+				onConflict: 'date'
 			}
 		);
 
@@ -141,7 +154,7 @@ async function updateAvailability(booking) {
 	if (booking.amount_sup > 0) {
 		const supUpdates = {};
 		for (let i = startIndex; i < endIndex; i++) {
-			supUpdates[i.toString()] = supabaseAdmin.raw(`COALESCE("${i}", 0) - ${booking.amount_sup}`);
+			supUpdates[i.toString()] = -booking.amount_sup;
 		}
 
 		const { error: supError } = await supabaseAdmin.from('sup_availability').upsert(
@@ -150,8 +163,7 @@ async function updateAvailability(booking) {
 				...supUpdates
 			},
 			{
-				onConflict: 'date',
-				returning: 'minimal'
+				onConflict: 'date'
 			}
 		);
 
@@ -169,9 +181,7 @@ async function updateAvailability(booking) {
 		if (booking.amount_canoes > 0) {
 			const nextDayCanoeUpdates = {};
 			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayCanoeUpdates[i.toString()] = supabaseAdmin.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_canoes}`
-				);
+				nextDayCanoeUpdates[i.toString()] = -booking.amount_canoes;
 			}
 
 			const { error: canoeError } = await supabaseAdmin.from('canoe_availability').upsert(
@@ -180,8 +190,7 @@ async function updateAvailability(booking) {
 					...nextDayCanoeUpdates
 				},
 				{
-					onConflict: 'date',
-					returning: 'minimal'
+					onConflict: 'date'
 				}
 			);
 
@@ -195,9 +204,7 @@ async function updateAvailability(booking) {
 		if (booking.amount_kayak > 0) {
 			const nextDayKayakUpdates = {};
 			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDayKayakUpdates[i.toString()] = supabaseAdmin.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_kayak}`
-				);
+				nextDayKayakUpdates[i.toString()] = -booking.amount_kayak;
 			}
 
 			const { error: kayakError } = await supabaseAdmin.from('kayak_availability').upsert(
@@ -206,8 +213,7 @@ async function updateAvailability(booking) {
 					...nextDayKayakUpdates
 				},
 				{
-					onConflict: 'date',
-					returning: 'minimal'
+					onConflict: 'date'
 				}
 			);
 
@@ -221,9 +227,7 @@ async function updateAvailability(booking) {
 		if (booking.amount_sup > 0) {
 			const nextDaySupUpdates = {};
 			for (let i = 0; i < nextDayEndIndex; i++) {
-				nextDaySupUpdates[i.toString()] = supabaseAdmin.raw(
-					`COALESCE("${i}", 0) - ${booking.amount_sup}`
-				);
+				nextDaySupUpdates[i.toString()] = -booking.amount_sup;
 			}
 
 			const { error: supError } = await supabaseAdmin.from('sup_availability').upsert(
@@ -232,8 +236,7 @@ async function updateAvailability(booking) {
 					...nextDaySupUpdates
 				},
 				{
-					onConflict: 'date',
-					returning: 'minimal'
+					onConflict: 'date'
 				}
 			);
 
