@@ -24,8 +24,23 @@ async function checkAvailability(date, durationHours, addons) {
 	const closeTime = '17:00';
 	const possibleTimes = [];
 	let currentTime = new Date(`${date}T${openTime}`);
-	const endTime = new Date(`${date}T${closeTime}`);
+	// Calculate the last possible start time for bookings less than a day
+	let endTime;
+	if (durationHours < 7) {
+		// Less than a full day booking
+		const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
+		endTime = new Date(`${date}T${closeTime}`);
+		endTime.setHours(closeHours - durationHours);
+		endTime.setMinutes(closeMinutes);
+	} else {
+		endTime = new Date(`${date}T${closeTime}`);
+	}
 
+	// Generate possible start times at 30-minute intervals
+	while (currentTime <= endTime) {
+		possibleTimes.push(currentTime.toTimeString().slice(0, 5));
+		currentTime.setMinutes(currentTime.getMinutes() + 30);
+	}
 	// Beräkna antal övernattningar
 	const numberOfNights =
 		durationHours === 24 ? 1 : durationHours === 48 ? 2 : durationHours === 72 ? 3 : 0;
