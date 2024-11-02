@@ -26,6 +26,12 @@ async function checkAvailability(date, durationHours, addons) {
 	let currentTime = new Date(`${date}T${openTime}`);
 	const endTime = new Date(`${date}T${closeTime}`);
 
+	// Beräkna antal övernattningar
+	const numberOfNights =
+		durationHours === 24 ? 1 : durationHours === 48 ? 2 : durationHours === 72 ? 3 : 0;
+
+	console.log(`Checking availability for booking starting ${date} with ${numberOfNights} night(s)`);
+
 	// Generate possible start times at 30-minute intervals
 	while (currentTime < endTime) {
 		possibleTimes.push(currentTime.toTimeString().slice(0, 5));
@@ -33,21 +39,146 @@ async function checkAvailability(date, durationHours, addons) {
 	}
 
 	const availableTimes = [];
+
+	// Hjälpfunktioner
+	const timeToIndex = (timeStr) => {
+		const [hours, minutes] = timeStr.split(':').map(Number);
+		const totalMinutes = hours * 60 + minutes;
+		return totalMinutes.toString(); // Returnera som string för att matcha CSV kolumnerna
+	};
+
+	const getDatePlusDays = (baseDate, daysToAdd) => {
+		const newDate = new Date(baseDate);
+		newDate.setDate(newDate.getDate() + daysToAdd);
+		return newDate.toISOString().split('T')[0];
+	};
+
+	// Beräkna stängningstid i minuter från midnatt
+	const closingTimeParts = closeTime.split(':').map(Number);
+	const closingTimeMinutes = closingTimeParts[0] * 60 + closingTimeParts[1];
+
+	// Funktion för att räkna ut totalt antal bokade för en viss tidpunkt
+	const calculateTotalBooked = (availData, minute) => {
+		if (!availData || !availData[minute.toString()]) return 0;
+		return Math.abs(availData[minute.toString()] || 0);
+	};
+
+	// Generell funktion för att kontrollera tillgänglighet för en produkttyp
+	async function checkProductAvailability(productType, amount, startTime, maxQuantity) {
+		if (amount <= 0) return true;
+
+		console.log(`\nChecking ${productType} availability (${amount} requested)`);
+
+		// Kontrollera första dagen
+		const startTimeMinutes = parseInt(timeToIndex(startTime));
+		const { data: firstDayAvail } = await supabaseAdmin
+			.from(`${productType}_availability`)
+			.select('*')
+			.eq('date', date)
+			.single();
+
+		// För vanliga bokningar på samma dag
+		if (numberOfNights === 0) {
+			if (firstDayAvail) {
+				// Beräkna sluttid för bokningen
+				const endTimeMinutes = startTimeMinutes + durationHours * 60;
+
+				// Don't allow bookings that would overlap with existing bookings
+				for (let minutes = startTimeMinutes; minutes < endTimeMinutes; minutes += 15) {
+					const totalBooked = calculateTotalBooked(firstDayAvail, minutes);
+					const availableSlots = maxQuantity - totalBooked;
+
+					// Visa information om bokningar
+					if (totalBooked > 0) {
+						console.log(`Time ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}:
+                        Currently booked: ${totalBooked}
+                        Requesting: ${amount}
+                        Available slots: ${availableSlots}
+                        Can accommodate: ${amount <= availableSlots}`);
+					}
+
+					if (amount > availableSlots) {
+						console.log(
+							`Cannot book: Not enough capacity at ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')} (need ${amount}, have ${availableSlots} available)`
+						);
+						return false;
+					}
+				}
+			}
+		}
+		// För övernattningsbokningar
+		else if (numberOfNights > 0) {
+			// Kontrollera även nästa dag
+			const nextDay = getDatePlusDays(date, 1);
+			const { data: nextDayData } = await supabaseAdmin
+				.from(`${productType}_availability`)
+				.select('*')
+				.eq('date', nextDay)
+				.single();
+			console.log(`Next day data available:`, nextDayData ? 'Yes' : 'No');
+			if (nextDayData) {
+				const bookingTime = '780'; // 13:00 (780 minuter)
+				console.log(`Booked at 13:00:`, nextDayData[bookingTime]);
+			}
+
+			// Kontrollera första dagen från starttid till stängning
+			if (firstDayAvail) {
+				for (let minutes = startTimeMinutes; minutes <= closingTimeMinutes; minutes += 15) {
+					const totalBooked = calculateTotalBooked(firstDayAvail, minutes);
+					const availableSlots = maxQuantity - totalBooked;
+
+					if (totalBooked > 0) {
+						console.log(`First day time ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}:
+                            Currently booked: ${totalBooked}
+                            Requesting: ${amount}
+                            Available slots: ${availableSlots}
+                            Can accommodate: ${amount <= availableSlots}`);
+					}
+
+					if (amount > availableSlots) {
+						console.log(
+							`Cannot book: Not enough capacity at first day ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}`
+						);
+						return false;
+					}
+				}
+			}
+
+			// Kontrollera hela nästa dag från öppning till stängning
+			if (nextDayData) {
+				const openingTimeMinutes = parseInt(timeToIndex(openTime));
+				for (let minutes = openingTimeMinutes; minutes <= closingTimeMinutes; minutes += 15) {
+					const totalBooked = calculateTotalBooked(nextDayData, minutes);
+					const availableSlots = maxQuantity - totalBooked;
+
+					if (totalBooked > 0) {
+						console.log(`Next day time ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}:
+                            Currently booked: ${totalBooked}
+                            Requesting: ${amount}
+                            Available slots: ${availableSlots}
+                            Can accommodate: ${amount <= availableSlots}`);
+					}
+
+					if (amount > availableSlots) {
+						console.log(
+							`Cannot book: Not enough capacity at next day ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}`
+						);
+						return false;
+					}
+				}
+			}
+		}
+
+		return true;
+	}
+
+	// Kontrollera tillgänglighet för varje möjlig starttid
 	for (const time of possibleTimes) {
 		let isTimeAvailable = true;
+		console.log(`\nChecking availability for start time: ${time}`);
 
-		const getTimeIndices = (timeStr) => {
-			const [hours, minutes] = timeStr.split(':').map(Number);
-			const totalMinutes = hours * 60 + minutes;
-			return totalMinutes.toString();
-		};
-
-		const startIndex = parseInt(getTimeIndices(time));
-		const intervalsNeeded = durationHours * 4; // 4 fifteen-minute intervals per hour
-		const endIndex = startIndex + intervalsNeeded * 15;
-
-		// Check canoes if requested
-		if (addons.amountCanoes > 0) {
+		// Kontrollera kanoter
+		if (isTimeAvailable && addons.amountCanoes > 0) {
 			const { data: maxCanoes } = await supabaseAdmin
 				.from('addons')
 				.select('max_quantity')
@@ -60,50 +191,15 @@ async function checkAvailability(date, durationHours, addons) {
 				continue;
 			}
 
-			// Check if requested amount exceeds max capacity
-			if (addons.amountCanoes > maxCanoes.max_quantity) {
-				console.log(
-					`Requested canoes (${addons.amountCanoes}) exceeds maximum capacity (${maxCanoes.max_quantity})`
-				);
-				isTimeAvailable = false;
-				continue;
-			}
-
-			const { data: canoeAvail } = await supabaseAdmin
-				.from('canoe_availability')
-				.select('*')
-				.eq('date', date)
-				.single();
-
-			// Om det finns bokningsdata, kontrollera tillgängligheten
-			if (canoeAvail) {
-				for (let i = startIndex; i < endIndex; i += 15) {
-					const columnName = i.toString();
-					const booked = Math.abs(canoeAvail[columnName] || 0);
-					const available = maxCanoes.max_quantity - booked;
-
-					console.log(`Checking canoes at ${time}, interval ${i}:
-						- Currently booked: ${booked}
-						- Max capacity: ${maxCanoes.max_quantity}
-						- Available: ${available}
-						- Requested: ${addons.amountCanoes}`);
-
-					if (available < addons.amountCanoes) {
-						console.log(
-							`Not enough canoes available (need ${addons.amountCanoes}, only ${available} available)`
-						);
-						isTimeAvailable = false;
-						break;
-					}
-				}
-			} else {
-				// Om det inte finns bokningsdata, alla tider är tillgängliga
-				console.log(`No bookings for canoes on ${date}, checking against max capacity only`);
-				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
-			}
+			isTimeAvailable = await checkProductAvailability(
+				'canoe',
+				addons.amountCanoes,
+				time,
+				maxCanoes.max_quantity
+			);
 		}
 
-		// Check kayaks if requested and if previous checks passed
+		// Kontrollera kajaker om kanoter var tillgängliga
 		if (isTimeAvailable && addons.amountKayaks > 0) {
 			const { data: maxKayaks } = await supabaseAdmin
 				.from('addons')
@@ -117,48 +213,15 @@ async function checkAvailability(date, durationHours, addons) {
 				continue;
 			}
 
-			if (addons.amountKayaks > maxKayaks.max_quantity) {
-				console.log(
-					`Requested kayaks (${addons.amountKayaks}) exceeds maximum capacity (${maxKayaks.max_quantity})`
-				);
-				isTimeAvailable = false;
-				continue;
-			}
-
-			const { data: kayakAvail } = await supabaseAdmin
-				.from('kayak_availability')
-				.select('*')
-				.eq('date', date)
-				.single();
-
-			if (kayakAvail) {
-				for (let i = startIndex; i < endIndex; i += 15) {
-					const columnName = i.toString();
-					const booked = Math.abs(kayakAvail[columnName] || 0);
-					const available = maxKayaks.max_quantity - booked;
-
-					console.log(`Checking kayaks at ${time}, interval ${i}:
-						- Currently booked: ${booked}
-						- Max capacity: ${maxKayaks.max_quantity}
-						- Available: ${available}
-						- Requested: ${addons.amountKayaks}`);
-
-					if (available < addons.amountKayaks) {
-						console.log(
-							`Not enough kayaks available (need ${addons.amountKayaks}, only ${available} available)`
-						);
-						isTimeAvailable = false;
-						break;
-					}
-				}
-			} else {
-				// Om det inte finns bokningsdata, alla tider är tillgängliga
-				console.log(`No bookings for kayaks on ${date}, checking against max capacity only`);
-				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
-			}
+			isTimeAvailable = await checkProductAvailability(
+				'kayak',
+				addons.amountKayaks,
+				time,
+				maxKayaks.max_quantity
+			);
 		}
 
-		// Check SUPs if requested and if previous checks passed
+		// Kontrollera SUPs om tidigare produkter var tillgängliga
 		if (isTimeAvailable && addons.amountSUPs > 0) {
 			const { data: maxSUPs } = await supabaseAdmin
 				.from('addons')
@@ -172,45 +235,12 @@ async function checkAvailability(date, durationHours, addons) {
 				continue;
 			}
 
-			if (addons.amountSUPs > maxSUPs.max_quantity) {
-				console.log(
-					`Requested SUPs (${addons.amountSUPs}) exceeds maximum capacity (${maxSUPs.max_quantity})`
-				);
-				isTimeAvailable = false;
-				continue;
-			}
-
-			const { data: supAvail } = await supabaseAdmin
-				.from('sup_availability')
-				.select('*')
-				.eq('date', date)
-				.single();
-
-			if (supAvail) {
-				for (let i = startIndex; i < endIndex; i += 15) {
-					const columnName = i.toString();
-					const booked = Math.abs(supAvail[columnName] || 0);
-					const available = maxSUPs.max_quantity - booked;
-
-					console.log(`Checking SUPs at ${time}, interval ${i}:
-						- Currently booked: ${booked}
-						- Max capacity: ${maxSUPs.max_quantity}
-						- Available: ${available}
-						- Requested: ${addons.amountSUPs}`);
-
-					if (available < addons.amountSUPs) {
-						console.log(
-							`Not enough SUPs available (need ${addons.amountSUPs}, only ${available} available)`
-						);
-						isTimeAvailable = false;
-						break;
-					}
-				}
-			} else {
-				// Om det inte finns bokningsdata, alla tider är tillgängliga
-				console.log(`No bookings for SUPs on ${date}, checking against max capacity only`);
-				// Fortsätt med isTimeAvailable = true eftersom max_quantity redan är kontrollerad
-			}
+			isTimeAvailable = await checkProductAvailability(
+				'sup',
+				addons.amountSUPs,
+				time,
+				maxSUPs.max_quantity
+			);
 		}
 
 		if (isTimeAvailable) {
