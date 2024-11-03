@@ -62,6 +62,8 @@
 	let totalPrice = 0;
 	let isLoadingTimes = false;
 
+	let hasCheckedTimes = false;
+
 	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
 
@@ -88,7 +90,8 @@
 		}
 
 		isLoadingTimes = true;
-		startTime = null; // Reset vald starttid när nya tider genereras
+		startTime = null;
+		hasCheckedTimes = true;
 
 		try {
 			const response = await fetch('/api/check-availability', {
@@ -466,7 +469,7 @@
 									{/each}
 								</div>
 							</div>
-						{:else if !isLoadingTimes && possibleStartTimes.length === 0}
+						{:else if hasCheckedTimes && !isLoadingTimes}
 							<Alert variant="destructive">
 								<AlertTitle>Inga tillgängliga tider</AlertTitle>
 								<AlertDescription>
@@ -495,7 +498,7 @@
 			</Card>
 		{/if}
 
-		{#if selectedStartLocation}
+		{#if selectedStartLocation && startTime}
 			<Card>
 				<CardHeader>
 					<CardTitle>Antal deltagare</CardTitle>
