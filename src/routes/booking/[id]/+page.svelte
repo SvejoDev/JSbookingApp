@@ -473,7 +473,8 @@
 							<Alert variant="destructive">
 								<AlertTitle>Inga tillgängliga tider</AlertTitle>
 								<AlertDescription>
-									Inga tillgängliga starttider hittades för valda produkter.
+									Inga tillgängliga starttider hittades för valda produkter. Prova ett annat antal
+									produkter eller annat datum.
 								</AlertDescription>
 							</Alert>
 						{/if}
@@ -481,10 +482,12 @@
 						<!-- Vald tid info -->
 						{#if startTime}
 							<Alert>
-								<AlertTitle>Vald tid</AlertTitle>
+								<AlertTitle>Din bokning</AlertTitle>
 								<AlertDescription>
-									Starttid: {startTime}
 									{#if returnDate && returnTime}
+										Startdatum: {startDate}
+										<br />
+										Starttid: {startTime}
 										<br />
 										Returdatum: {returnDate}
 										<br />
