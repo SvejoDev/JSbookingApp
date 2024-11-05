@@ -62,7 +62,8 @@
 	let numChildren = 0;
 	let totalPrice = 0;
 	let isLoadingTimes = false;
-
+	let hasGeneratedTimes = false;
+	let settingsLocked = false;
 	let hasCheckedTimes = false;
 
 	//Hitta namnet till tillvalsprodukten
@@ -93,6 +94,8 @@
 		isLoadingTimes = true;
 		startTime = null;
 		hasCheckedTimes = true;
+		hasGeneratedTimes = true; // Set this to true when generating times
+		settingsLocked = true; // Lock the settings
 
 		try {
 			const response = await fetch('/api/check-availability', {
@@ -124,7 +127,15 @@
 			isLoadingTimes = false;
 		}
 	}
-
+	function handleSettingChange() {
+		if (hasGeneratedTimes) {
+			possibleStartTimes = [];
+			startTime = null;
+			hasGeneratedTimes = false;
+			settingsLocked = false;
+			hasCheckedTimes = false;
+		}
+	}
 	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate) {
@@ -339,7 +350,11 @@
 					<select
 						id="startLocation"
 						bind:value={selectedStartLocation}
-						on:change={updatePrice}
+						on:change={() => {
+							updatePrice();
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
+						disabled={settingsLocked}
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<option value="">Välj startplats</option>
@@ -357,8 +372,11 @@
 					<select
 						id="bookingLength"
 						bind:value={selectedBookingLength}
+						on:change={() => {
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-						disabled={!selectedStartLocation}
+						disabled={!selectedStartLocation || settingsLocked}
 					>
 						<option value="">Välj längd</option>
 						{#each sortedBookingLengths as duration}
@@ -377,8 +395,17 @@
 						type="text"
 						placeholder="Välj datum"
 						class="flatpickr-input"
+						disabled={settingsLocked}
+						on:change={() => {
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
 					/>
 				</div>
+				{#if settingsLocked}
+					<Button variant="outline" on:click={handleSettingChange} class="mt-2">
+						Ändra bokningstid
+					</Button>
+				{/if}
 			</CardContent>
 		</Card>
 
