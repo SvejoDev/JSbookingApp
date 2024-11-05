@@ -461,13 +461,18 @@
 						<!-- Sök tider knapp -->
 						<Button
 							on:click={generateStartTimes}
-							disabled={!startDate || !selectedBookingLength || isLoadingTimes}
+							disabled={!startDate ||
+								!selectedBookingLength ||
+								isLoadingTimes ||
+								(amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0)}
 							variant={isLoadingTimes ? 'outline' : 'default'}
 							class="w-full sm:w-auto"
 						>
 							{#if isLoadingTimes}
 								<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 								Söker tillgängliga tider...
+							{:else if amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0}
+								Välj minst en produkt
 							{:else}
 								Visa tillgängliga tider
 							{/if}
