@@ -390,50 +390,70 @@
 						<div class="space-y-4">
 							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
+								<!-- Kanadensare -->
 								<div class="space-y-2">
 									<Label for="canoes">Antal kanadensare (max {maxCanoes})</Label>
-									<Input
-										type="number"
-										id="canoes"
-										min="0"
-										max={maxCanoes}
-										bind:value={amountCanoes}
-										on:input={(e) => {
-											if (e.target.value > maxCanoes) {
-												amountCanoes = maxCanoes;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountCanoes = Math.max(0, amountCanoes - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountCanoes}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountCanoes = Math.min(maxCanoes, amountCanoes + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
+
+								<!-- Kajaker -->
 								<div class="space-y-2">
 									<Label for="kayaks">Antal kajaker (max {maxKayaks})</Label>
-									<Input
-										type="number"
-										id="kayaks"
-										min="0"
-										max={maxKayaks}
-										bind:value={amountKayaks}
-										on:input={(e) => {
-											if (e.target.value > maxKayaks) {
-												amountKayaks = maxKayaks;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountKayaks = Math.max(0, amountKayaks - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountKayaks}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountKayaks = Math.min(maxKayaks, amountKayaks + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
+
+								<!-- SUP -->
 								<div class="space-y-2">
 									<Label for="sups">Antal SUP:ar (max {maxSUPs})</Label>
-									<Input
-										type="number"
-										id="sups"
-										min="0"
-										max={maxSUPs}
-										bind:value={amountSUPs}
-										on:input={(e) => {
-											if (e.target.value > maxSUPs) {
-												amountSUPs = maxSUPs;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountSUPs = Math.max(0, amountSUPs - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountSUPs}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => (amountSUPs = Math.min(maxSUPs, amountSUPs + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
 							</div>
 						</div>
