@@ -13,7 +13,7 @@ export async function POST({ request }) {
 			name,
 			experience_id,
 			experience,
-			startLocation,
+			startlocation,
 			start_date,
 			start_time,
 			end_date,
@@ -51,7 +51,7 @@ export async function POST({ request }) {
 			metadata: {
 				experience_id,
 				experience,
-				startLocation,
+				startlocation,
 				start_date,
 				start_time,
 				end_date,

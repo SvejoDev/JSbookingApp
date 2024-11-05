@@ -68,7 +68,7 @@ export async function load({ params }) {
 	return {
 		experience,
 		experienceAddons,
-		startLocations,
+		startlocations,
 		bookingLengths,
 		blocked_dates: blockedDates || [],
 		blocked_start_times: blockedStartTimes || [],
