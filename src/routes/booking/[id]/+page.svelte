@@ -1,5 +1,6 @@
 <script>
 	import { supabase } from '$lib/supabaseClient.js';
+	import { Swedish } from 'flatpickr/dist/l10n/sv.js'; // Add this import at the top with other imports
 
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
@@ -216,6 +217,8 @@
 			maxDate: maxDate,
 			disable: blockedDates,
 			dateFormat: 'Y-m-d',
+			weekNumbers: true,
+			locale: Swedish, // Add Swedish locale which defaults to Monday as first day
 			onChange: (selectedDates, dateStr) => {
 				startDate = dateStr;
 			}
