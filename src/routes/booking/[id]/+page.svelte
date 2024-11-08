@@ -109,12 +109,11 @@
 				})
 			});
 
+			const { availableStartTimes } = await response.json();
+			possibleStartTimes = availableStartTimes;
 			if (possibleStartTimes.length > 0) {
 				scrollToElement('available-times');
 			}
-
-			const { availableStartTimes } = await response.json();
-			possibleStartTimes = availableStartTimes;
 		} catch (error) {
 			console.error('Error checking availability:', error);
 			possibleStartTimes = [];
@@ -266,6 +265,14 @@
 		scrollToElement('booking-summary');
 	}
 
+	$: if (possibleStartTimes.length > 0) {
+		scrollToElement('time-selection');
+	}
+
+	$: if (startDate && selectedBookingLength && selectedStartLocation) {
+		scrollToElement('equipment-section');
+	}
+
 	//Skrolla ned funktion:
 	function scrollToElement(elementId) {
 		if (browser) {
@@ -281,7 +288,6 @@
 	//Stripe
 
 	import { loadStripe } from '@stripe/stripe-js';
-
 	let stripePromise;
 
 	onMount(async () => {
@@ -363,7 +369,7 @@
 			<CardContent class="space-y-6">
 				<!-- Startplats -->
 				<div class="space-y-2">
-					<Label for="startLocation">Välj startplats</Label>
+					<Label for="startLocation">1. Välj startplats</Label>
 					<select
 						id="startLocation"
 						bind:value={selectedStartLocation}
@@ -374,7 +380,7 @@
 						disabled={settingsLocked}
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						<option value="">Välj startplats</option>
+						<option value="">Välj startplats först</option>
 						{#each data.startLocations as location}
 							<option value={location.id}>
 								{location.location} - {location.price}kr
@@ -385,7 +391,12 @@
 
 				<!-- Bokningslängd -->
 				<div class="space-y-2">
-					<Label for="bookingLength">Välj bokningslängd</Label>
+					<Label for="bookingLength">
+						2. Välj bokningslängd
+						{#if !selectedStartLocation}
+							<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
+						{/if}
+					</Label>
 					<select
 						id="bookingLength"
 						bind:value={selectedBookingLength}
@@ -395,7 +406,9 @@
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						disabled={!selectedStartLocation || settingsLocked}
 					>
-						<option value="">Välj längd</option>
+						<option value="">
+							{selectedStartLocation ? 'Välj längd' : 'Välj startplats först'}
+						</option>
 						{#each sortedBookingLengths as duration}
 							<option value={duration.length}>
 								{duration.length}
@@ -418,16 +431,11 @@
 						}}
 					/>
 				</div>
-				{#if settingsLocked}
-					<Button variant="outline" on:click={handleSettingChange} class="mt-2">
-						Ändra bokningstid
-					</Button>
-				{/if}
 			</CardContent>
 		</Card>
 
 		{#if startDate && selectedBookingLength}
-			<Card>
+			<Card id="equipment-section">
 				<CardHeader>
 					<CardTitle>Välj utrustning och tid</CardTitle>
 				</CardHeader>
@@ -444,6 +452,7 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountCanoes = Math.max(0, amountCanoes - 1))}
 										>
 											-
@@ -452,6 +461,7 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountCanoes = Math.min(maxCanoes, amountCanoes + 1))}
 										>
 											+
@@ -466,6 +476,7 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountKayaks = Math.max(0, amountKayaks - 1))}
 										>
 											-
@@ -474,6 +485,7 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountKayaks = Math.min(maxKayaks, amountKayaks + 1))}
 										>
 											+
@@ -488,6 +500,7 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountSUPs = Math.max(0, amountSUPs - 1))}
 										>
 											-
@@ -496,12 +509,18 @@
 										<Button
 											variant="outline"
 											class="px-3"
+											disabled={settingsLocked}
 											on:click={() => (amountSUPs = Math.min(maxSUPs, amountSUPs + 1))}
 										>
 											+
 										</Button>
 									</div>
 								</div>
+								{#if settingsLocked}
+									<Button variant="outline" on:click={handleSettingChange} class="mt-2">
+										Ändra din bokning
+									</Button>
+								{/if}
 							</div>
 						</div>
 
@@ -527,7 +546,7 @@
 
 						<!-- Tillgängliga tider -->
 						{#if possibleStartTimes.length > 0}
-							<div class="space-y-2" id="available-times">
+							<div class="space-y-2" id="time-selection">
 								<Label>Tillgängliga starttider:</Label>
 								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
 									{#each possibleStartTimes as time}
@@ -574,130 +593,118 @@
 		{/if}
 
 		{#if selectedStartLocation && startTime}
-    <Card id="participants-section">
-        <CardHeader>
-            <CardTitle>Antal deltagare</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
-            <!-- Adults -->
-            <div class="space-y-2">
-                <Label for="adults">Antal vuxna</Label>
-                <div class="flex items-center space-x-2">
-                    <Button
-                        variant="outline"
-                        class="px-3"
-                        on:click={() => (numAdults = Math.max(0, numAdults - 1))}
-                    >
-                        -
-                    </Button>
-                    <div class="w-12 text-center">{numAdults}</div>
-                    <Button 
-                        variant="outline" 
-                        class="px-3" 
-                        on:click={() => (numAdults = numAdults + 1)}
-                    >
-                        +
-                    </Button>
-                </div>
-            </div>
+			<Card id="participants-section">
+				<CardHeader>
+					<CardTitle>Antal deltagare</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<!-- Adults -->
+					<div class="space-y-2">
+						<Label for="adults">Antal vuxna</Label>
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numAdults}</div>
+							<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
+								+
+							</Button>
+						</div>
+					</div>
 
-            <!-- Children -->
-            <div class="space-y-2">
-                <Label for="children">Antal barn (gratis)</Label>
-                <div class="flex items-center space-x-2">
-                    <Button
-                        variant="outline"
-                        class="px-3"
-                        disabled={numAdults === 0}
-                        on:click={() => (numChildren = Math.max(0, numChildren - 1))}
-                    >
-                        -
-                    </Button>
-                    <div class="w-12 text-center">{numChildren}</div>
-                    <Button
-                        variant="outline"
-                        class="px-3"
-                        disabled={numAdults === 0}
-                        on:click={() => (numChildren = numChildren + 1)}
-                    >
-                        +
-                    </Button>
-                </div>
-            </div>
+					<!-- Children -->
+					<div class="space-y-2">
+						<Label for="children">Antal barn (gratis)</Label>
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = Math.max(0, numChildren - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numChildren}</div>
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = numChildren + 1)}
+							>
+								+
+							</Button>
+						</div>
+					</div>
 
-            <Alert>
-                <AlertTitle>Totalt pris</AlertTitle>
-                <AlertDescription>{totalPrice}kr</AlertDescription>
-            </Alert>
+					<Alert>
+						<AlertTitle>Totalt pris</AlertTitle>
+						<AlertDescription>{totalPrice}kr</AlertDescription>
+					</Alert>
 
-            <Button 
-                class="w-full mt-4"
-                disabled={numAdults === 0}
-                on:click={handleNextStep}
-            >
-                {#if numAdults === 0}
-                    Välj antal deltagare
-                {:else}
-                    Nästa steg
-                {/if}
-            </Button>
-        </CardContent>
-    </Card>
-{/if}
+					<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+						{#if numAdults === 0}
+							Välj antal deltagare
+						{:else}
+							Nästa steg
+						{/if}
+					</Button>
+				</CardContent>
+			</Card>
+		{/if}
 
-{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
-    <Card id="contact-section">
-        <CardHeader>
-            <CardTitle>Kontaktuppgifter</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
-            <div class="grid gap-4 sm:grid-cols-2">
-                <div class="space-y-2">
-                    <Label for="firstName">Förnamn</Label>
-                    <Input type="text" id="firstName" bind:value={userName} required />
-                </div>
-                <div class="space-y-2">
-                    <Label for="lastName">Efternamn</Label>
-                    <Input type="text" id="lastName" bind:value={userLastname} required />
-                </div>
-            </div>
+		{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+			<Card id="contact-section">
+				<CardHeader>
+					<CardTitle>Kontaktuppgifter</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<Label for="firstName">Förnamn</Label>
+							<Input type="text" id="firstName" bind:value={userName} required />
+						</div>
+						<div class="space-y-2">
+							<Label for="lastName">Efternamn</Label>
+							<Input type="text" id="lastName" bind:value={userLastname} required />
+						</div>
+					</div>
 
-            <div class="space-y-2">
-                <Label for="phone">Telefonnummer</Label>
-                <Input
-                    type="tel"
-                    id="phone"
-                    bind:value={userPhone}
-                    pattern="^\+?[1-9]\d{(1, 14)}$"
-                    required
-                />
-            </div>
+					<div class="space-y-2">
+						<Label for="phone">Telefonnummer</Label>
+						<Input
+							type="tel"
+							id="phone"
+							bind:value={userPhone}
+							pattern="^\+?[1-9]\d{(1, 14)}$"
+							required
+						/>
+					</div>
 
-            <div class="space-y-2">
-                <Label for="email">E-postadress</Label>
-                <Input type="email" id="email" bind:value={userEmail} required />
-            </div>
+					<div class="space-y-2">
+						<Label for="email">E-postadress</Label>
+						<Input type="email" id="email" bind:value={userEmail} required />
+					</div>
 
-            <div class="space-y-2">
-                <Label for="comment">Kommentar (valfri)</Label>
-                <Textarea id="comment" bind:value={userComment} />
-            </div>
+					<div class="space-y-2">
+						<Label for="comment">Kommentar (valfri)</Label>
+						<Textarea id="comment" bind:value={userComment} />
+					</div>
 
-            <div class="flex items-center space-x-2">
-                <Checkbox bind:checked={acceptTerms} id="terms" />
-                <Label for="terms">I accept the booking agreement and the terms of purchase</Label>
-            </div>
+					<div class="flex items-center space-x-2">
+						<Checkbox bind:checked={acceptTerms} id="terms" />
+						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+					</div>
 
-            <Button 
-                disabled={!acceptTerms} 
-                on:click={handleCheckout} 
-                class="w-full"
-            >
-                Go to payment ({totalPrice}kr)
-            </Button>
-        </CardContent>
-    </Card>
-{/if}
+					<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+						Go to payment ({totalPrice}kr)
+					</Button>
+				</CardContent>
+			</Card>
+		{/if}
 	</div>
 {:else}
 	<Alert variant="destructive" class="m-4">
