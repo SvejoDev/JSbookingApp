@@ -1,19 +1,12 @@
 <script>
 	import { supabase } from '$lib/supabaseClient.js';
-	import { Swedish } from 'flatpickr/dist/l10n/sv.js'; // Add this import at the top with other imports
+	import { Swedish } from 'flatpickr/dist/l10n/sv.js';
 
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
-	import {
-		Select,
-		SelectTrigger,
-		SelectContent,
-		SelectItem,
-		SelectValue
-	} from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Loader2 } from 'lucide-svelte';
@@ -21,6 +14,7 @@
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	export let data;
 
@@ -65,6 +59,7 @@
 	let hasGeneratedTimes = false;
 	let settingsLocked = false;
 	let hasCheckedTimes = false;
+	let showContactSection = false;
 
 	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
@@ -94,8 +89,8 @@
 		isLoadingTimes = true;
 		startTime = null;
 		hasCheckedTimes = true;
-		hasGeneratedTimes = true; // Set this to true when generating times
-		settingsLocked = true; // Lock the settings
+		hasGeneratedTimes = true;
+		settingsLocked = true;
 
 		try {
 			const response = await fetch('/api/check-availability', {
@@ -114,8 +109,8 @@
 				})
 			});
 
-			if (!response.ok) {
-				throw new Error('Failed to check availability');
+			if (possibleStartTimes.length > 0) {
+				scrollToElement('available-times');
 			}
 
 			const { availableStartTimes } = await response.json();
@@ -135,6 +130,12 @@
 			settingsLocked = false;
 			hasCheckedTimes = false;
 		}
+	}
+
+	//Nästa steg för kontaktuppgifter
+	function handleNextStep() {
+		showContactSection = true;
+		scrollToElement('contact-section');
 	}
 	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
 	function calculateReturnDate() {
@@ -259,6 +260,22 @@
 
 	$: if (startDate && startTime && selectedBookingLength) {
 		calculateReturnDate();
+	}
+
+	$: if (startTime) {
+		scrollToElement('booking-summary');
+	}
+
+	//Skrolla ned funktion:
+	function scrollToElement(elementId) {
+		if (browser) {
+			setTimeout(() => {
+				const element = document.getElementById(elementId);
+				if (element) {
+					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}, 100);
+		}
 	}
 
 	//Stripe
@@ -510,7 +527,7 @@
 
 						<!-- Tillgängliga tider -->
 						{#if possibleStartTimes.length > 0}
-							<div class="space-y-2">
+							<div class="space-y-2" id="available-times">
 								<Label>Tillgängliga starttider:</Label>
 								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
 									{#each possibleStartTimes as time}
@@ -536,7 +553,7 @@
 
 						<!-- Vald tid info -->
 						{#if startTime}
-							<Alert>
+							<Alert id="booking-summary">
 								<AlertTitle>Din bokning</AlertTitle>
 								<AlertDescription>
 									{#if returnDate && returnTime}
@@ -557,103 +574,130 @@
 		{/if}
 
 		{#if selectedStartLocation && startTime}
-			<Card>
-				<CardHeader>
-					<CardTitle>Antal deltagare</CardTitle>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					<!-- Adults -->
-					<div class="space-y-2">
-						<Label for="adults">Antal vuxna</Label>
-						<div class="flex items-center space-x-2">
-							<Button
-								variant="outline"
-								class="px-3"
-								on:click={() => (numAdults = Math.max(0, numAdults - 1))}
-							>
-								-
-							</Button>
-							<div class="w-12 text-center">{numAdults}</div>
-							<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
-								+
-							</Button>
-						</div>
-					</div>
-					<!-- Children -->
-					<div class="space-y-2">
-						<Label for="children">Antal barn (gratis)</Label>
-						<div class="flex items-center space-x-2">
-							<Button
-								variant="outline"
-								class="px-3"
-								disabled={numAdults === 0}
-								on:click={() => (numChildren = Math.max(0, numChildren - 1))}
-							>
-								-
-							</Button>
-							<div class="w-12 text-center">{numChildren}</div>
-							<Button
-								variant="outline"
-								class="px-3"
-								disabled={numAdults === 0}
-								on:click={() => (numChildren = numChildren + 1)}
-							>
-								+
-							</Button>
-						</div>
-					</div>
-					<Alert>
-						<AlertTitle>Totalt pris</AlertTitle>
-						<AlertDescription>{totalPrice}kr</AlertDescription>
-					</Alert>
-				</CardContent>
-			</Card> 
-		{/if}
+    <Card id="participants-section">
+        <CardHeader>
+            <CardTitle>Antal deltagare</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+            <!-- Adults -->
+            <div class="space-y-2">
+                <Label for="adults">Antal vuxna</Label>
+                <div class="flex items-center space-x-2">
+                    <Button
+                        variant="outline"
+                        class="px-3"
+                        on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+                    >
+                        -
+                    </Button>
+                    <div class="w-12 text-center">{numAdults}</div>
+                    <Button 
+                        variant="outline" 
+                        class="px-3" 
+                        on:click={() => (numAdults = numAdults + 1)}
+                    >
+                        +
+                    </Button>
+                </div>
+            </div>
 
-		{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
-			<Card>
-				<CardHeader>
-					<CardTitle>Kontaktuppgifter</CardTitle>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					<div class="grid gap-4 sm:grid-cols-2">
-						<div class="space-y-2">
-							<Label for="firstName">Förnamn</Label>
-							<Input type="text" id="firstName" bind:value={userName} required />
-						</div>
-						<div class="space-y-2">
-							<Label for="lastName">Efternamn</Label>
-							<Input type="text" id="lastName" bind:value={userLastname} required />
-						</div>
-					</div>
-					<div class="space-y-2">
-						<Label for="phone">Telefonnummer</Label>
-						<Input
-							type="tel"
-							id="phone"
-							bind:value={userPhone}
-							pattern="^\+?[1-9]\d{(1, 14)}$"
-							required
-						/>
-					</div>
-					<div class="space-y-2">
-						<Label for="email">E-postadress</Label>
-						<Input type="email" id="email" bind:value={userEmail} required />
-					</div>
-					<div class="space-y-2">
-						<Label for="comment">Kommentar (valfri)</Label>
-						<Textarea id="comment" bind:value={userComment} />
-					</div>
-					<div class="flex items-center space-x-2">
-						<Checkbox bind:checked={acceptTerms} id="terms" />
-						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
-					</div>
-					<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-						Go to payment ({totalPrice}kr)
-					</Button>
-				</CardContent>
-			</Card>
-		{/if}
+            <!-- Children -->
+            <div class="space-y-2">
+                <Label for="children">Antal barn (gratis)</Label>
+                <div class="flex items-center space-x-2">
+                    <Button
+                        variant="outline"
+                        class="px-3"
+                        disabled={numAdults === 0}
+                        on:click={() => (numChildren = Math.max(0, numChildren - 1))}
+                    >
+                        -
+                    </Button>
+                    <div class="w-12 text-center">{numChildren}</div>
+                    <Button
+                        variant="outline"
+                        class="px-3"
+                        disabled={numAdults === 0}
+                        on:click={() => (numChildren = numChildren + 1)}
+                    >
+                        +
+                    </Button>
+                </div>
+            </div>
+
+            <Alert>
+                <AlertTitle>Totalt pris</AlertTitle>
+                <AlertDescription>{totalPrice}kr</AlertDescription>
+            </Alert>
+
+            <Button 
+                class="w-full mt-4"
+                disabled={numAdults === 0}
+                on:click={handleNextStep}
+            >
+                {#if numAdults === 0}
+                    Välj antal deltagare
+                {:else}
+                    Nästa steg
+                {/if}
+            </Button>
+        </CardContent>
+    </Card>
+{/if}
+
+{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+    <Card id="contact-section">
+        <CardHeader>
+            <CardTitle>Kontaktuppgifter</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div class="space-y-2">
+                    <Label for="firstName">Förnamn</Label>
+                    <Input type="text" id="firstName" bind:value={userName} required />
+                </div>
+                <div class="space-y-2">
+                    <Label for="lastName">Efternamn</Label>
+                    <Input type="text" id="lastName" bind:value={userLastname} required />
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <Label for="phone">Telefonnummer</Label>
+                <Input
+                    type="tel"
+                    id="phone"
+                    bind:value={userPhone}
+                    pattern="^\+?[1-9]\d{(1, 14)}$"
+                    required
+                />
+            </div>
+
+            <div class="space-y-2">
+                <Label for="email">E-postadress</Label>
+                <Input type="email" id="email" bind:value={userEmail} required />
+            </div>
+
+            <div class="space-y-2">
+                <Label for="comment">Kommentar (valfri)</Label>
+                <Textarea id="comment" bind:value={userComment} />
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <Checkbox bind:checked={acceptTerms} id="terms" />
+                <Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+            </div>
+
+            <Button 
+                disabled={!acceptTerms} 
+                on:click={handleCheckout} 
+                class="w-full"
+            >
+                Go to payment ({totalPrice}kr)
+            </Button>
+        </CardContent>
+    </Card>
+{/if}
 	</div>
 {:else}
 	<Alert variant="destructive" class="m-4">
