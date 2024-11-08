@@ -29,7 +29,8 @@
 	"type": "module",
 	"dependencies": {
 		"@stripe/stripe-js": "^4.5.0",
-		"@supabase/supabase-js": "^2.45.4",
+		"@supabase/ssr": "^0.5.1",
+		"@supabase/supabase-js": "^2.46.1",
 		"dotenv": "^16.4.5",
 		"flatpickr": "^4.6.13",
 		"shadcn-svelte": "^0.14.0",

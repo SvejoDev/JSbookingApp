@@ -562,20 +562,52 @@
 					<CardTitle>Antal deltagare</CardTitle>
 				</CardHeader>
 				<CardContent class="space-y-4">
+					<!-- Adults -->
 					<div class="space-y-2">
 						<Label for="adults">Antal vuxna</Label>
-						<Input type="number" id="adults" min="0" bind:value={numAdults} />
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numAdults}</div>
+							<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
+								+
+							</Button>
+						</div>
 					</div>
+					<!-- Children -->
 					<div class="space-y-2">
 						<Label for="children">Antal barn (gratis)</Label>
-						<Input type="number" id="children" min="0" bind:value={numChildren} />
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = Math.max(0, numChildren - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numChildren}</div>
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = numChildren + 1)}
+							>
+								+
+							</Button>
+						</div>
 					</div>
 					<Alert>
 						<AlertTitle>Totalt pris</AlertTitle>
 						<AlertDescription>{totalPrice}kr</AlertDescription>
 					</Alert>
 				</CardContent>
-			</Card>
+			</Card> 
 		{/if}
 
 		{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
