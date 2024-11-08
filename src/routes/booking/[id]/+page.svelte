@@ -92,6 +92,8 @@
 		hasGeneratedTimes = true;
 		settingsLocked = true;
 
+		scrollToElement('available-times');
+
 		try {
 			const response = await fetch('/api/check-availability', {
 				method: 'POST',
@@ -526,6 +528,7 @@
 
 						<!-- Sök tider knapp -->
 						<Button
+							id="available-times"
 							on:click={generateStartTimes}
 							disabled={!startDate ||
 								!selectedBookingLength ||
