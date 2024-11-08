@@ -1,18 +1,12 @@
 <script>
 	import { supabase } from '$lib/supabaseClient.js';
+	import { Swedish } from 'flatpickr/dist/l10n/sv.js';
 
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
-	import {
-		Select,
-		SelectTrigger,
-		SelectContent,
-		SelectItem,
-		SelectValue
-	} from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Loader2 } from 'lucide-svelte';
@@ -20,6 +14,7 @@
 	import flatpickr from 'flatpickr';
 	import 'flatpickr/dist/flatpickr.css';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	export let data;
 
@@ -61,6 +56,10 @@
 	let numChildren = 0;
 	let totalPrice = 0;
 	let isLoadingTimes = false;
+	let hasGeneratedTimes = false;
+	let settingsLocked = false;
+	let hasCheckedTimes = false;
+	let showContactSection = false;
 
 	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
@@ -88,7 +87,12 @@
 		}
 
 		isLoadingTimes = true;
-		startTime = null; // Reset vald starttid när nya tider genereras
+		startTime = null;
+		hasCheckedTimes = true;
+		hasGeneratedTimes = true;
+		settingsLocked = true;
+
+		scrollToElement('available-times');
 
 		try {
 			const response = await fetch('/api/check-availability', {
@@ -107,12 +111,11 @@
 				})
 			});
 
-			if (!response.ok) {
-				throw new Error('Failed to check availability');
-			}
-
 			const { availableStartTimes } = await response.json();
 			possibleStartTimes = availableStartTimes;
+			if (possibleStartTimes.length > 0) {
+				scrollToElement('available-times');
+			}
 		} catch (error) {
 			console.error('Error checking availability:', error);
 			possibleStartTimes = [];
@@ -120,7 +123,21 @@
 			isLoadingTimes = false;
 		}
 	}
+	function handleSettingChange() {
+		if (hasGeneratedTimes) {
+			possibleStartTimes = [];
+			startTime = null;
+			hasGeneratedTimes = false;
+			settingsLocked = false;
+			hasCheckedTimes = false;
+		}
+	}
 
+	//Nästa steg för kontaktuppgifter
+	function handleNextStep() {
+		showContactSection = true;
+		scrollToElement('contact-section');
+	}
 	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate) {
@@ -213,6 +230,8 @@
 			maxDate: maxDate,
 			disable: blockedDates,
 			dateFormat: 'Y-m-d',
+			weekNumbers: true,
+			locale: Swedish, // Add Swedish locale which defaults to Monday as first day
 			onChange: (selectedDates, dateStr) => {
 				startDate = dateStr;
 			}
@@ -244,10 +263,33 @@
 		calculateReturnDate();
 	}
 
+	$: if (startTime) {
+		scrollToElement('booking-summary');
+	}
+
+	$: if (possibleStartTimes.length > 0) {
+		scrollToElement('time-selection');
+	}
+
+	$: if (startDate && selectedBookingLength && selectedStartLocation) {
+		scrollToElement('equipment-section');
+	}
+
+	//Skrolla ned funktion:
+	function scrollToElement(elementId) {
+		if (browser) {
+			setTimeout(() => {
+				const element = document.getElementById(elementId);
+				if (element) {
+					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}, 100);
+		}
+	}
+
 	//Stripe
 
 	import { loadStripe } from '@stripe/stripe-js';
-
 	let stripePromise;
 
 	onMount(async () => {
@@ -329,14 +371,18 @@
 			<CardContent class="space-y-6">
 				<!-- Startplats -->
 				<div class="space-y-2">
-					<Label for="startLocation">Välj startplats</Label>
+					<Label for="startLocation">1. Välj startplats</Label>
 					<select
 						id="startLocation"
 						bind:value={selectedStartLocation}
-						on:change={updatePrice}
+						on:change={() => {
+							updatePrice();
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
+						disabled={settingsLocked}
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						<option value="">Välj startplats</option>
+						<option value="">Välj startplats först</option>
 						{#each data.startLocations as location}
 							<option value={location.id}>
 								{location.location} - {location.price}kr
@@ -347,14 +393,24 @@
 
 				<!-- Bokningslängd -->
 				<div class="space-y-2">
-					<Label for="bookingLength">Välj bokningslängd</Label>
+					<Label for="bookingLength">
+						2. Välj bokningslängd
+						{#if !selectedStartLocation}
+							<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
+						{/if}
+					</Label>
 					<select
 						id="bookingLength"
 						bind:value={selectedBookingLength}
+						on:change={() => {
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-						disabled={!selectedStartLocation}
+						disabled={!selectedStartLocation || settingsLocked}
 					>
-						<option value="">Välj längd</option>
+						<option value="">
+							{selectedStartLocation ? 'Välj längd' : 'Välj startplats först'}
+						</option>
 						{#each sortedBookingLengths as duration}
 							<option value={duration.length}>
 								{duration.length}
@@ -371,13 +427,17 @@
 						type="text"
 						placeholder="Välj datum"
 						class="flatpickr-input"
+						disabled={settingsLocked}
+						on:change={() => {
+							if (hasGeneratedTimes) handleSettingChange();
+						}}
 					/>
 				</div>
 			</CardContent>
 		</Card>
 
 		{#if startDate && selectedBookingLength}
-			<Card>
+			<Card id="equipment-section">
 				<CardHeader>
 					<CardTitle>Välj utrustning och tid</CardTitle>
 				</CardHeader>
@@ -387,64 +447,101 @@
 						<div class="space-y-4">
 							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
+								<!-- Kanadensare -->
 								<div class="space-y-2">
 									<Label for="canoes">Antal kanadensare (max {maxCanoes})</Label>
-									<Input
-										type="number"
-										id="canoes"
-										min="0"
-										max={maxCanoes}
-										bind:value={amountCanoes}
-										on:input={(e) => {
-											if (e.target.value > maxCanoes) {
-												amountCanoes = maxCanoes;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountCanoes = Math.max(0, amountCanoes - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountCanoes}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountCanoes = Math.min(maxCanoes, amountCanoes + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
+
+								<!-- Kajaker -->
 								<div class="space-y-2">
 									<Label for="kayaks">Antal kajaker (max {maxKayaks})</Label>
-									<Input
-										type="number"
-										id="kayaks"
-										min="0"
-										max={maxKayaks}
-										bind:value={amountKayaks}
-										on:input={(e) => {
-											if (e.target.value > maxKayaks) {
-												amountKayaks = maxKayaks;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountKayaks = Math.max(0, amountKayaks - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountKayaks}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountKayaks = Math.min(maxKayaks, amountKayaks + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
+
+								<!-- SUP -->
 								<div class="space-y-2">
 									<Label for="sups">Antal SUP:ar (max {maxSUPs})</Label>
-									<Input
-										type="number"
-										id="sups"
-										min="0"
-										max={maxSUPs}
-										bind:value={amountSUPs}
-										on:input={(e) => {
-											if (e.target.value > maxSUPs) {
-												amountSUPs = maxSUPs;
-											}
-										}}
-									/>
+									<div class="flex items-center space-x-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountSUPs = Math.max(0, amountSUPs - 1))}
+										>
+											-
+										</Button>
+										<div class="w-12 text-center">{amountSUPs}</div>
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={settingsLocked}
+											on:click={() => (amountSUPs = Math.min(maxSUPs, amountSUPs + 1))}
+										>
+											+
+										</Button>
+									</div>
 								</div>
+								{#if settingsLocked}
+									<Button variant="outline" on:click={handleSettingChange} class="mt-2">
+										Ändra din bokning
+									</Button>
+								{/if}
 							</div>
 						</div>
 
 						<!-- Sök tider knapp -->
 						<Button
+							id="available-times"
 							on:click={generateStartTimes}
-							disabled={!startDate || !selectedBookingLength || isLoadingTimes}
+							disabled={!startDate ||
+								!selectedBookingLength ||
+								isLoadingTimes ||
+								(amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0)}
 							variant={isLoadingTimes ? 'outline' : 'default'}
 							class="w-full sm:w-auto"
 						>
 							{#if isLoadingTimes}
 								<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 								Söker tillgängliga tider...
+							{:else if amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0}
+								Välj minst en produkt
 							{:else}
 								Visa tillgängliga tider
 							{/if}
@@ -452,7 +549,7 @@
 
 						<!-- Tillgängliga tider -->
 						{#if possibleStartTimes.length > 0}
-							<div class="space-y-2">
+							<div class="space-y-2" id="time-selection">
 								<Label>Tillgängliga starttider:</Label>
 								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
 									{#each possibleStartTimes as time}
@@ -466,22 +563,25 @@
 									{/each}
 								</div>
 							</div>
-						{:else if !isLoadingTimes && possibleStartTimes.length === 0}
+						{:else if hasCheckedTimes && !isLoadingTimes}
 							<Alert variant="destructive">
 								<AlertTitle>Inga tillgängliga tider</AlertTitle>
 								<AlertDescription>
-									Inga tillgängliga starttider hittades för valda produkter.
+									Inga tillgängliga starttider hittades för valda produkter. Prova ett annat antal
+									produkter eller annat datum.
 								</AlertDescription>
 							</Alert>
 						{/if}
 
 						<!-- Vald tid info -->
 						{#if startTime}
-							<Alert>
-								<AlertTitle>Vald tid</AlertTitle>
+							<Alert id="booking-summary">
+								<AlertTitle>Din bokning</AlertTitle>
 								<AlertDescription>
-									Starttid: {startTime}
 									{#if returnDate && returnTime}
+										Startdatum: {startDate}
+										<br />
+										Starttid: {startTime}
 										<br />
 										Returdatum: {returnDate}
 										<br />
@@ -495,30 +595,72 @@
 			</Card>
 		{/if}
 
-		{#if selectedStartLocation}
-			<Card>
+		{#if selectedStartLocation && startTime}
+			<Card id="participants-section">
 				<CardHeader>
 					<CardTitle>Antal deltagare</CardTitle>
 				</CardHeader>
 				<CardContent class="space-y-4">
+					<!-- Adults -->
 					<div class="space-y-2">
 						<Label for="adults">Antal vuxna</Label>
-						<Input type="number" id="adults" min="0" bind:value={numAdults} />
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numAdults}</div>
+							<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
+								+
+							</Button>
+						</div>
 					</div>
+
+					<!-- Children -->
 					<div class="space-y-2">
 						<Label for="children">Antal barn (gratis)</Label>
-						<Input type="number" id="children" min="0" bind:value={numChildren} />
+						<div class="flex items-center space-x-2">
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = Math.max(0, numChildren - 1))}
+							>
+								-
+							</Button>
+							<div class="w-12 text-center">{numChildren}</div>
+							<Button
+								variant="outline"
+								class="px-3"
+								disabled={numAdults === 0}
+								on:click={() => (numChildren = numChildren + 1)}
+							>
+								+
+							</Button>
+						</div>
 					</div>
+
 					<Alert>
 						<AlertTitle>Totalt pris</AlertTitle>
 						<AlertDescription>{totalPrice}kr</AlertDescription>
 					</Alert>
+
+					<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+						{#if numAdults === 0}
+							Välj antal deltagare
+						{:else}
+							Nästa steg
+						{/if}
+					</Button>
 				</CardContent>
 			</Card>
 		{/if}
 
-		{#if selectedStartLocation && startDate && startTime && selectedBookingLength}
-			<Card>
+		{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+			<Card id="contact-section">
 				<CardHeader>
 					<CardTitle>Kontaktuppgifter</CardTitle>
 				</CardHeader>
@@ -533,6 +675,7 @@
 							<Input type="text" id="lastName" bind:value={userLastname} required />
 						</div>
 					</div>
+
 					<div class="space-y-2">
 						<Label for="phone">Telefonnummer</Label>
 						<Input
@@ -543,18 +686,22 @@
 							required
 						/>
 					</div>
+
 					<div class="space-y-2">
 						<Label for="email">E-postadress</Label>
 						<Input type="email" id="email" bind:value={userEmail} required />
 					</div>
+
 					<div class="space-y-2">
 						<Label for="comment">Kommentar (valfri)</Label>
 						<Textarea id="comment" bind:value={userComment} />
 					</div>
+
 					<div class="flex items-center space-x-2">
 						<Checkbox bind:checked={acceptTerms} id="terms" />
 						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
 					</div>
+
 					<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
 						Go to payment ({totalPrice}kr)
 					</Button>
