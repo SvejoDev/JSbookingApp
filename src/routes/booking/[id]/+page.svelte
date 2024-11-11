@@ -71,6 +71,13 @@
 		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
 	}
 
+	$: {
+		if (data.startLocations && data.startLocations.length === 1) {
+			selectedStartLocation = data.startLocations[0].id;
+			selectedStartLocationName = data.startLocations[0].location;
+		}
+	}
+
 	//Kunduppgifter:
 	let userName = '';
 	let userLastname = '';
@@ -369,29 +376,37 @@
 				<CardTitle>{data.experience.name}</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-6">
-				<!-- Startplats -->
+				<!-- StartLocation -->
 				<div class="space-y-2">
 					<Label for="startLocation">1. Välj startplats</Label>
-					<select
-						id="startLocation"
-						bind:value={selectedStartLocation}
-						on:change={() => {
-							updatePrice();
-							if (hasGeneratedTimes) handleSettingChange();
-						}}
-						disabled={settingsLocked}
-						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<option value="">Välj startplats först</option>
-						{#each data.startLocations as location}
-							<option value={location.id}>
-								{location.location} - {location.price}kr
-							</option>
-						{/each}
-					</select>
+					{#if data.startLocations.length === 1}
+						<div
+							class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+						>
+							{data.startLocations[0].location} - {data.startLocations[0].price}kr
+						</div>
+					{:else}
+						<select
+							id="startLocation"
+							bind:value={selectedStartLocation}
+							on:change={() => {
+								updatePrice();
+								if (hasGeneratedTimes) handleSettingChange();
+							}}
+							disabled={settingsLocked}
+							class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							<option value="" disabled selected>Välj startplats</option>
+							{#each data.startLocations as location}
+								<option value={location.id}>
+									{location.location} - {location.price}kr
+								</option>
+							{/each}
+						</select>
+					{/if}
 				</div>
 
-				<!-- Bokningslängd -->
+				<!-- Booking Length -->
 				<div class="space-y-2">
 					<Label for="bookingLength">
 						2. Välj bokningslängd
@@ -408,9 +423,7 @@
 						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						disabled={!selectedStartLocation || settingsLocked}
 					>
-						<option value="">
-							{selectedStartLocation ? 'Välj längd' : 'Välj startplats först'}
-						</option>
+						<option value="" disabled selected>Välj bokningslängd</option>
 						{#each sortedBookingLengths as duration}
 							<option value={duration.length}>
 								{duration.length}
