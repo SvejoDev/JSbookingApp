@@ -1,3 +1,4 @@
+<!--src/routes/booking/[id]/+page.svelte-->
 <script>
 	import { supabase } from '$lib/supabaseClient.js';
 	import { Swedish } from 'flatpickr/dist/l10n/sv.js';
@@ -60,6 +61,7 @@
 	let settingsLocked = false;
 	let hasCheckedTimes = false;
 	let showContactSection = false;
+	let selectedExperienceId = data.experience?.id;
 
 	//Hitta namnet till tillvalsprodukten
 	let selectedStartLocationName = '';
@@ -114,11 +116,19 @@
 						amountCanoes,
 						amountKayaks,
 						amountSUPs
-					}
+					},
+					experienceId: selectedExperienceId
 				})
 			});
 
-			const { availableStartTimes } = await response.json();
+			const { availableStartTimes, error } = await response.json();
+
+			if (error) {
+				console.error('Server error:', error);
+				possibleStartTimes = [];
+				return;
+			}
+
 			possibleStartTimes = availableStartTimes;
 			if (possibleStartTimes.length > 0) {
 				scrollToElement('available-times');
@@ -266,6 +276,8 @@
 		}
 	}
 
+	$: selectedExperienceId = data.experience?.id;
+
 	$: if (startDate && startTime && selectedBookingLength) {
 		calculateReturnDate();
 	}
@@ -369,7 +381,7 @@
 	}
 </script>
 
-{#if data.experience}
+{#if data.experience && data.experience.id}
 	<div class="container mx-auto p-4 space-y-6">
 		<Card>
 			<CardHeader>
