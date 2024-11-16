@@ -32,10 +32,12 @@
 </script>
 
 <div class="container mx-auto py-8 px-4">
-	<Button variant="ghost" href="/" class="mb-6 flex items-center gap-2">
-		<ArrowLeft class="w-4 h-4" />
-		Tillbaka till startsidan
-	</Button>
+	<a href="https://stisses.se">
+		<Button variant="ghost" class="mb-6 flex items-center gap-2">
+			<ArrowLeft class="w-4 h-4" />
+			Tillbaka till startsidan
+		</Button>
+	</a>
 
 	<Card class="w-full max-w-3xl mx-auto bg-white shadow-lg">
 		<CardContent class="p-8">
