@@ -1,13 +1,15 @@
 import { json } from '@sveltejs/kit';
 import Stripe from 'stripe';
-import dotenv from 'dotenv';
+import { STRIPE_SECRET_KEY } from '$env/static/private';
 
-dotenv.config();
+const stripe = new Stripe(STRIPE_SECRET_KEY);
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-export async function POST({ request }) {
+export async function POST({ request, url }) {
 	try {
+		// Använd URL från request-objektet
+		const origin = url.origin;
+		console.log('Request origin URL:', origin);
+
 		const {
 			amount,
 			name,
@@ -33,6 +35,12 @@ export async function POST({ request }) {
 			return json({ error: 'Missing required fields: amount or name' }, { status: 400 });
 		}
 
+		const successUrl = `${origin}/success?session_id={CHECKOUT_SESSION_ID}`;
+		const cancelUrl = `${origin}/cancel`;
+
+		console.log('Generated success URL:', successUrl);
+		console.log('Generated cancel URL:', cancelUrl);
+
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ['card', 'klarna'],
 			line_items: [
@@ -46,8 +54,8 @@ export async function POST({ request }) {
 				}
 			],
 			mode: 'payment',
-			success_url: 'http://localhost:5173/success',
-			cancel_url: 'http://localhost:5173/cancel',
+			success_url: successUrl,
+			cancel_url: cancelUrl,
 			metadata: {
 				experience_id,
 				experience,
@@ -70,6 +78,12 @@ export async function POST({ request }) {
 
 		return json({ id: session.id });
 	} catch (error) {
+		console.error('Stripe session creation error:', error);
+		console.error('Error details:', {
+			message: error.message,
+			type: error.type,
+			raw: error.raw
+		});
 		return json({ error: error.message }, { status: 500 });
 	}
 }
