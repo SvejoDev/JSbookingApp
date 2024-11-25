@@ -1,27 +1,42 @@
 // src/routes/admin/+layout.server.js
 import { redirect } from '@sveltejs/kit';
-import { supabaseAdmin } from '$lib/supabaseAdmin';
 
 export const load = async ({ locals, url }) => {
 	// Skip auth check for login page
 	if (url.pathname === '/admin/auth/login') {
+		const session = await locals.getSession();
+
+		// If already logged in and is admin, redirect to admin dashboard
+		if (session) {
+			const { data: profile } = await locals.supabase
+				.from('profiles')
+				.select('role')
+				.eq('id', session.user.id)
+				.single();
+
+			if (profile?.role === 'admin') {
+				throw redirect(303, '/admin');
+			}
+		}
 		return {};
 	}
 
+	// For all other admin routes, check authentication
 	const session = await locals.getSession();
-
 	if (!session) {
 		throw redirect(303, '/admin/auth/login');
 	}
 
-	// Verify if user is an admin
-	const { data: profile, error } = await supabaseAdmin
+	// Check if user is admin
+	const { data: profile } = await locals.supabase
 		.from('profiles')
 		.select('role')
 		.eq('id', session.user.id)
 		.single();
 
-	if (error || !profile || profile.role !== 'admin') {
+	if (!profile || profile.role !== 'admin') {
+		// Sign out if not admin
+		await locals.supabase.auth.signOut();
 		throw redirect(303, '/admin/auth/login');
 	}
 
