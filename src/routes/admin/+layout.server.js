@@ -27,18 +27,22 @@ export const load = async ({ locals, url }) => {
 		throw redirect(303, '/admin/auth/login');
 	}
 
+	// Get authenticated user data
+	const {
+		data: { user },
+		error: userError
+	} = await locals.supabase.auth.getUser();
+	if (userError || !user) {
+		await locals.supabase.auth.signOut();
+		throw redirect(303, '/admin/auth/login');
+	}
+
 	// Check if user is admin
 	const { data: profile } = await locals.supabase
 		.from('profiles')
 		.select('role')
-		.eq('id', session.user.id)
+		.eq('id', user.id)
 		.single();
-
-	if (!profile || profile.role !== 'admin') {
-		// Sign out if not admin
-		await locals.supabase.auth.signOut();
-		throw redirect(303, '/admin/auth/login');
-	}
 
 	return {
 		user: session.user
