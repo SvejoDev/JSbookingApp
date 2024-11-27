@@ -32,9 +32,9 @@
             } else {
                 error = 'Invalid invitation link';
             }
-        } else {
-            // If not an invitation link, redirect to home or login
-            goto('/admin/auth/login');
+    } else if (window.location.pathname !== '/success') {
+             // If not an invitation link, redirect to home or login
+            goto('/');
         }
     });
 
