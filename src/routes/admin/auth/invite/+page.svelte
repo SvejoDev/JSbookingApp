@@ -25,7 +25,6 @@
 	}
 </script>
 
-// src/routes/admin/auth/invite/+page.svelte
 <div class="container mx-auto px-4 py-8">
 	<Card class="max-w-md mx-auto">
 		<CardHeader>
