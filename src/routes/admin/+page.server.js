@@ -2,9 +2,9 @@
 import { redirect } from '@sveltejs/kit';
 
 export const load = async ({ locals }) => {
-	const session = await locals.getSession();
+	const user = await locals.getUser();
 
-	if (!session) {
+	if (!user) {
 		throw redirect(303, '/admin/auth/login');
 	}
 
@@ -12,7 +12,7 @@ export const load = async ({ locals }) => {
 	const { data: profile } = await locals.supabase
 		.from('profiles')
 		.select('*')
-		.eq('id', session.user.id)
+		.eq('id', user.id)
 		.single();
 
 	if (!profile || profile.role !== 'admin') {

@@ -10,11 +10,24 @@ async function supabaseHook({ event, resolve }) {
 		event
 	});
 
-	event.locals.getSession = async () => {
+	// Remove getSession and only use getUser which is more secure
+	event.locals.getUser = async () => {
 		const {
-			data: { session }
-		} = await event.locals.supabase.auth.getSession();
-		return session;
+			data: { user },
+			error
+		} = await event.locals.supabase.auth.getUser();
+		if (error || !user) return null;
+		return user;
+	};
+
+	// Existing getUser function
+	event.locals.getUser = async () => {
+		const {
+			data: { user },
+			error
+		} = await event.locals.supabase.auth.getUser();
+		if (error || !user) return null;
+		return user;
 	};
 
 	return resolve(event, {
@@ -32,16 +45,16 @@ async function adminProtection({ event, resolve }) {
 
 	// Protect all other admin routes
 	if (event.url.pathname.startsWith('/admin')) {
-		const session = await event.locals.getSession();
+		const user = await event.locals.getUser();
 
-		if (!session) {
+		if (!user) {
 			throw redirect(303, '/admin/auth/login');
 		}
 
 		const { data: profile } = await event.locals.supabase
 			.from('profiles')
 			.select('role')
-			.eq('id', session.user.id)
+			.eq('id', user.id)
 			.single();
 
 		if (!profile || profile.role !== 'admin') {
