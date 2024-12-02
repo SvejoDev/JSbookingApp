@@ -1,7 +1,6 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
 	import { supabase } from '$lib/supabaseClient.js';
-	import { Swedish } from 'flatpickr/dist/l10n/sv.js';
 
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
@@ -11,9 +10,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Loader2 } from 'lucide-svelte';
-
-	import flatpickr from 'flatpickr';
-	import 'flatpickr/dist/flatpickr.css';
+	import Calendar from '$lib/components/calendar/Calendar.svelte';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 
@@ -239,20 +236,6 @@
 		if (data.blocked_dates) {
 			blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
 		}
-
-		// Initierar Flatpickr-kalendern med anpassade inställningar
-		flatpickr('#booking-calendar', {
-			disableMobile: 'true',
-			minDate: minDate,
-			maxDate: maxDate,
-			disable: blockedDates,
-			dateFormat: 'Y-m-d',
-			weekNumbers: true,
-			locale: Swedish, // Add Swedish locale which defaults to Monday as first day
-			onChange: (selectedDates, dateStr) => {
-				startDate = dateStr;
-			}
-		});
 	});
 
 	function updatePrice() {
@@ -382,85 +365,96 @@
 </script>
 
 {#if data.experience && data.experience.id}
-	<div class="container mx-auto p-4 space-y-6">
-		<Card>
-			<CardHeader>
-				<CardTitle>{data.experience.name}</CardTitle>
-			</CardHeader>
-			<CardContent class="space-y-6">
-				<!-- StartLocation -->
-				<div class="space-y-2">
-					<Label for="startLocation">1. Välj startplats</Label>
-					{#if data.startLocations.length === 1}
-						<div
-							class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
-						>
-							{data.startLocations[0].location} - {data.startLocations[0].price}kr
-						</div>
-					{:else}
+	<div class="container mx-auto p-4">
+		<div class="flex flex-col lg:flex-row gap-6">
+			<!-- First card with start location and booking length -->
+			<Card class="lg:w-1/2">
+				<CardHeader>
+					<CardTitle>{data.experience.name}</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-6">
+					<!-- StartLocation -->
+					<div class="space-y-2">
+						<Label for="startLocation">1. Välj startplats</Label>
+						{#if data.startLocations.length === 1}
+							<div
+								class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+							>
+								{data.startLocations[0].location} - {data.startLocations[0].price}kr
+							</div>
+						{:else}
+							<select
+								id="startLocation"
+								bind:value={selectedStartLocation}
+								on:change={() => {
+									updatePrice();
+									if (hasGeneratedTimes) handleSettingChange();
+								}}
+								disabled={settingsLocked}
+								class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								<option value="" disabled selected>Välj startplats</option>
+								{#each data.startLocations as location}
+									<option value={location.id}>
+										{location.location} - {location.price}kr
+									</option>
+								{/each}
+							</select>
+						{/if}
+					</div>
+
+					<!-- Booking Length -->
+					<div class="space-y-2">
+						<Label for="bookingLength">
+							2. Välj bokningslängd
+							{#if !selectedStartLocation}
+								<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
+							{/if}
+						</Label>
 						<select
-							id="startLocation"
-							bind:value={selectedStartLocation}
+							id="bookingLength"
+							bind:value={selectedBookingLength}
 							on:change={() => {
-								updatePrice();
 								if (hasGeneratedTimes) handleSettingChange();
 							}}
-							disabled={settingsLocked}
 							class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={!selectedStartLocation || settingsLocked}
 						>
-							<option value="" disabled selected>Välj startplats</option>
-							{#each data.startLocations as location}
-								<option value={location.id}>
-									{location.location} - {location.price}kr
+							<option value="" disabled selected>Välj bokningslängd</option>
+							{#each sortedBookingLengths as duration}
+								<option value={duration.length}>
+									{duration.length}
 								</option>
 							{/each}
 						</select>
-					{/if}
-				</div>
+					</div>
+				</CardContent>
+			</Card>
 
-				<!-- Booking Length -->
-				<div class="space-y-2">
-					<Label for="bookingLength">
-						2. Välj bokningslängd
-						{#if !selectedStartLocation}
-							<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
-						{/if}
-					</Label>
-					<select
-						id="bookingLength"
-						bind:value={selectedBookingLength}
-						on:change={() => {
-							if (hasGeneratedTimes) handleSettingChange();
-						}}
-						class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-						disabled={!selectedStartLocation || settingsLocked}
-					>
-						<option value="" disabled selected>Välj bokningslängd</option>
-						{#each sortedBookingLengths as duration}
-							<option value={duration.length}>
-								{duration.length}
-							</option>
-						{/each}
-					</select>
+			{#if selectedStartLocation && selectedBookingLength}
+				<div class="lg:w-1/2">
+					<Label for="booking-calendar">3. Välj datum</Label>
+					<div class="calendar-container">
+						<Calendar
+							{minDate}
+							{maxDate}
+							openingPeriods={[
+								{
+									start_date: data.openHours.start_date,
+									end_date: data.openHours.end_date
+								}
+							]}
+							{blockedDates}
+							selectedDate={startDate}
+							on:dateSelect={(event) => {
+								startDate = event.detail.toISOString().split('T')[0];
+								if (hasGeneratedTimes) handleSettingChange();
+							}}
+						/>
+					</div>
 				</div>
-
-				<!-- Datum -->
-				<div class="space-y-2">
-					<Label for="booking-calendar">Välj datum</Label>
-					<Input
-						id="booking-calendar"
-						type="text"
-						placeholder="Välj datum"
-						class="flatpickr-input"
-						disabled={settingsLocked}
-						on:change={() => {
-							if (hasGeneratedTimes) handleSettingChange();
-						}}
-					/>
-				</div>
-			</CardContent>
-		</Card>
-
+			{/if}
+		</div>
 		{#if startDate && selectedBookingLength}
 			<Card id="equipment-section">
 				<CardHeader>
@@ -707,7 +701,7 @@
 							type="tel"
 							id="phone"
 							bind:value={userPhone}
-							pattern="^\+?[1-9]\d{(1, 14)}$"
+							pattern="^\+?[1-9]\d{14}$"
 							required
 						/>
 					</div>
@@ -742,20 +736,11 @@
 {/if}
 
 <style>
-	/* Stil för att matcha flatpickr med shadcn design */
-	:global(.flatpickr-input) {
-		background-color: hsl(var(--background));
+	.calendar-container {
+		background: white;
+		padding: 1rem;
+		border-radius: 0.5rem;
 		border: 1px solid hsl(var(--border));
-		border-radius: var(--radius);
-		padding: 0.5rem;
-		font-size: 0.875rem;
-		line-height: 1.25rem;
-		width: 100%;
-	}
-
-	:global(.flatpickr-input:focus) {
-		outline: none;
-		border-color: hsl(var(--ring));
-		ring: 1px solid hsl(var(--ring));
+		margin-top: 0.5rem;
 	}
 </style>
