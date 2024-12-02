@@ -1,4 +1,3 @@
-<!-- src/lib/components/calendar/CalendarDay.svelte -->
 <script lang="ts">
 	export let date: Date;
 	export let isSelected: boolean = false;
@@ -11,7 +10,7 @@
 	const dispatch = createEventDispatcher();
 
 	function handleClick() {
-		if (!disabled) {
+		if (!disabled && !isBlocked) {
 			dispatch('select', date);
 		}
 	}
@@ -25,7 +24,8 @@
 	class:disabled
 	class:blocked={isBlocked}
 	on:click={handleClick}
-	{disabled}
+	disabled={disabled || isBlocked}
+	title={isBlocked ? 'Detta datum är tyvärr blockerat' : ''}
 >
 	<span class="date">{date.getDate()}</span>
 	{#if isOpen}
@@ -48,43 +48,29 @@
 		border-radius: 0.25rem;
 		font-size: 0.875rem;
 		padding: 0.25rem;
-		border: 2px solid transparent; /* Lägg till en transparent border som default */
+		border: 2px solid transparent;
 	}
 
 	.day:hover:not(.disabled):not(.blocked) {
 		background-color: hsl(var(--primary) / 0.1);
 	}
 
-	.selected {
-		background-color: hsl(var(--primary) / 0.1); /* Ljusare bakgrund */
-		border: 2px solid hsl(var(--primary)); /* Tydlig border runt vald dag */
-		font-weight: 600; /* Fetare text */
+	.blocked {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.indicator {
-		width: 6px; /* Lite större prick */
+		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		margin-top: 1px;
 		position: absolute;
 		bottom: 2px;
-		background-color: rgb(22 163 74); /* Default grön färg */
+		background-color: rgb(22 163 74);
 	}
 
 	.indicator.blocked {
-		background-color: rgb(239 68 68); /* Röd färg för blockerade dagar */
-	}
-
-	.open {
-		background-color: rgb(22 163 74); /* Tydlig grön färg */
-	}
-
-	.outside-month {
-		opacity: 0.5;
-	}
-
-	.disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+		background-color: rgb(239 68 68);
 	}
 </style>

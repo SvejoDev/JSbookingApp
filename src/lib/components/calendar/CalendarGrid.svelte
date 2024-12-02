@@ -39,10 +39,11 @@
 	}
 
 	function isDateDisabled(date: Date): boolean {
-		if (minDate && date < minDate) return true;
-		if (maxDate && date > maxDate) return true;
-		return false;
-	}
+    if (minDate && date < minDate) return true;
+    if (maxDate && date > maxDate) return true;
+    if (isDateBlocked(date)) return true; 
+    return false;
+}
 
 	function isOutsideMonth(date: Date): boolean {
 		return date.getMonth() !== currentMonth.getMonth();
