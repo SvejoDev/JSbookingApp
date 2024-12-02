@@ -23,6 +23,7 @@
 	class:outside-month={isOutsideMonth}
 	class:disabled
 	class:blocked={isBlocked}
+	class:not-open={!isOpen}
 	on:click={handleClick}
 	disabled={disabled || isBlocked}
 	title={isBlocked ? 'Detta datum är tyvärr blockerat' : ''}
@@ -35,6 +36,7 @@
 
 <style>
 	.day {
+		/* existing styles */
 		position: relative;
 		width: 100%;
 		aspect-ratio: 1;
@@ -42,22 +44,35 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		border: none;
-		background: none;
-		cursor: pointer;
+		border: 2px solid transparent;
 		border-radius: 0.25rem;
 		font-size: 0.875rem;
 		padding: 0.25rem;
-		border: 2px solid transparent;
+		transition: all 0.2s ease;
+		background-color: white;
 	}
 
-	.day:hover:not(.disabled):not(.blocked) {
-		background-color: hsl(var(--primary) / 0.1);
+	.selected {
+		background-color: hsl(var(--primary)) !important;
+		color: white !important;
+		font-weight: 700;
+		transform: scale(1.15);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+		z-index: 20;
+		border: 2px solid hsl(var(--primary));
 	}
 
-	.blocked {
-		opacity: 0.5;
-		cursor: not-allowed;
+	/* Make non-selected dates more muted */
+	.day:not(.selected) {
+		background-color: white;
+	}
+
+	.blocked,
+	.not-open,
+	.disabled,
+	.outside-month {
+		opacity: 0.25;
+		color: hsl(var(--muted-foreground));
 	}
 
 	.indicator {
@@ -72,5 +87,9 @@
 
 	.indicator.blocked {
 		background-color: rgb(239 68 68);
+	}
+
+	.selected .indicator {
+		background-color: white;
 	}
 </style>

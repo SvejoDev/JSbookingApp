@@ -11,21 +11,19 @@
 	export let isDateBlocked: (date: Date) => boolean;
 
 	const dispatch = createEventDispatcher();
-
 	const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
 	$: calendarDays = getCalendarDays(currentMonth);
+	$: selectedDateStr = selectedDate;
 
 	function getCalendarDays(date: Date) {
 		const days = [];
 		const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
 		const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
-		// Get the Monday before the first day of the month
 		let start = new Date(firstDay);
 		start.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
 
-		// Get the Sunday after the last day of the month
 		let end = new Date(lastDay);
 		end.setDate(lastDay.getDate() + ((7 - lastDay.getDay()) % 7));
 
@@ -38,21 +36,21 @@
 		return days;
 	}
 
-	function isDateDisabled(date: Date): boolean {
-    if (minDate && date < minDate) return true;
-    if (maxDate && date > maxDate) return true;
-    if (isDateBlocked(date)) return true; 
-    return false;
-}
-
-	function isOutsideMonth(date: Date): boolean {
-		return date.getMonth() !== currentMonth.getMonth();
-	}
-
 	function handleDateSelect(date: Date) {
 		if (!isDateDisabled(date)) {
 			dispatch('dateSelect', date);
 		}
+	}
+
+	function isDateDisabled(date: Date): boolean {
+		if (minDate && date < minDate) return true;
+		if (maxDate && date > maxDate) return true;
+		if (isDateBlocked(date)) return true;
+		return false;
+	}
+
+	function isOutsideMonth(date: Date): boolean {
+		return date.getMonth() !== currentMonth.getMonth();
 	}
 
 	function isToday(date: Date): boolean {
@@ -61,8 +59,15 @@
 	}
 
 	function isSelected(date: Date): boolean {
-		if (!selectedDate) return false;
-		return date.toDateString() === new Date(selectedDate).toDateString();
+		if (!selectedDateStr) return false;
+		return formatDate(date) === selectedDateStr;
+	}
+
+	function formatDate(date: Date): string {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}`;
 	}
 </script>
 
@@ -92,26 +97,26 @@
 <style>
 	.calendar-grid {
 		width: 100%;
-		max-width: 300px; /* Begränsa kalenderns bredd */
-		margin: 0 auto; /* Centrera kalendern */
+		max-width: 300px;
+		margin: 0 auto;
 	}
 
 	.weekdays {
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
-		gap: 0.25rem; /* Minska mellanrummet mellan dagarna */
+		gap: 0.25rem;
 		margin-bottom: 0.25rem;
 	}
 
 	.weekday {
 		text-align: center;
-		font-size: 0.75rem; /* Mindre text för veckodagarna */
+		font-size: 0.75rem;
 		color: hsl(var(--muted-foreground));
 	}
 
 	.days {
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
-		gap: 0.25rem; /* Minska mellanrummet mellan dagarna */
+		gap: 0.25rem;
 	}
 </style>
