@@ -1,0 +1,73 @@
+<!-- src/lib/components/calendar/Calendar.svelte -->
+<script lang="ts">
+    import { createEventDispatcher } from 'svelte';
+    import CalendarHeader from './CalendarHeader.svelte';
+    import CalendarGrid from './CalendarGrid.svelte';
+
+    export let minDate: Date | null = null;
+    export let maxDate: Date | null = null;
+    export let blockedDates: Date[] = [];
+    export let openingPeriods: { start_date: string; end_date: string }[] = [];
+    export let selectedDate: string | null = null;
+
+    const dispatch = createEventDispatcher();
+    let currentMonth = new Date();
+    let forceUpdate = 0;
+
+    function formatDate(date: Date): string {
+        // Använd lokal tid istället för UTC
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function handleDateSelect(event: CustomEvent<Date>) {
+        const date = event.detail;
+        selectedDate = formatDate(date);
+        forceUpdate += 1;
+        dispatch('dateSelect', date);
+    }
+
+    function handleMonthChange(event: CustomEvent<Date>) {
+        currentMonth = event.detail;
+    }
+
+    export function isDateOpen(date: Date): boolean {
+        return openingPeriods.some((period) => {
+            const start = new Date(period.start_date);
+            const end = new Date(period.end_date);
+            return date >= start && date <= end;
+        });
+    }
+
+    export function isDateBlocked(date: Date): boolean {
+        return blockedDates.some(
+            (blockedDate) => blockedDate.toDateString() === date.toDateString()
+        );
+    }
+</script>
+
+{#key forceUpdate}
+    <div class="calendar">
+        <CalendarHeader {currentMonth} on:monthChange={handleMonthChange} />
+        <CalendarGrid
+            {currentMonth}
+            {minDate}
+            {maxDate}
+            selectedDate={selectedDate}
+            {isDateOpen}
+            {isDateBlocked}
+            on:dateSelect={handleDateSelect}
+        />
+    </div>
+{/key}
+
+<style>
+    .calendar {
+        background-color: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 1rem;
+    }
+</style>
