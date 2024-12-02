@@ -13,7 +13,13 @@ export async function POST({ request, url }) {
 
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ['card', 'klarna'],
-			customer_email: requestData.customer_email, // Add this line
+			customer_email: requestData.customer_email,
+			payment_method_options: {
+				card: {
+					setup_future_usage: 'off_session',
+					request_three_d_secure: 'automatic'
+				}
+			},
 			line_items: [
 				{
 					price_data: {
