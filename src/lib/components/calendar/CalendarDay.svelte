@@ -1,4 +1,9 @@
 <script lang="ts">
+	export let bookingLength: {
+		length: string;
+		overnight: boolean;
+		return_day_offset: number;
+	} | null = null;
 	export let date: Date;
 	export let isSelected: boolean = false;
 	export let isToday: boolean = false;
@@ -6,6 +11,9 @@
 	export let isBlocked: boolean = false;
 	export let isOutsideMonth: boolean = false;
 	export let disabled: boolean = false;
+	export let isStartDay: boolean = false;
+	export let isEndDay: boolean = false;
+	export let isInBetweenDay: boolean = false;
 	import { createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
 
@@ -14,79 +22,114 @@
 			dispatch('select', date);
 		}
 	}
+
+	$: showConnectingLine = (isStartDay || isInBetweenDay) && bookingLength?.overnight;
 </script>
 
 <button
-	class="day"
+	class="day-wrapper"
 	class:selected={isSelected}
 	class:today={isToday}
 	class:outside-month={isOutsideMonth}
 	class:disabled
 	class:blocked={isBlocked}
 	class:not-open={!isOpen}
+	class:start-day={isStartDay}
+	class:end-day={isEndDay}
+	class:in-between-day={isInBetweenDay}
+	class:show-line={showConnectingLine}
 	on:click={handleClick}
 	disabled={disabled || isBlocked}
-	title={isBlocked ? 'Detta datum är tyvärr blockerat' : ''}
 >
-	<span class="date">{date.getDate()}</span>
-	{#if isOpen}
-		<span class="indicator" class:blocked={isBlocked} />
-	{/if}
+	<div class="day">
+		<span class="date">{date.getDate()}</span>
+		{#if isOpen}
+			<span class="indicator" class:blocked={isBlocked} />
+		{/if}
+	</div>
 </button>
 
 <style>
-	.day {
-		/* existing styles */
+	.day-wrapper {
 		position: relative;
 		width: 100%;
 		aspect-ratio: 1;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		border: 2px solid transparent;
-		border-radius: 0.25rem;
+		border: none;
+		background: transparent;
+		padding: 0;
+	}
+
+	.day {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
 		font-size: 0.875rem;
-		padding: 0.25rem;
-		transition: all 0.2s ease;
-		background-color: white;
+		color: hsl(var(--foreground));
+		position: relative;
+		z-index: 2;
 	}
 
-	.selected {
-		background-color: hsl(var(--primary)) !important;
-		color: white !important;
-		font-weight: 700;
-		transform: scale(1.15);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-		z-index: 20;
-		border: 2px solid hsl(var(--primary));
+	.selected .day {
+		background-color: hsl(220 13% 15%);
+		color: white;
 	}
 
-	/* Make non-selected dates more muted */
-	.day:not(.selected) {
-		background-color: white;
+	.start-day .day,
+	.end-day .day {
+		background-color: hsl(220 13% 15%);
+		color: white;
+	}
+
+	.show-line.start-day::after,
+	.show-line.in-between-day::after {
+		content: '';
+		position: absolute;
+		left: 16px; /* Justerad från 0 till 16px för att inte sticka ut */
+		right: -50%;
+		top: 50%;
+		transform: translateY(-50%);
+		height: 30px; /* Ökad från 8px till 16px för högre linje */
+		background-color: hsl(220 13% 91%);
+		z-index: 1;
+	}
+
+	.show-line.in-between-day::before {
+		content: '';
+		position: absolute;
+		right: 16px; /* Justerad från 0 till 16px för att inte sticka ut */
+		left: -50%;
+		top: 50%;
+		transform: translateY(-50%);
+		height: 30px; /* Ökad från 8px till 16px för högre linje */
+		background-color: hsl(220 13% 91%);
+		z-index: 1;
 	}
 
 	.blocked,
 	.not-open,
 	.disabled,
 	.outside-month {
-		opacity: 0.25;
+		opacity: 0.35;
 		color: hsl(var(--muted-foreground));
 	}
 
 	.indicator {
-		width: 6px;
-		height: 6px;
+		width: 4px;
+		height: 4px;
 		border-radius: 50%;
-		margin-top: 1px;
 		position: absolute;
 		bottom: 2px;
-		background-color: rgb(22 163 74);
+		background-color: rgb(22 163 74 / 0.8);
 	}
 
 	.indicator.blocked {
-		background-color: rgb(239 68 68);
+		background-color: rgb(239 68 68 / 0.8);
 	}
 
 	.selected .indicator {

@@ -454,6 +454,9 @@
 								startDate = `${year}-${month}-${day}`;
 								if (hasGeneratedTimes) handleSettingChange();
 							}}
+							bookingLength={selectedBookingLength
+								? data.bookingLengths.find((b) => b.length === selectedBookingLength)
+								: null}
 						/>
 					</div>
 				</div>

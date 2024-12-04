@@ -10,6 +10,12 @@
 	export let isDateOpen: (date: Date) => boolean;
 	export let isDateBlocked: (date: Date) => boolean;
 
+	export let bookingLength: {
+		length: string;
+		overnight: boolean;
+		return_day_offset: number;
+	} | null = null;
+
 	const dispatch = createEventDispatcher();
 	const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
@@ -69,6 +75,49 @@
 		const day = String(date.getDate()).padStart(2, '0');
 		return `${year}-${month}-${day}`;
 	}
+
+	function getEndDate(startDate: string, nights: number): string {
+		const date = new Date(startDate);
+		date.setDate(date.getDate() + nights);
+		return formatDate(date);
+	}
+
+	function isDateInRange(date: Date): {
+		isStartDay: boolean;
+		isEndDay: boolean;
+		isInBetweenDay: boolean;
+	} {
+		if (!selectedDate || !bookingLength) {
+			return {
+				isStartDay: false,
+				isEndDay: false,
+				isInBetweenDay: false
+			};
+		}
+
+		const startDateObj = new Date(selectedDate);
+		let endDateObj = new Date(startDateObj);
+
+		if (bookingLength.overnight) {
+			endDateObj.setDate(endDateObj.getDate() + bookingLength.return_day_offset);
+		} else {
+			return {
+				isStartDay: formatDate(date) === selectedDate,
+				isEndDay: false,
+				isInBetweenDay: false
+			};
+		}
+
+		const currentDateStr = formatDate(date);
+		const startDateStr = formatDate(startDateObj);
+		const endDateStr = formatDate(endDateObj);
+
+		return {
+			isStartDay: currentDateStr === startDateStr,
+			isEndDay: currentDateStr === endDateStr,
+			isInBetweenDay: currentDateStr > startDateStr && currentDateStr < endDateStr
+		};
+	}
 </script>
 
 <div class="calendar-grid">
@@ -80,14 +129,19 @@
 
 	<div class="days">
 		{#each calendarDays as date}
+			{@const range = isDateInRange(date)}
 			<CalendarDay
 				{date}
+				{bookingLength}
 				isSelected={isSelected(date)}
 				isToday={isToday(date)}
 				isOpen={isDateOpen(date)}
 				isBlocked={isDateBlocked(date)}
 				isOutsideMonth={isOutsideMonth(date)}
 				disabled={isDateDisabled(date)}
+				isStartDay={range.isStartDay}
+				isEndDay={range.isEndDay}
+				isInBetweenDay={range.isInBetweenDay}
 				on:select={() => handleDateSelect(date)}
 			/>
 		{/each}
@@ -104,8 +158,8 @@
 	.weekdays {
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
-		gap: 0.25rem;
-		margin-bottom: 0.25rem;
+		gap: 0;
+		margin-bottom: 0.5rem;
 	}
 
 	.weekday {
@@ -117,6 +171,6 @@
 	.days {
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
-		gap: 0.25rem;
+		gap: 0;
 	}
 </style>
