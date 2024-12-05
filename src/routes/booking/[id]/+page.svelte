@@ -366,9 +366,14 @@
 
 {#if data.experience && data.experience.id}
 	<div class="container mx-auto p-4">
-		<div class="flex flex-col lg:flex-row gap-6">
+		<div class="flex flex-col lg:flex-row gap-6 justify-center">
 			<!-- First card with start location and booking length -->
-			<Card class="lg:w-1/2">
+			<Card
+				class="lg:max-w-[500px] transition-all duration-300 ease-in-out {selectedStartLocation &&
+				selectedBookingLength
+					? 'lg:translate-x-[-10%] lg:w-1/2'
+					: 'lg:translate-x-0'}"
+			>
 				<CardHeader>
 					<CardTitle>{data.experience.name}</CardTitle>
 				</CardHeader>
@@ -432,7 +437,9 @@
 			</Card>
 
 			{#if selectedStartLocation && selectedBookingLength}
-				<div class="lg:w-1/2">
+				<div
+					class="lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[100%] animate-slideIn"
+				>
 					<Label for="booking-calendar">3. Välj datum</Label>
 					<div class="calendar-container">
 						<Calendar
@@ -749,5 +756,23 @@
 		border-radius: 0.5rem;
 		border: 1px solid hsl(var(--border));
 		margin-top: 0.5rem;
+	}
+
+	.transition-all {
+		transition-property: all;
+		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+		transition-duration: 2000ms;
+	}
+	@keyframes slideIn {
+		from {
+			transform: translateX(10%);
+		}
+		to {
+			transform: translateX(0);
+		}
+	}
+
+	.animate-slideIn {
+		animation: slideIn 1s forwards;
 	}
 </style>
