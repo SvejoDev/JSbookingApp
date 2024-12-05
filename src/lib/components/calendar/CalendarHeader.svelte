@@ -35,7 +35,6 @@
 		dispatch('monthChange', newDate);
 	}
 </script>
-Test1
 <div class="calendar-header">
 	<Button variant="ghost" size="icon" on:click={previousMonth}>
 		<ChevronLeft class="h-4 w-4" />

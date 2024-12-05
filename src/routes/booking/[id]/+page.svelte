@@ -440,8 +440,10 @@
 				<div
 					class="lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[100%] animate-slideIn"
 				>
-					<Label for="booking-calendar">3. Välj datum</Label>
-					<div class="calendar-container">
+					<div class="calendar-container mt-4">
+						<CardHeader class="mb-4">
+							<CardTitle>Välj datum</CardTitle>
+						</CardHeader>
 						<Calendar
 							{minDate}
 							{maxDate}
