@@ -40,10 +40,10 @@ export async function POST({ request }) {
 				end_date: session.metadata.end_date,
 				end_time: session.metadata.end_time,
 				number_of_adults: parseInt(session.metadata.number_of_adults),
-				number_of_children: parseInt(session.metadata.number_of_children || 0),
-				amount_canoes: parseInt(session.metadata.amount_canoes || 0),
-				amount_kayak: parseInt(session.metadata.amount_kayak || 0),
-				amount_sup: parseInt(session.metadata.amount_SUP || 0),
+				number_of_children: parseInt(session.metadata.number_of_children?.toString() || '0'),
+				amount_canoes: parseInt(session.metadata.amount_canoes?.toString() || '0'),
+				amount_kayak: parseInt(session.metadata.amount_kayak?.toString() || '0'),
+				amount_sup: parseInt(session.metadata.amount_SUP?.toString() || '0'),
 				booking_name: session.metadata.booking_name,
 				booking_lastname: session.metadata.booking_lastname,
 				customer_comment: session.metadata.customer_comment || ''
@@ -69,9 +69,9 @@ export async function POST({ request }) {
 					start_time: session.metadata.start_time,
 					end_date: session.metadata.end_date,
 					end_time: session.metadata.end_time,
-					amount_canoes: parseInt(session.metadata.amount_canoes || 0),
-					amount_kayak: parseInt(session.metadata.amount_kayak || 0),
-					amount_sup: parseInt(session.metadata.amount_SUP || 0)
+					amount_canoes: parseInt(session.metadata.amount_canoes?.toString() || '0'),
+					amount_kayak: parseInt(session.metadata.amount_kayak?.toString() || '0'),
+					amount_sup: parseInt(session.metadata.amount_SUP?.toString() || '0')
 				});
 
 				console.log('Availability updated successfully');

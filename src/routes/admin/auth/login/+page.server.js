@@ -4,8 +4,8 @@ import { AuthApiError } from '@supabase/supabase-js';
 export const actions = {
 	login: async ({ request, locals: { supabase } }) => {
 		const formData = await request.formData();
-		const email = formData.get('email');
-		const password = formData.get('password');
+		const email = String(formData.get('email'));
+		const password = String(formData.get('password'));
 
 		const { data, error } = await supabase.auth.signInWithPassword({
 			email,

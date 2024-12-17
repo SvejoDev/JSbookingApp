@@ -1,10 +1,16 @@
-// src/routes/admin/auth/invite/+page.server.js
 import { supabaseAdmin } from '$lib/supabaseAdmin';
-import { error, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 
 export const actions = {
 	invite: async ({ request, locals }) => {
-		const session = await locals.getSession();
+		const {
+			data: { session },
+			error: sessionError
+		} = await locals.supabase.auth.getSession();
+
+		if (!session || sessionError) {
+			throw error(401, 'Unauthorized');
+		}
 
 		// Verify if the current user is an admin
 		const { data: adminProfile } = await supabaseAdmin
@@ -18,8 +24,8 @@ export const actions = {
 		}
 
 		const formData = await request.formData();
-		const email = formData.get('email');
-		const role = formData.get('role');
+		const email = String(formData.get('email'));
+		const role = String(formData.get('role'));
 
 		// Generate a signup link with Supabase
 		const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
