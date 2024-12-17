@@ -1,10 +1,9 @@
-<!-- src/lib/components/calendar/CalendarHeader.svelte -->
-<script lang="ts">
+<script>
 	import { createEventDispatcher } from 'svelte';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 
-	export let currentMonth: Date;
+	export let currentMonth = new Date();
 
 	const dispatch = createEventDispatcher();
 
@@ -35,6 +34,7 @@
 		dispatch('monthChange', newDate);
 	}
 </script>
+
 <div class="calendar-header">
 	<Button variant="ghost" size="icon" on:click={previousMonth}>
 		<ChevronLeft class="h-4 w-4" />
