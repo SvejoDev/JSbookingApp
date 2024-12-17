@@ -10,17 +10,6 @@ async function supabaseHook({ event, resolve }) {
 		event
 	});
 
-	// Remove getSession and only use getUser which is more secure
-	event.locals.getUser = async () => {
-		const {
-			data: { user },
-			error
-		} = await event.locals.supabase.auth.getUser();
-		if (error || !user) return null;
-		return user;
-	};
-
-	// Existing getUser function
 	event.locals.getUser = async () => {
 		const {
 			data: { user },

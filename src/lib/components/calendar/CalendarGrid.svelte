@@ -1,20 +1,14 @@
-<!-- src/lib/components/calendar/CalendarGrid.svelte -->
-<script lang="ts">
+<script>
 	import { createEventDispatcher } from 'svelte';
 	import CalendarDay from './CalendarDay.svelte';
 
-	export let currentMonth: Date;
-	export let minDate: Date | null;
-	export let maxDate: Date | null;
-	export let selectedDate: string | null;
-	export let isDateOpen: (date: Date) => boolean;
-	export let isDateBlocked: (date: Date) => boolean;
-
-	export let bookingLength: {
-		length: string;
-		overnight: boolean;
-		return_day_offset: number;
-	} | null = null;
+	export let currentMonth;
+	export let minDate = null;
+	export let maxDate = null;
+	export let selectedDate = null;
+	export let isDateOpen;
+	export let isDateBlocked;
+	export let bookingLength = null;
 
 	const dispatch = createEventDispatcher();
 	const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -22,7 +16,7 @@
 	$: calendarDays = getCalendarDays(currentMonth);
 	$: selectedDateStr = selectedDate;
 
-	function getCalendarDays(date: Date) {
+	function getCalendarDays(date) {
 		const days = [];
 		const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
 		const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -42,51 +36,41 @@
 		return days;
 	}
 
-	function handleDateSelect(date: Date) {
+	function handleDateSelect(date) {
 		if (!isDateDisabled(date)) {
 			dispatch('dateSelect', date);
 		}
 	}
 
-	function isDateDisabled(date: Date): boolean {
+	function isDateDisabled(date) {
 		if (minDate && date < minDate) return true;
 		if (maxDate && date > maxDate) return true;
 		if (isDateBlocked(date)) return true;
 		return false;
 	}
 
-	function isOutsideMonth(date: Date): boolean {
+	function isOutsideMonth(date) {
 		return date.getMonth() !== currentMonth.getMonth();
 	}
 
-	function isToday(date: Date): boolean {
+	function isToday(date) {
 		const today = new Date();
 		return date.toDateString() === today.toDateString();
 	}
 
-	function isSelected(date: Date): boolean {
+	function isSelected(date) {
 		if (!selectedDateStr) return false;
 		return formatDate(date) === selectedDateStr;
 	}
 
-	function formatDate(date: Date): string {
+	function formatDate(date) {
 		const year = date.getFullYear();
 		const month = String(date.getMonth() + 1).padStart(2, '0');
 		const day = String(date.getDate()).padStart(2, '0');
 		return `${year}-${month}-${day}`;
 	}
 
-	function getEndDate(startDate: string, nights: number): string {
-		const date = new Date(startDate);
-		date.setDate(date.getDate() + nights);
-		return formatDate(date);
-	}
-
-	function isDateInRange(date: Date): {
-		isStartDay: boolean;
-		isEndDay: boolean;
-		isInBetweenDay: boolean;
-	} {
+	function isDateInRange(date) {
 		if (!selectedDate || !bookingLength) {
 			return {
 				isStartDay: false,

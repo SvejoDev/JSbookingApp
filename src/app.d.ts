@@ -1,10 +1,8 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-
 declare global {
     namespace App {
         interface Locals {
-            supabase: SupabaseClient;
-            getUser: () => Promise<any>;
+            supabase: import('@supabase/supabase-js').SupabaseClient;
+            getUser: () => Promise<import('@supabase/supabase-js').User | null>;
         }
     }
 }

@@ -1,19 +1,20 @@
-<script lang="ts">
-	export let bookingLength: {
-		length: string;
-		overnight: boolean;
-		return_day_offset: number;
-	} | null = null;
-	export let date: Date;
-	export let isSelected: boolean = false;
-	export let isToday: boolean = false;
-	export let isOpen: boolean = false;
-	export let isBlocked: boolean = false;
-	export let isOutsideMonth: boolean = false;
-	export let disabled: boolean = false;
-	export let isStartDay: boolean = false;
-	export let isEndDay: boolean = false;
-	export let isInBetweenDay: boolean = false;
+<script>
+	export let bookingLength = {
+		length: '',
+		overnight: false,
+		return_day_offset: 0
+	};
+	export let date;
+	export let isSelected = false;
+	export let isToday = false;
+	export let isOpen = false;
+	export let isBlocked = false;
+	export let isOutsideMonth = false;
+	export let disabled = false;
+	export let isStartDay = false;
+	export let isEndDay = false;
+	export let isInBetweenDay = false;
+
 	import { createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
 
