@@ -7,7 +7,8 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"lint": "prettier --check .",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"migrate": "node src/scripts/migrate-data.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^3.0.0",
@@ -34,7 +35,7 @@
 		"@supabase/auth-helpers-sveltekit": "^0.13.0",
 		"@supabase/ssr": "^0.5.1",
 		"@supabase/supabase-js": "^2.46.1",
-		"dotenv": "^16.4.5",
+		"dotenv": "^16.4.7",
 		"flatpickr": "^4.6.13",
 		"pg": "^8.13.1",
 		"shadcn-svelte": "^0.14.0",
