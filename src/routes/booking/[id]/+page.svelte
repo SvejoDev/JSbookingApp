@@ -365,13 +365,17 @@
 </script>
 
 {#if data.experience && data.experience.id}
-	<div class="container mx-auto p-4">
-		<div class="flex flex-col lg:flex-row gap-6 justify-center">
-			<!-- First card with start location and booking length -->
+	<div class="max-w-7xl mx-auto p-4 overflow-hidden">
+		<!-- Added overflow-hidden -->
+		<div
+			class="flex flex-col lg:flex-row gap-6 justify-center items-start max-w-5xl mx-auto relative"
+		>
+			<!-- Added relative -->
+			<!-- First card -->
 			<Card
-				class="lg:max-w-[500px] transition-all duration-300 ease-in-out {selectedStartLocation &&
+				class="w-full lg:w-1/2 transition-all duration-300 ease-in-out {selectedStartLocation &&
 				selectedBookingLength
-					? 'lg:translate-x-[-10%] lg:w-1/2'
+					? 'lg:translate-x-[-5%]'
 					: 'lg:translate-x-0'}"
 			>
 				<CardHeader>
@@ -438,8 +442,10 @@
 
 			{#if selectedStartLocation && selectedBookingLength}
 				<div
-					class="lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[100%] animate-slideIn"
+					class="w-full lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[50%] animate-slideIn"
 				>
+					<!-- Adjusted from 100% to 50% -->
+
 					<div class="calendar-container mt-4">
 						<CardHeader class="mb-4">
 							<CardTitle>Välj datum</CardTitle>
