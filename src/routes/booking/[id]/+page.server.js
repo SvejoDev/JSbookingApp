@@ -1,77 +1,71 @@
-import { supabase } from '$lib/supabaseClient.js';
+import { query } from '$lib/db.js';
 
 export async function load({ params }) {
-	const { data: experience, error: experienceError } = await supabase
-		.from('experiences')
-		.select('*')
-		.eq('id', params.id)
-		.single();
+	try {
+		// hämta upplevelsen
+		const experienceResult = await query('SELECT * FROM experiences WHERE id = $1', [params.id]);
+		const experience = experienceResult.rows[0];
 
-	if (experienceError) {
-		console.error('Error fetching experience:', experienceError);
+		if (!experience) {
+			console.error('upplevelsen hittades inte');
+			return { error: 'upplevelsen hittades inte' };
+		}
+
+		// hämta tilläggsprodukter för upplevelsen
+		const addonsResult = await query(
+			`SELECT ea.experience_id, ea.addon_id, a.* 
+             FROM experience_addons ea 
+             JOIN addons a ON ea.addon_id = a.id 
+             WHERE ea.experience_id = $1`,
+			[params.id]
+		);
+		const experienceAddons = addonsResult.rows;
+
+		// hämta startplatser
+		const startLocationsResult = await query(
+			'SELECT id, location, price FROM start_locations WHERE experience_id = $1',
+			[params.id]
+		);
+		const startLocations = startLocationsResult.rows;
+
+		// hämta bokningslängder
+		const bookingLengthsResult = await query('SELECT * FROM booking_lengths');
+		const bookingLengths = bookingLengthsResult.rows;
+
+		// hämta öppettider
+		const openHoursResult = await query(
+			'SELECT start_date, end_date, open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
+			[params.id]
+		);
+		const openHours = openHoursResult.rows[0];
+
+		// hämta blockerade datum
+		const blockedDatesResult = await query(
+			'SELECT blocked_date FROM blocked_dates WHERE experience_id = $1',
+			[params.id]
+		);
+		const blockedDates = blockedDatesResult.rows;
+
+		// hämta blockerade starttider
+		const blockedStartTimesResult = await query(
+			'SELECT blocked_date, blocked_time FROM blocked_start_times WHERE experience_id = $1',
+			[params.id]
+		);
+		const blockedStartTimes = blockedStartTimesResult.rows;
+
+		return {
+			experience,
+			experienceAddons,
+			startLocations,
+			bookingLengths,
+			blocked_dates: blockedDates,
+			blocked_start_times: blockedStartTimes,
+			openHours
+		};
+	} catch (error) {
+		console.error('fel vid hämtning av bokningsdata:', error);
+		return {
+			error: 'kunde inte ladda bokningsdata'
+		};
 	}
-
-	const { data: experienceAddons, error: eaError } = await supabase
-		.from('experience_addons')
-		.select('experience_id,addon_id,addons(*)')
-		.eq('experience_id', params.id);
-
-	if (eaError) {
-		console.error('Error fetching experience addons:', eaError);
-	}
-
-	const { data: startLocations, error: startLocationsError } = await supabase
-		.from('start_locations')
-		.select('id, location, price')
-		.eq('experience_id', params.id);
-
-	if (startLocationsError) {
-		console.error('Error fetching start locations:', startLocationsError);
-	}
-
-	const { data: bookingLengths, error: bLerror } = await supabase
-		.from('booking_lengths')
-		.select('*');
-
-	if (bLerror) {
-		console.error('Error fetching bookingLength', bLerror);
-	}
-
-	const { data: openHours, error: openHoursError } = await supabase
-		.from('experience_open_dates')
-		.select('start_date, end_date, open_time, close_time')
-		.eq('experience_id', params.id)
-		.single();
-
-	if (openHoursError) {
-		console.error('Error fetching open dates', openHoursError);
-	}
-
-	const { data: blockedDates, error: blockedDatesError } = await supabase
-		.from('blocked_dates')
-		.select('blocked_date')
-		.eq('experience_id', params.id);
-
-	if (blockedDatesError) {
-		console.error('Error fetching blocked dates:', blockedDatesError);
-	}
-
-	const { data: blockedStartTimes, error: blockedStartTimesError } = await supabase
-		.from('blocked_start_times')
-		.select('blocked_date, blocked_time')
-		.eq('experience_id', params.id);
-
-	if (blockedStartTimesError) {
-		console.error('Error fetching blocked start times:', blockedStartTimesError);
-	}
-
-	return {
-		experience,
-		experienceAddons,
-		startLocations,
-		bookingLengths,
-		blocked_dates: blockedDates || [],
-		blocked_start_times: blockedStartTimes || [],
-		openHours
-	};
 }
