@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { AuthApiError } from '@supabase/supabase-js';
+import { query } from '$lib/db.js';
 
 export const actions = {
 	login: async ({ request, locals: { supabase } }) => {
@@ -7,6 +8,7 @@ export const actions = {
 		const email = String(formData.get('email'));
 		const password = String(formData.get('password'));
 
+		// använder fortfarande supabase för autentisering
 		const { data, error } = await supabase.auth.signInWithPassword({
 			email,
 			password
@@ -15,27 +17,25 @@ export const actions = {
 		if (error) {
 			if (error instanceof AuthApiError && error.status === 400) {
 				return fail(400, {
-					error: 'Invalid credentials',
+					error: 'felaktiga inloggningsuppgifter',
 					email
 				});
 			}
 			return fail(500, {
-				error: 'Server error. Try again later.',
+				error: 'serverfel. försök igen senare.',
 				email
 			});
 		}
 
-		// Verify if user is admin
-		const { data: profile, error: profileError } = await supabase
-			.from('profiles')
-			.select('role')
-			.eq('id', data.user.id)
-			.single();
+		// verifierar admin-rollen med postgresql
+		const { rows: profiles } = await query('SELECT role FROM profiles WHERE id = $1', [
+			data.user.id
+		]);
 
-		if (profileError || !profile || profile.role !== 'admin') {
+		if (!profiles.length || profiles[0].role !== 'admin') {
 			await supabase.auth.signOut();
 			return fail(403, {
-				error: 'Unauthorized access',
+				error: 'otillåten åtkomst',
 				email
 			});
 		}
@@ -44,7 +44,7 @@ export const actions = {
 	}
 };
 
-// Skip auth check for login page
+// hoppa över autentiseringskontroll för inloggningssidan
 export const load = async () => {
 	return {};
 };
