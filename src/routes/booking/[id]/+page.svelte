@@ -310,7 +310,17 @@
 			const stripe = await stripePromise;
 			console.log('Sending request to create-checkout-session...');
 
-			// Log the data being sent
+			// Konvertera selectedAddons till rätt format för API:et
+			const addonAmounts = Object.entries(selectedAddons).reduce((acc, [name, quantity]) => {
+				// Konvertera namn till det format API:et förväntar sig
+				// T.ex. "Kanot" blir "amount_canoes"
+				const apiKey = `amount_${name.toLowerCase()}`;
+				return {
+					...acc,
+					[apiKey]: quantity
+				};
+			}, {});
+
 			const requestData = {
 				amount: totalPrice,
 				name: data.experience.name,
@@ -323,14 +333,13 @@
 				end_time: returnTime,
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
-				amount_canoes: amountCanoes,
-				amount_kayak: amountKayaks,
-				amount_SUP: amountSUPs,
+				...addonAmounts, // Sprider ut de konverterade addon-värdena
 				booking_name: userName,
 				booking_lastname: userLastname,
 				customer_comment: userComment,
 				customer_email: userEmail
 			};
+
 			console.log('Request Data:', requestData);
 
 			const response = await fetch('/api/create-checkout-session', {
@@ -364,7 +373,7 @@
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
-			// Here you might want to show an error message to the user
+			// Här kan du visa ett felmeddelande för användaren
 		}
 	}
 </script>
@@ -581,6 +590,13 @@
 										Returdatum: {returnDate}
 										<br />
 										Returtid senast: {returnTime}
+										<br />
+										<br />
+										Valda tillval:
+										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [name, quantity]}
+											<br />
+											{quantity} st {name}
+										{/each}
 									{/if}
 								</AlertDescription>
 							</Alert>
