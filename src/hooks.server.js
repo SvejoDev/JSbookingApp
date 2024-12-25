@@ -1,58 +1,24 @@
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
-import { createSupabaseServerClient } from '@supabase/auth-helpers-sveltekit';
+import { auth } from '$lib/server/lucia';
 import { redirect } from '@sveltejs/kit';
-import { sequence } from '@sveltejs/kit/hooks';
 
-async function supabaseHook({ event, resolve }) {
-	event.locals.supabase = createSupabaseServerClient({
-		supabaseUrl: PUBLIC_SUPABASE_URL,
-		supabaseKey: PUBLIC_SUPABASE_ANON_KEY,
-		event
-	});
+// definiera vilka sidor som inte kräver autentisering
+const PUBLIC_ROUTES = ['/admin/auth/login', '/admin/auth/signup', '/admin/auth/callback'];
 
-	event.locals.getUser = async () => {
-		const {
-			data: { user },
-			error
-		} = await event.locals.supabase.auth.getUser();
-		if (error || !user) return null;
-		return user;
-	};
+export const handle = async ({ event, resolve }) => {
+	// hämta authrequest från lucia
+	event.locals.auth = auth.handleRequest(event);
 
-	return resolve(event, {
-		filterSerializedResponseHeaders(name) {
-			return name === 'content-range';
-		}
-	});
-}
+	const session = await event.locals.auth.validate();
+	event.locals.user = session?.user ?? null;
 
-async function adminProtection({ event, resolve }) {
-	// Skip auth check for login page
-	if (event.url.pathname === '/admin/auth/login') {
-		return resolve(event);
+	// kontrollera om sidan behöver autentisering
+	const isPublicRoute = PUBLIC_ROUTES.some((route) => event.url.pathname.startsWith(route));
+
+	// om användaren inte är inloggad och sidan kräver auth, omdirigera till login
+	if (!isPublicRoute && !session) {
+		throw redirect(303, '/admin/auth/login');
 	}
 
-	// Protect all other admin routes
-	if (event.url.pathname.startsWith('/admin')) {
-		const user = await event.locals.getUser();
-
-		if (!user) {
-			throw redirect(303, '/admin/auth/login');
-		}
-
-		const { data: profile } = await event.locals.supabase
-			.from('profiles')
-			.select('role')
-			.eq('id', user.id)
-			.single();
-
-		if (!profile || profile.role !== 'admin') {
-			await event.locals.supabase.auth.signOut();
-			throw redirect(303, '/admin/auth/login');
-		}
-	}
-
-	return resolve(event);
-}
-
-export const handle = sequence(supabaseHook, adminProtection);
+	// fortsätt till nästa middleware eller sidan
+	return await resolve(event);
+};
