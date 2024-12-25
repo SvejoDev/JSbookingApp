@@ -18,37 +18,36 @@
 		<CardContent>
 			<form
 				method="POST"
-				action="?/login"
 				use:enhance={() => {
 					loading = true;
-					return async ({ result, update }) => {
+					return async ({ result }) => {
 						loading = false;
-
-						// If the action redirected, manually apply the redirect
 						if (result.type === 'redirect') {
 							goto(result.location);
-							return;
 						}
-
-						// Otherwise, update the form
-						await update();
 					};
 				}}
 				class="space-y-4"
 			>
 				<div class="space-y-2">
 					<label for="email">Email</label>
-					<Input id="email" name="email" type="email" value={form?.email ?? ''} required />
+					<Input id="email" name="email" type="email" required autocomplete="email" />
 				</div>
 				<div class="space-y-2">
-					<label for="password">Password</label>
-					<Input id="password" name="password" type="password" required />
+					<label for="password">Lösenord</label>
+					<Input
+						id="password"
+						name="password"
+						type="password"
+						required
+						autocomplete="current-password"
+					/>
 				</div>
-				{#if form?.error}
-					<Alert variant="destructive">{form.error}</Alert>
+				{#if form?.message}
+					<Alert variant="destructive">{form.message}</Alert>
 				{/if}
 				<Button type="submit" disabled={loading} class="w-full">
-					{loading ? 'Loading...' : 'Login'}
+					{loading ? 'Loggar in...' : 'Logga in'}
 				</Button>
 			</form>
 		</CardContent>
