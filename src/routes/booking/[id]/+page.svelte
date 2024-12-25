@@ -532,24 +532,38 @@
 						</div>
 
 						<!-- Sök tider knapp -->
-						<Button
-							disabled={!startDate ||
-								!selectedBookingLength ||
-								isLoadingTimes ||
-								Object.values(selectedAddons).every((v) => v === 0)}
-							variant={isLoadingTimes ? 'outline' : 'default'}
-							class="w-full sm:w-auto"
-							on:click={generateStartTimes}
-						>
-							{#if isLoadingTimes}
-								<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-								Söker tillgängliga tider...
-							{:else if Object.values(selectedAddons).every((v) => v === 0)}
-								Välj minst en produkt
-							{:else}
-								Visa tillgängliga tider
+						<div class="flex gap-2 flex-wrap">
+							<Button
+								disabled={!startDate ||
+									!selectedBookingLength ||
+									isLoadingTimes ||
+									Object.values(selectedAddons).every((v) => v === 0)}
+								variant={isLoadingTimes ? 'outline' : 'default'}
+								class="sm:w-auto"
+								on:click={generateStartTimes}
+							>
+								{#if isLoadingTimes}
+									<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+									Söker tillgängliga tider...
+								{:else if Object.values(selectedAddons).every((v) => v === 0)}
+									Välj minst en produkt
+								{:else}
+									Visa tillgängliga tider
+								{/if}
+							</Button>
+
+							{#if settingsLocked}
+								<Button
+									variant="outline"
+									on:click={() => {
+										handleSettingChange();
+										scrollToElement('equipment-section');
+									}}
+								>
+									Ändra din bokning
+								</Button>
 							{/if}
-						</Button>
+						</div>
 
 						<!-- Tillgängliga tider -->
 						{#if possibleStartTimes.length > 0}
