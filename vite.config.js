@@ -3,9 +3,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [sveltekit()],
-	server: {
-		fs: {
-			allow: ['.']
-		}
+	optimizeDeps: {
+		include: ['lucia', '@lucia-auth/adapter-postgresql']
+	},
+	ssr: {
+		noExternal: ['lucia', '@lucia-auth/adapter-postgresql']
 	}
 });

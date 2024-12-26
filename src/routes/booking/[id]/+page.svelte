@@ -1,7 +1,5 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
-	import { supabase } from '$lib/supabaseClient.js';
-
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
