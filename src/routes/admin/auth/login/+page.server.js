@@ -1,50 +1,48 @@
+import { auth } from '$lib/server/lucia';
 import { fail, redirect } from '@sveltejs/kit';
-import { AuthApiError } from '@supabase/supabase-js';
+import { LuciaError } from 'lucia';
+
+// om användaren redan är inloggad, skicka dem till admin-sidan
+export const load = async ({ locals }) => {
+	const session = await locals.auth.validate();
+	if (session) throw redirect(302, '/admin');
+	return {};
+};
 
 export const actions = {
-	login: async ({ request, locals: { supabase } }) => {
+	default: async ({ request, locals }) => {
 		const formData = await request.formData();
-		const email = String(formData.get('email'));
-		const password = String(formData.get('password'));
+		const email = formData.get('email');
+		const password = formData.get('password');
 
-		const { data, error } = await supabase.auth.signInWithPassword({
-			email,
-			password
-		});
+		// validera att email och lösenord finns
+		if (typeof email !== 'string' || typeof password !== 'string') {
+			return fail(400, {
+				message: 'ogiltig inmatning'
+			});
+		}
 
-		if (error) {
-			if (error instanceof AuthApiError && error.status === 400) {
+		try {
+			// försök logga in användaren
+			const key = await auth.useKey('email', email, password);
+			const session = await auth.createSession({
+				userId: key.userId,
+				attributes: {}
+			});
+			locals.auth.setSession(session);
+		} catch (error) {
+			if (
+				error instanceof LuciaError &&
+				(error.message === 'AUTH_INVALID_KEY_ID' || error.message === 'AUTH_INVALID_PASSWORD')
+			) {
 				return fail(400, {
-					error: 'Invalid credentials',
-					email
+					message: 'fel email eller lösenord'
 				});
 			}
 			return fail(500, {
-				error: 'Server error. Try again later.',
-				email
+				message: 'ett oväntat fel uppstod'
 			});
 		}
-
-		// Verify if user is admin
-		const { data: profile, error: profileError } = await supabase
-			.from('profiles')
-			.select('role')
-			.eq('id', data.user.id)
-			.single();
-
-		if (profileError || !profile || profile.role !== 'admin') {
-			await supabase.auth.signOut();
-			return fail(403, {
-				error: 'Unauthorized access',
-				email
-			});
-		}
-
-		throw redirect(303, '/admin');
+		throw redirect(302, '/admin');
 	}
-};
-
-// Skip auth check for login page
-export const load = async () => {
-	return {};
 };

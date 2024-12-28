@@ -1,52 +1,38 @@
+// src/routes/admin/+layout.server.js
 import { redirect } from '@sveltejs/kit';
+import { query } from '$lib/db.js';
 
 export const load = async ({ locals, url }) => {
-	// Skip auth check for login page
+	// hoppa över autentiseringskontroll för inloggningssidan
 	if (url.pathname === '/admin/auth/login') {
-		const {
-			data: { user },
-			error: userError
-		} = await locals.supabase.auth.getUser();
+		// om användaren redan är inloggad
+		if (locals.user) {
+			const { rows: profiles } = await query('SELECT role FROM auth_user WHERE id = $1', [
+				locals.user.userId
+			]);
 
-		// If already logged in and is admin, redirect to admin dashboard
-		if (user && !userError) {
-			const { data: profile } = await locals.supabase
-				.from('profiles')
-				.select('role')
-				.eq('id', user.id)
-				.single();
-
-			if (profile?.role === 'admin') {
+			if (profiles.length && profiles[0].role === 'admin') {
 				throw redirect(303, '/admin');
 			}
 		}
 		return {};
 	}
 
-	// For all other admin routes, check authentication
-	const {
-		data: { user },
-		error: userError
-	} = await locals.supabase.auth.getUser();
-
-	if (userError || !user) {
-		await locals.supabase.auth.signOut();
+	// för alla andra admin-rutter, kontrollera autentisering
+	if (!locals.user) {
 		throw redirect(303, '/admin/auth/login');
 	}
 
-	// Check if user is admin
-	const { data: profile } = await locals.supabase
-		.from('profiles')
-		.select('role')
-		.eq('id', user.id)
-		.single();
+	// kontrollera om användaren är admin
+	const { rows: profiles } = await query('SELECT role FROM auth_user WHERE id = $1', [
+		locals.user.userId
+	]);
 
-	if (!profile || profile.role !== 'admin') {
-		await locals.supabase.auth.signOut();
+	if (!profiles.length || profiles[0].role !== 'admin') {
 		throw redirect(303, '/admin/auth/login');
 	}
 
 	return {
-		user
+		user: locals.user
 	};
 };

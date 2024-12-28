@@ -1,7 +1,5 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
-	import { supabase } from '$lib/supabaseClient.js';
-
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
@@ -16,28 +14,29 @@
 
 	export let data;
 
-	//Addon variabler
-	let amountCanoes = 0;
-	let amountKayaks = 0;
-	let amountSUPs = 0;
+	let selectedAddons = {};
 
-	let maxCanoes = 0;
-	let maxKayaks = 0;
-	let maxSUPs = 0;
-
-	async function fetchMaxQuantities() {
-		const { data: addons, error } = await supabase.from('addons').select('id, max_quantity');
-
-		if (error) {
-			console.error('Error fetching max quantities:', error);
-			return;
+	$: {
+		if (data.experience?.addons) {
+			// Initiera selectedAddons med 0 för varje tillgänglig addon
+			data.experience.addons.forEach((addon) => {
+				if (!(addon.name in selectedAddons)) {
+					selectedAddons[addon.name] = 0;
+				}
+			});
 		}
+	}
 
-		addons.forEach((addon) => {
-			if (addon.id === 1) maxCanoes = addon.max_quantity;
-			if (addon.id === 2) maxKayaks = addon.max_quantity;
-			if (addon.id === 3) maxSUPs = addon.max_quantity;
-		});
+	function updateAddonQuantity(addonName, increment) {
+		const addon = data.experience.addons.find((a) => a.name === addonName);
+		if (addon) {
+			const currentValue = selectedAddons[addonName] || 0;
+			const newValue = increment
+				? Math.min(currentValue + 1, addon.max_quantity)
+				: Math.max(0, currentValue - 1);
+			selectedAddons[addonName] = newValue;
+			selectedAddons = { ...selectedAddons }; // trigger reaktivitet
+		}
 	}
 
 	let blockedDates = [];
@@ -100,6 +99,14 @@
 
 		scrollToElement('available-times');
 
+		const addonsForRequest = Object.fromEntries(
+			Object.entries(selectedAddons).map(([name, quantity]) => {
+				// Konvertera namn till det format API:et förväntar sig
+				const apiName = `amount${name.replace(/\s+/g, '')}s`;
+				return [apiName, quantity];
+			})
+		);
+
 		try {
 			const response = await fetch('/api/check-availability', {
 				method: 'POST',
@@ -109,11 +116,7 @@
 				body: JSON.stringify({
 					date: startDate,
 					bookingLength: selectedBookingLength,
-					addons: {
-						amountCanoes,
-						amountKayaks,
-						amountSUPs
-					},
+					addons: addonsForRequest,
 					experienceId: selectedExperienceId
 				})
 			});
@@ -224,7 +227,7 @@
 	}
 
 	onMount(async () => {
-		await fetchMaxQuantities();
+		// Ta bort fetchMaxQuantities-anropet här
 		const today = new Date();
 
 		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
@@ -305,7 +308,17 @@
 			const stripe = await stripePromise;
 			console.log('Sending request to create-checkout-session...');
 
-			// Log the data being sent
+			// Konvertera selectedAddons till rätt format för API:et
+			const addonAmounts = Object.entries(selectedAddons).reduce((acc, [name, quantity]) => {
+				// Konvertera namn till det format API:et förväntar sig
+				// T.ex. "Kanot" blir "amount_canoes"
+				const apiKey = `amount_${name.toLowerCase()}`;
+				return {
+					...acc,
+					[apiKey]: quantity
+				};
+			}, {});
+
 			const requestData = {
 				amount: totalPrice,
 				name: data.experience.name,
@@ -318,14 +331,13 @@
 				end_time: returnTime,
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
-				amount_canoes: amountCanoes,
-				amount_kayak: amountKayaks,
-				amount_SUP: amountSUPs,
+				...addonAmounts, // Sprider ut de konverterade addon-värdena
 				booking_name: userName,
 				booking_lastname: userLastname,
 				customer_comment: userComment,
 				customer_email: userEmail
 			};
+
 			console.log('Request Data:', requestData);
 
 			const response = await fetch('/api/create-checkout-session', {
@@ -359,7 +371,7 @@
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
-			// Here you might want to show an error message to the user
+			// Här kan du visa ett felmeddelande för användaren
 		}
 	}
 </script>
@@ -488,105 +500,68 @@
 						<div class="space-y-4">
 							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
-								<!-- Kanadensare -->
-								<div class="space-y-2">
-									<Label for="canoes">Antal kanadensare (max {maxCanoes})</Label>
-									<div class="flex items-center space-x-2">
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountCanoes = Math.max(0, amountCanoes - 1))}
-										>
-											-
-										</Button>
-										<div class="w-12 text-center">{amountCanoes}</div>
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountCanoes = Math.min(maxCanoes, amountCanoes + 1))}
-										>
-											+
-										</Button>
+								{#each data.experience.addons as addon}
+									<div class="space-y-2">
+										<Label for={addon.name}>Antal {addon.name} (max {addon.max_quantity})</Label>
+										<div class="flex items-center space-x-2">
+											<Button
+												variant="outline"
+												class="px-3"
+												disabled={settingsLocked}
+												on:click={() => updateAddonQuantity(addon.name, false)}
+											>
+												-
+											</Button>
+											<div class="w-12 text-center">
+												{selectedAddons[addon.name] || 0}
+											</div>
+											<Button
+												variant="outline"
+												class="px-3"
+												disabled={settingsLocked}
+												on:click={() => updateAddonQuantity(addon.name, true)}
+											>
+												+
+											</Button>
+										</div>
 									</div>
-								</div>
-
-								<!-- Kajaker -->
-								<div class="space-y-2">
-									<Label for="kayaks">Antal kajaker (max {maxKayaks})</Label>
-									<div class="flex items-center space-x-2">
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountKayaks = Math.max(0, amountKayaks - 1))}
-										>
-											-
-										</Button>
-										<div class="w-12 text-center">{amountKayaks}</div>
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountKayaks = Math.min(maxKayaks, amountKayaks + 1))}
-										>
-											+
-										</Button>
-									</div>
-								</div>
-
-								<!-- SUP -->
-								<div class="space-y-2">
-									<Label for="sups">Antal SUP:ar (max {maxSUPs})</Label>
-									<div class="flex items-center space-x-2">
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountSUPs = Math.max(0, amountSUPs - 1))}
-										>
-											-
-										</Button>
-										<div class="w-12 text-center">{amountSUPs}</div>
-										<Button
-											variant="outline"
-											class="px-3"
-											disabled={settingsLocked}
-											on:click={() => (amountSUPs = Math.min(maxSUPs, amountSUPs + 1))}
-										>
-											+
-										</Button>
-									</div>
-								</div>
-								{#if settingsLocked}
-									<Button variant="outline" on:click={handleSettingChange} class="mt-2">
-										Ändra din bokning
-									</Button>
-								{/if}
+								{/each}
 							</div>
 						</div>
 
 						<!-- Sök tider knapp -->
-						<Button
-							id="available-times"
-							on:click={generateStartTimes}
-							disabled={!startDate ||
-								!selectedBookingLength ||
-								isLoadingTimes ||
-								(amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0)}
-							variant={isLoadingTimes ? 'outline' : 'default'}
-							class="w-full sm:w-auto"
-						>
-							{#if isLoadingTimes}
-								<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-								Söker tillgängliga tider...
-							{:else if amountCanoes === 0 && amountKayaks === 0 && amountSUPs === 0}
-								Välj minst en produkt
-							{:else}
-								Visa tillgängliga tider
+						<div class="flex gap-2 flex-wrap">
+							<Button
+								disabled={!startDate ||
+									!selectedBookingLength ||
+									isLoadingTimes ||
+									Object.values(selectedAddons).every((v) => v === 0)}
+								variant={isLoadingTimes ? 'outline' : 'default'}
+								class="sm:w-auto"
+								on:click={generateStartTimes}
+							>
+								{#if isLoadingTimes}
+									<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+									Söker tillgängliga tider...
+								{:else if Object.values(selectedAddons).every((v) => v === 0)}
+									Välj minst en produkt
+								{:else}
+									Visa tillgängliga tider
+								{/if}
+							</Button>
+
+							{#if settingsLocked}
+								<Button
+									variant="outline"
+									on:click={() => {
+										handleSettingChange();
+										scrollToElement('equipment-section');
+									}}
+								>
+									Ändra din bokning
+								</Button>
 							{/if}
-						</Button>
+						</div>
 
 						<!-- Tillgängliga tider -->
 						{#if possibleStartTimes.length > 0}
@@ -627,6 +602,13 @@
 										Returdatum: {returnDate}
 										<br />
 										Returtid senast: {returnTime}
+										<br />
+										<br />
+										Valda tillval:
+										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [name, quantity]}
+											<br />
+											{quantity} st {name}
+										{/each}
 									{/if}
 								</AlertDescription>
 							</Alert>

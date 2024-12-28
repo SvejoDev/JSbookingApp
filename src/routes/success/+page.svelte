@@ -15,13 +15,22 @@
 		return '0.00';
 	};
 
-	// Formatera datum och tid
+	// formatera datum och tid
 	const formatDateTime = (date, time) => {
-		const dateObj = new Date(`${date}T${time}`);
-		return dateObj.toLocaleString('sv-SE', {
-			dateStyle: 'long',
-			timeStyle: 'short'
+		if (!date || !time) return 'Ej angivet';
+
+		// konvertera datum till svenskt format
+		const dateObj = new Date(date);
+		const formattedDate = dateObj.toLocaleDateString('sv-SE', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
 		});
+
+		// formatera tid (ta bort sekunder om de finns)
+		const formattedTime = time.split(':').slice(0, 2).join(':');
+
+		return `${formattedDate} kl. ${formattedTime}`;
 	};
 
 	// Formatera datum
@@ -65,18 +74,10 @@
 				{/if}
 			</div>
 
-			<!-- Booking Time -->
-			<div class="mb-6 p-4 bg-gray-50 rounded-lg">
-				<p class="text-lg font-medium">
-					{#if booking.start_date === booking.end_date}
-						{formatDateTime(booking.start_date, booking.start_time)} till {booking.end_time}
-					{:else}
-						{formatDateTime(booking.start_date, booking.start_time)} till {formatDateTime(
-							booking.end_date,
-							booking.end_time
-						)}
-					{/if}
-				</p>
+			<!-- Booking Times -->
+			<div class="mb-4">
+				<p><strong>Start:</strong> {formatDateTime(booking.start_date, booking.start_time)}</p>
+				<p><strong>Slut:</strong> {formatDateTime(booking.end_date, booking.end_time)}</p>
 			</div>
 
 			<!-- Products Table -->

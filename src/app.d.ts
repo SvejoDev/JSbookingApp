@@ -1,10 +1,16 @@
+/// <reference types="@sveltejs/kit" />
+import type { AuthRequest } from '@lucia-auth/sveltekit';
+
+// se https://kit.svelte.dev/docs/types#app
 declare global {
     namespace App {
         interface Locals {
-            supabase: import('@supabase/supabase-js').SupabaseClient;
-            getUser: () => Promise<import('@supabase/supabase-js').User | null>;
+            auth: AuthRequest;
+            user: {
+                id: string;
+                email: string;
+                role: string;
+            } | null;
         }
     }
 }
-
-export { };
