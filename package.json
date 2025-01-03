@@ -3,6 +3,7 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
+		"setup-admin": "node scripts/setup-admin.js",
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
