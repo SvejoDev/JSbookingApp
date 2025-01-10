@@ -62,7 +62,6 @@ export async function POST({ request }) {
 						session.metadata.customer_comment || ''
 					]
 				);
-
 				// hämta öppettider för korrekt hantering av tidsperioder
 				const {
 					rows: [openHours]
@@ -83,6 +82,16 @@ export async function POST({ request }) {
 					openTime: openHours.open_time,
 					closeTime: openHours.close_time
 				});
+
+				const {
+					rows: [experienceDetails]
+				} = await client.query(
+					'SELECT booking_confirmation_details FROM experiences WHERE id = $1',
+					[session.metadata.experience_id]
+				);
+
+				// Skicka bokningsbekräftelse
+				await sendBookingConfirmation(booking, experienceDetails);
 
 				return booking;
 			});
