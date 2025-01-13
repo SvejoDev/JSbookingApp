@@ -1,8 +1,35 @@
 <script>
 	import { goto } from '$app/navigation';
 	import { Card } from '$lib/components/ui/card';
+	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+	import { Button } from '$lib/components/ui/button';
 
 	export let data;
+
+	// debounce function to prevent rapid database queries
+	function debounce(func, wait) {
+		let timeout;
+		return function executedFunction(...args) {
+			const later = () => {
+				clearTimeout(timeout);
+				func(...args);
+			};
+			clearTimeout(timeout);
+			timeout = setTimeout(later, wait);
+		};
+	}
+
+	// navigate to adjacent date
+	function navigateDate(direction) {
+		const currentDate = new Date(data.selectedDate);
+		currentDate.setDate(currentDate.getDate() + direction);
+		const newDate = currentDate.toISOString().split('T')[0];
+		goto(`/admin/bookings?date=${newDate}`);
+	}
+
+	// debounced navigation functions
+	const debouncedPrevDay = debounce(() => navigateDate(-1), 300);
+	const debouncedNextDay = debounce(() => navigateDate(1), 300);
 
 	// format date for display
 	function formatDate(dateString) {
@@ -37,13 +64,21 @@
 </script>
 
 <div class="container mx-auto p-4">
-	<div class="mb-6">
+	<div class="mb-6 flex items-center justify-center gap-4">
+		<Button variant="outline" on:click={debouncedPrevDay}>
+			<ChevronLeft class="h-4 w-4" />
+		</Button>
+
 		<input
 			type="date"
 			value={data.selectedDate}
 			on:change={handleDateChange}
 			class="border p-2 rounded"
 		/>
+
+		<Button variant="outline" on:click={debouncedNextDay}>
+			<ChevronRight class="h-4 w-4" />
+		</Button>
 	</div>
 
 	<div class="overflow-x-auto">
