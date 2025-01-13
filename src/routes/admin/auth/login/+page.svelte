@@ -8,6 +8,16 @@
 
 	export let form;
 	let loading = false;
+
+	function handleSubmit() {
+		loading = true;
+		return async ({ result }) => {
+			loading = false;
+			if (result.type === 'success' && result.data.success) {
+				window.location.href = result.data.location;
+			}
+		};
+	}
 </script>
 
 <div class="flex items-center justify-center min-h-screen bg-gray-100">
@@ -16,19 +26,7 @@
 			<CardTitle>Admin Login</CardTitle>
 		</CardHeader>
 		<CardContent>
-			<form
-				method="POST"
-				use:enhance={() => {
-					loading = true;
-					return async ({ result }) => {
-						loading = false;
-						if (result.type === 'redirect') {
-							goto(result.location);
-						}
-					};
-				}}
-				class="space-y-4"
-			>
+			<form method="POST" use:enhance={handleSubmit} class="space-y-4">
 				<div class="space-y-2">
 					<label for="email">Email</label>
 					<Input id="email" name="email" type="email" required autocomplete="email" />

@@ -3,9 +3,7 @@ import { redirect } from '@sveltejs/kit';
 import { query } from '$lib/db.js';
 
 export const load = async ({ locals, url }) => {
-	// hoppa över autentiseringskontroll för inloggningssidan
 	if (url.pathname === '/admin/auth/login') {
-		// om användaren redan är inloggad
 		if (locals.user) {
 			const { rows: profiles } = await query('SELECT role FROM auth_user WHERE id = $1', [
 				locals.user.userId
@@ -18,21 +16,26 @@ export const load = async ({ locals, url }) => {
 		return {};
 	}
 
-	// för alla andra admin-rutter, kontrollera autentisering
 	if (!locals.user) {
 		throw redirect(303, '/admin/auth/login');
 	}
 
-	// kontrollera om användaren är admin
-	const { rows: profiles } = await query('SELECT role FROM auth_user WHERE id = $1', [
-		locals.user.userId
-	]);
+	// Hämta fullständig användardata
+	const {
+		rows: [userProfile]
+	} = await query('SELECT id, email, role FROM auth_user WHERE id = $1', [locals.user.userId]);
 
-	if (!profiles.length || profiles[0].role !== 'admin') {
+	if (!userProfile || userProfile.role !== 'admin') {
 		throw redirect(303, '/admin/auth/login');
 	}
 
+	// Returnera komplett användardata
+	// Returnera komplett användardata
 	return {
-		user: locals.user
+		user: {
+			userId: locals.user.userId,
+			email: userProfile.email,
+			role: userProfile.role
+		}
 	};
 };
