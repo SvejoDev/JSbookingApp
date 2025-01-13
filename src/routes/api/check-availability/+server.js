@@ -194,6 +194,12 @@ async function checkAddonAvailability({
 	console.log(`\nChecking availability for ${addonType} (${amount} requested)`);
 	console.log('Checking dates from', startDate, 'for', numberOfNights, 'nights');
 
+	// Skapa ett säkert tabellnamn genom att:
+	// 1. Konvertera till lowercase
+	// 2. Ta bort specialtecken
+	// 3. Lägga till "_availability"
+	const tableName = `"${addonType.toLowerCase().replace(/[^a-z0-9_]/g, '')}_availability"`;
+
 	const startTimeMinutes = timeToMinutes(startTime);
 	const dates = Array.from({ length: numberOfNights + 1 }, (_, i) => getDateString(startDate, i));
 
@@ -222,7 +228,7 @@ async function checkAddonAvailability({
 		// Get availability data for current date
 		const {
 			rows: [availabilityData]
-		} = await query(`SELECT * FROM ${addonType}_availability WHERE date = $1`, [currentDate]);
+		} = await query(`SELECT * FROM ${tableName} WHERE date = $1`, [currentDate]);
 
 		if (availabilityData) {
 			// Check each 15-minute slot
