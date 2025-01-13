@@ -1,4 +1,4 @@
-import { generateInvitationToken } from './password';
+import { generateInvitationToken } from './password.js';
 import { query } from '$lib/db';
 
 // funktion för att skapa en ny inbjudan
