@@ -23,46 +23,16 @@ export async function POST({ request }) {
 
 	if (event.type === 'checkout.session.completed') {
 		const session = event.data.object;
-		console.log('bokning genomförd:', session.id);
+		console.log('Session metadata:', session.metadata);
+		console.log('Session ID:', session.id);
 
 		try {
 			await transaction(async (client) => {
-				// skapa bokningen
-				const {
-					rows: [booking]
-				} = await client.query(
-					`INSERT INTO bookings (
-                        stripe_session_id, customer_email, amount_total, status,
-                        experience_id, experience, startLocation, start_date,
-                        start_time, end_date, end_time, number_of_adults,
-                        number_of_children, amount_canoes, amount_kayak,
-                        amount_sup, booking_name, booking_lastname,
-                        customer_comment, date_time_created
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
-                    RETURNING *`,
-					[
-						session.id,
-						session.metadata.customer_email,
-						session.amount_total / 100,
-						'betald',
-						session.metadata.experience_id,
-						session.metadata.experience,
-						session.metadata.startLocation,
-						session.metadata.start_date,
-						session.metadata.start_time,
-						session.metadata.end_date,
-						session.metadata.end_time,
-						parseInt(session.metadata.number_of_adults),
-						parseInt(session.metadata.number_of_children || '0'),
-						parseInt(session.metadata.amount_canoes || '0'),
-						parseInt(session.metadata.amount_kayak || '0'),
-						parseInt(session.metadata.amount_sup || '0'),
-						session.metadata.booking_name,
-						session.metadata.booking_lastname,
-						session.metadata.customer_comment || ''
-					]
+				// hämta alla addons från databasen för dynamisk hantering
+				// Uppdatera addon-hämtningen (runt rad 32)
+				const { rows: addons } = await client.query(
+					'SELECT name, column_name, availability_table_name FROM addons'
 				);
-
 				// hämta öppettider för korrekt hantering av tidsperioder
 				const {
 					rows: [openHours]
@@ -71,18 +41,98 @@ export async function POST({ request }) {
 					[session.metadata.experience_id]
 				);
 
-				// uppdatera tillgänglighet för alla dagar i bokningen
-				await updateAvailabilityForBooking(client, {
+				// skapa dynamiska kolumner och värden för INSERT-frågan
+				const baseColumns = [
+					'stripe_session_id',
+					'customer_email',
+					'amount_total',
+					'status',
+					'experience_id',
+					'experience',
+					'startlocation',
+					'start_date',
+					'start_time',
+					'end_date',
+					'end_time',
+					'number_of_adults',
+					'number_of_children',
+					'booking_name',
+					'booking_lastname',
+					'customer_comment'
+				];
+
+				const addonColumns = addons.map((addon) => addon.column_name);
+
+				const allColumns = [...baseColumns, ...addonColumns, 'date_time_created'];
+
+				const baseValues = [
+					session.id,
+					session.metadata.customer_email,
+					session.amount_total / 100,
+					'betald',
+					session.metadata.experience_id,
+					session.metadata.experience,
+					session.metadata.startLocation,
+					session.metadata.start_date,
+					session.metadata.start_time,
+					session.metadata.end_date,
+					session.metadata.end_time,
+					parseInt(session.metadata.number_of_adults),
+					parseInt(session.metadata.number_of_children || '0'),
+					session.metadata.booking_name,
+					session.metadata.booking_lastname,
+					session.metadata.customer_comment || ''
+				];
+
+				// Uppdatera addonValues skapandet (runt rad 87-91)
+				const addonValues = addons.map((addon) => {
+					const metadataKey = `amount_${addon.column_name}`;
+					const value = parseInt(session.metadata[metadataKey] || '0');
+					console.log(`Processing addon ${addon.name}: metadataKey=${metadataKey}, value=${value}, metadata:`, session.metadata);
+					return value;
+				});
+
+				console.log(
+					'Addon metadata:',
+					addons.map((addon) => ({
+						name: addon.name,
+						metadataKey: `amount_${addon.name.toLowerCase()}`,
+						value: session.metadata[`amount_${addon.name.toLowerCase()}`]
+					}))
+				);
+
+				const placeholders = Array(allColumns.length - 1)
+					.fill(0)
+					.map((_, i) => `$${i + 1}`)
+					.concat('NOW()');
+
+				const insertQuery = `
+    			INSERT INTO bookings (${allColumns.filter((col) => col !== 'id').join(', ')})
+    			VALUES (${placeholders.join(', ')})
+    RETURNING *
+`;
+
+				const {
+					rows: [booking]
+				} = await client.query(insertQuery, [...baseValues, ...addonValues]);
+				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
+				const bookingData = {
 					start_date: session.metadata.start_date,
 					start_time: session.metadata.start_time,
 					end_date: session.metadata.end_date,
 					end_time: session.metadata.end_time,
-					amount_canoes: parseInt(session.metadata.amount_canoes || '0'),
-					amount_kayak: parseInt(session.metadata.amount_kayak || '0'),
-					amount_sup: parseInt(session.metadata.amount_sup || '0'),
 					openTime: openHours.open_time,
 					closeTime: openHours.close_time
-				});
+				};
+
+				// lägg till addon-mängder dynamiskt
+				for (const addon of addons) {
+					const metadataKey = `amount_${addon.column_name}`;
+					const value = parseInt(session.metadata[metadataKey] || '0');
+					bookingData[addon.column_name] = value;
+				}
+
+				await updateAvailabilityForBooking(client, bookingData);
 
 				return booking;
 			});
@@ -96,9 +146,17 @@ export async function POST({ request }) {
 
 	return json({ received: true });
 }
-
 async function updateAvailabilityForBooking(client, booking) {
+	console.log('Starting availability update with booking data:', booking);
+
+	const { rows: addons } = await client.query(
+		'SELECT name, column_name, availability_table_name FROM addons'
+	);
+	console.log('Found addons:', addons);
+
 	const dates = generateDateRange(booking.start_date, booking.end_date);
+	console.log('Generated date range:', dates);
+
 	const numberOfDays = dates.length;
 
 	for (let i = 0; i < numberOfDays; i++) {
@@ -107,64 +165,33 @@ async function updateAvailabilityForBooking(client, booking) {
 		const isLastDay = i === numberOfDays - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
-		let startIndex, endIndex;
-
-		if (isFirstDay) {
-			startIndex = timeToIndex(booking.start_time);
-			endIndex = timeToIndex(booking.closeTime);
-		} else if (isLastDay) {
-			startIndex = timeToIndex(booking.openTime);
-			endIndex = timeToIndex(booking.end_time);
-		} else {
-			startIndex = timeToIndex(booking.openTime);
-			endIndex = timeToIndex(booking.closeTime);
-		}
+		let startIndex = isFirstDay ? timeToIndex(booking.start_time) : timeToIndex(booking.openTime);
+		let endIndex = isLastDay ? timeToIndex(booking.end_time) : timeToIndex(booking.closeTime);
 
 		const productUpdates = [];
 
-		// uppdatera kanottillgänglighet
-		if (booking.amount_canoes > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'canoe',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_canoes,
-					isMiddleDay
-				)
-			);
-		}
+		// hantera varje addon-typ dynamiskt
+		for (const addon of addons) {
+			const addonKey = addon.column_name;
+			const amount = booking[addonKey];
 
-		// uppdatera kajaktillgänglighet
-		if (booking.amount_kayak > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'kayak',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_kayak,
-					isMiddleDay
-				)
-			);
-		}
+			if (amount > 0) {
+				console.log(
+					`Updating availability for ${addon.name}: table=${addon.availability_table_name}, amount=${amount}`
+				);
 
-		// uppdatera SUP-tillgänglighet
-		if (booking.amount_sup > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'sup',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_sup,
-					isMiddleDay
-				)
-			);
+				productUpdates.push(
+					updateProductAvailability(
+						client,
+						addon.availability_table_name,
+						currentDate,
+						startIndex,
+						endIndex,
+						amount,
+						isMiddleDay
+					)
+				);
+			}
 		}
 
 		await Promise.all(productUpdates);
@@ -181,65 +208,48 @@ async function updateProductAvailability(
 	isMiddleDay
 ) {
 	try {
-		// kontrollera om det redan finns en rad för detta datum
+		// Konvertera timindex till kvartindex
+		const quarterStartIndex = startIndex * 4;
+		const quarterEndIndex = endIndex * 4;
+
 		const { rows } = await client.query(
 			`SELECT * FROM ${productType}_availability WHERE date = $1`,
 			[date]
 		);
 
-		// först, hämta kolumnerna från databasen för att säkerställa att de finns
-		const { rows: columnInfo } = await client.query(
-			`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = $1 
-            AND column_name != 'date'
-            ORDER BY column_name::integer
-        `,
-			[`${productType}_availability`]
-		);
-
-		// skapa kolumnnamn array från faktisk databasstruktur
-		const timeColumns = columnInfo.map((col) => `"${col.column_name}"`);
-
 		if (rows.length === 0) {
-			// förbered alla värden som ska införas
-			const values = [date]; // börja med datum
-			const columnsList = ['date']; // lista över kolumner att inkludera
-			const valuePlaceholders = ['$1']; // börja med första platshållaren
+			// Skapa ny rad med 1440 minuter (24h * 60min) / 15min = 96 kvartar
+			const values = [date];
+			const columnsList = ['date'];
+			const valuePlaceholders = ['$1'];
 			let paramCounter = 2;
 
-			// lägg till värden för varje tidskolumn som faktiskt finns
-			timeColumns.forEach((column, index) => {
-				const colNum = parseInt(column.replace(/"/g, '')); // ta bort citattecken och konvertera till nummer
-				columnsList.push(column);
+			// Loopa genom alla kvartar (0-95)
+			for (let i = 0; i < 96; i++) {
+				columnsList.push(`"${i * 15}"`);
 				valuePlaceholders.push(`$${paramCounter}`);
 
-				if (isMiddleDay || (colNum >= startIndex && colNum <= endIndex)) {
+				if (isMiddleDay || (i >= quarterStartIndex && i <= quarterEndIndex)) {
 					values.push(-amount);
 				} else {
 					values.push(0);
 				}
 				paramCounter++;
-			});
+			}
 
 			const query = `
                 INSERT INTO ${productType}_availability (${columnsList.join(', ')})
                 VALUES (${valuePlaceholders.join(', ')})
             `;
-
 			await client.query(query, values);
-			console.log(`skapat ny rad i ${productType}_availability för ${date}`);
 		} else {
-			// uppdatera befintlig rad
+			// Uppdatera befintlig rad
 			const updates = [];
-
-			timeColumns.forEach((column) => {
-				const colNum = parseInt(column.replace(/"/g, '')); // ta bort citattecken och konvertera till nummer
-				if (isMiddleDay || (colNum >= startIndex && colNum <= endIndex)) {
-					updates.push(`${column} = COALESCE(${column}, 0) - ${amount}`);
+			for (let i = 0; i < 96; i++) {
+				if (isMiddleDay || (i >= quarterStartIndex && i <= quarterEndIndex)) {
+					updates.push(`"${i * 15}" = COALESCE("${i * 15}", 0) - ${amount}`);
 				}
-			});
+			}
 
 			if (updates.length > 0) {
 				const query = `
@@ -248,12 +258,10 @@ async function updateProductAvailability(
                     WHERE date = $1
                 `;
 				await client.query(query, [date]);
-				console.log(`uppdaterat befintlig rad i ${productType}_availability för ${date}`);
 			}
 		}
 	} catch (error) {
-		console.error(`fel vid uppdatering av ${productType} tillgänglighet för ${date}:`, error);
-		console.error('detaljer:', error.detail || 'inga ytterligare detaljer');
+		console.error(`Fel vid uppdatering av ${productType} tillgänglighet:`, error);
 		throw error;
 	}
 }
@@ -271,7 +279,7 @@ function generateDateRange(startDate, endDate) {
 	return dates;
 }
 
-function timeToIndex(timeStr) {
-	const [hours, minutes] = timeStr.split(':').map(Number);
+function timeToIndex(time) {
+	const [hours, minutes] = time.split(':').map(Number);
 	return Math.floor((hours * 60 + minutes) / 15);
 }

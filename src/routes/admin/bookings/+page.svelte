@@ -6,6 +6,48 @@
 
 	export let data;
 
+	async function handleStartBooking(bookingId) {
+		try {
+			const response = await fetch('/api/bookings/start', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ bookingId })
+			});
+
+			if (response.ok) {
+				// Refresh the page to show updated status
+				goto(`/admin/bookings?date=${data.selectedDate}`);
+			}
+		} catch (error) {
+			console.error('Error starting booking:', error);
+		}
+	}
+
+	async function handleCompleteBooking(bookingId) {
+		const currentTime = new Date().toLocaleTimeString('sv-SE', {
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+
+		try {
+			const response = await fetch('/api/bookings/complete', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					bookingId,
+					endTime: currentTime
+				})
+			});
+
+			if (response.ok) {
+				// Refresh the page to show updated status
+				goto(`/admin/bookings?date=${data.selectedDate}`);
+			}
+		} catch (error) {
+			console.error('Error completing booking:', error);
+		}
+	}
+
 	// debounce function to prevent rapid database queries
 	function debounce(func, wait) {
 		let timeout;
@@ -95,6 +137,7 @@
 					<th class="border p-1 text-left">Belopp</th>
 					<th class="border p-1 text-left">Kontakt</th>
 					<th class="border p-1 text-left">Kommentar</th>
+					<th class="border p-1 text-left">Åtgärder</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -153,6 +196,23 @@
 						</td>
 						<td class="border p-1 text-xs">
 							{booking.customer_comment || '-'}
+						</td>
+						<td class="border p-1">
+							{#if booking.status === 'betald'}
+								<Button variant="outline" size="sm" on:click={() => handleStartBooking(booking.id)}>
+									Start
+								</Button>
+							{:else if booking.status === 'started'}
+								<Button
+									variant="outline"
+									size="sm"
+									on:click={() => handleCompleteBooking(booking.id)}
+								>
+									Slut
+								</Button>
+							{:else if booking.status === 'completed'}
+								<span class="text-xs text-gray-500">Avslutad</span>
+							{/if}
 						</td>
 					</tr>
 				{/each}

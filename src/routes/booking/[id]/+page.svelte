@@ -310,9 +310,8 @@
 
 			// Konvertera selectedAddons till rätt format för API:et
 			const addonAmounts = Object.entries(selectedAddons).reduce((acc, [name, quantity]) => {
-				// Konvertera namn till det format API:et förväntar sig
-				// T.ex. "Kanot" blir "amount_canoes"
-				const apiKey = `amount_${name.toLowerCase()}`;
+				// Normalisera namnet för att matcha databaskolumner
+				const apiKey = `amount_${name.toLowerCase().replace(/[:\s]/g, '_')}`;
 				return {
 					...acc,
 					[apiKey]: quantity
