@@ -49,12 +49,14 @@ export async function sendBookingConfirmation(booking, experienceDetails) {
     `;
 
 	try {
-		await resend.emails.send({
-			from: 'Stisses <no-reply@stisses.se>',
+		console.log('Försöker skicka email till:', customer_email);
+		const result = await resend.emails.send({
+			from: 'onboarding@resend.dev', // VIKTIGT: Ändra till denna temporärt
 			to: customer_email,
 			subject: `Bokningsbekräftelse - ${experience}`,
 			html: emailHtml
 		});
+		console.log('Email skickat:', result);
 	} catch (error) {
 		console.error('Email sending failed:', error);
 		throw error;

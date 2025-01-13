@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { query, transaction } from '$lib/db.js';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
+import { sendBookingConfirmation } from '$lib/server/email.js';
 
 dotenv.config();
 
@@ -89,6 +90,9 @@ export async function POST({ request }) {
 					'SELECT booking_confirmation_details FROM experiences WHERE id = $1',
 					[session.metadata.experience_id]
 				);
+
+				console.log('Experience details:', experienceDetails);
+				console.log('Booking data:', booking);
 
 				// Skicka bokningsbekräftelse
 				await sendBookingConfirmation(booking, experienceDetails);

@@ -3,7 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import { ArrowLeft } from 'lucide-svelte';
-
+	// Lägg till denna temporärt i början av email.js
+	console.log('RESEND_API_KEY exists:', !!env.RESEND_API_KEY);
 	export let data;
 	const { booking } = data;
 
@@ -178,7 +179,7 @@
 					<a href="mailto:info@stisses.se" class="text-blue-600 hover:underline">info@stisses.se</a>
 					eller sms till
 					<a href="tel:+46703259638" class="text-blue-600 hover:underline">+46703259638</a>.
-				</p>
+				</p>	
 			</div>
 		</CardContent>
 	</Card>
