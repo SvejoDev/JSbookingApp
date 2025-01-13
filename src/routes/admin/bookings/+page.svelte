@@ -82,60 +82,76 @@
 	</div>
 
 	<div class="overflow-x-auto">
-		<table class="w-full border-collapse">
+		<table class="w-full border-collapse text-xs">
 			<thead>
 				<tr class="bg-gray-100">
-					<th class="border p-2 text-left">Tid</th>
-					<th class="border p-2 text-left">Namn</th>
-					<th class="border p-2 text-left">Upplevelse</th>
-					<th class="border p-2 text-left">Startplats</th>
-					<th class="border p-2 text-left">Antal</th>
-					<th class="border p-2 text-left">Utrustning</th>
-					<th class="border p-2 text-left">Status</th>
-					<th class="border p-2 text-left">Belopp</th>
-					<th class="border p-2 text-left">Kontakt</th>
-					<th class="border p-2 text-left">Kommentar</th>
+					<th class="border p-1 text-left">Tid</th>
+					<th class="border p-1 text-left">Namn</th>
+					<th class="border p-1 text-left">Upplevelse</th>
+					<th class="border p-1 text-left">Startplats</th>
+					<th class="border p-1 text-left">Antal</th>
+					<th class="border p-1 text-left">Utrustning</th>
+					<th class="border p-1 text-left">Status</th>
+					<th class="border p-1 text-left">Belopp</th>
+					<th class="border p-1 text-left">Kontakt</th>
+					<th class="border p-1 text-left">Kommentar</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each data.bookings as booking}
 					<tr class="hover:bg-gray-50">
-						<td class="border p-2">
-							{formatTime(booking.start_time)} - {formatTime(booking.end_time)}
+						<td class="border p-1">
+							{#if new Date(booking.start_date).toDateString() !== new Date(booking.end_date).toDateString()}
+								<div class="text-xs">
+									Start: {formatDate(booking.start_date)}<br />
+									{formatTime(booking.start_time)}
+								</div>
+								<div class="text-xs">
+									Slut: {formatDate(booking.end_date)}<br />
+									{formatTime(booking.end_time)}
+								</div>
+							{:else}
+								<div class="text-xs">
+									{formatTime(booking.start_time)} - {formatTime(booking.end_time)}
+								</div>
+							{/if}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1">
 							{booking.booking_name}
 							{booking.booking_lastname}
 						</td>
-						<td class="border p-2">
-							{booking.experience}
+						<td class="border p-1 text-xs max-w-[150px]">
+							{#each booking.experience.split(' ') as word, i}
+								{word}{i < booking.experience.split(' ').length - 1 ? ' ' : ''}{#if i % 3 === 1}<br
+									/>{/if}
+							{/each}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1">
 							{booking.startlocation}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1 text-xs">
 							Vuxna: {booking.number_of_adults}<br />
 							Barn: {booking.number_of_children}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1 text-xs">
 							{formatEquipment(booking)}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1">
 							<span
-								class="px-2 py-1 rounded {booking.status === 'betald'
+								class="text-xs px-2 py-1 rounded {booking.status === 'betald'
 									? 'bg-green-100'
 									: 'bg-yellow-100'}"
 							>
 								{booking.status}
 							</span>
 						</td>
-						<td class="border p-2">
+						<td class="border p-1">
 							{booking.amount_total} kr
 						</td>
-						<td class="border p-2">
+						<td class="border p-1 text-xs">
 							{booking.customer_email}
 						</td>
-						<td class="border p-2">
+						<td class="border p-1 text-xs">
 							{booking.customer_comment || '-'}
 						</td>
 					</tr>
