@@ -29,7 +29,6 @@ export async function POST({ request }) {
 		try {
 			await transaction(async (client) => {
 				// hämta alla addons från databasen för dynamisk hantering
-				// Uppdatera addon-hämtningen (runt rad 32)
 				const { rows: addons } = await client.query(
 					'SELECT name, column_name, availability_table_name FROM addons'
 				);
@@ -68,7 +67,7 @@ export async function POST({ request }) {
 				const baseValues = [
 					session.id,
 					session.metadata.customer_email,
-					session.amount_total / 100,
+					Math.round(session.amount_total / 100),
 					'betald',
 					session.metadata.experience_id,
 					session.metadata.experience,
@@ -84,11 +83,11 @@ export async function POST({ request }) {
 					session.metadata.customer_comment || ''
 				];
 
-				// Uppdatera addonValues skapandet (runt rad 87-91)
 				const addonValues = addons.map((addon) => {
-					const metadataKey = `amount_${addon.column_name}`;
-					const value = parseInt(session.metadata[metadataKey] || '0');
-					console.log(`Processing addon ${addon.name}: metadataKey=${metadataKey}, value=${value}, metadata:`, session.metadata);
+					const value = parseInt(session.metadata[addon.column_name] || '0');
+					console.log(
+						`Processing addon ${addon.name}: column=${addon.column_name}, value=${value}`
+					);
 					return value;
 				});
 
@@ -127,12 +126,14 @@ export async function POST({ request }) {
 
 				// lägg till addon-mängder dynamiskt
 				for (const addon of addons) {
-					const metadataKey = `amount_${addon.column_name}`;
-					const value = parseInt(session.metadata[metadataKey] || '0');
-					bookingData[addon.column_name] = value;
+					bookingData[addon.column_name] = parseInt(session.metadata[addon.column_name] || '0');
 				}
 
 				await updateAvailabilityForBooking(client, bookingData);
+
+				console.log('Base values:', baseValues);
+				console.log('Addon values:', addonValues);
+				console.log('All columns:', allColumns);
 
 				return booking;
 			});
@@ -165,7 +166,10 @@ async function updateAvailabilityForBooking(client, booking) {
 		const isLastDay = i === numberOfDays - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
-		let startIndex = isFirstDay ? timeToIndex(booking.start_time) : timeToIndex(booking.openTime);
+		// För första dagen: använd start_time till midnatt
+		// För mellandagar: hela dagen
+		// För sista dagen: från midnatt till end_time
+		let startIndex = isFirstDay ? timeToIndex(booking.start_time) : 0;
 		let endIndex = isLastDay ? timeToIndex(booking.end_time) : timeToIndex(booking.closeTime);
 
 		const productUpdates = [];
@@ -200,7 +204,7 @@ async function updateAvailabilityForBooking(client, booking) {
 
 async function updateProductAvailability(
 	client,
-	productType,
+	tableName,
 	date,
 	startIndex,
 	endIndex,
@@ -208,60 +212,69 @@ async function updateProductAvailability(
 	isMiddleDay
 ) {
 	try {
-		// Konvertera timindex till kvartindex
-		const quarterStartIndex = startIndex * 4;
-		const quarterEndIndex = endIndex * 4;
+		const { rows } = await client.query(`SELECT * FROM ${tableName} WHERE date = $1`, [date]);
 
-		const { rows } = await client.query(
-			`SELECT * FROM ${productType}_availability WHERE date = $1`,
-			[date]
-		);
+		// Beräkna start- och slutindex för blockering
+		let startQuarter, endQuarter;
+
+		if (isMiddleDay) {
+			// Mellandagar blockeras hela dagen
+			startQuarter = 0;
+			endQuarter = 1440;
+		} else if (startIndex > 0) {
+			// För första dagen, blockera från starttid till midnatt
+			startQuarter = Math.floor(startIndex * 15);
+			endQuarter = 1440;
+		} else {
+			// För sista dagen, blockera från midnatt till sluttid
+			startQuarter = 0;
+			endQuarter = Math.floor(endIndex * 15);
+		}
 
 		if (rows.length === 0) {
-			// Skapa ny rad med 1440 minuter (24h * 60min) / 15min = 96 kvartar
+			const columns = ['date'];
 			const values = [date];
-			const columnsList = ['date'];
-			const valuePlaceholders = ['$1'];
-			let paramCounter = 2;
+			const placeholders = ['$1'];
+			let paramIndex = 2;
 
-			// Loopa genom alla kvartar (0-95)
-			for (let i = 0; i < 96; i++) {
-				columnsList.push(`"${i * 15}"`);
-				valuePlaceholders.push(`$${paramCounter}`);
-
-				if (isMiddleDay || (i >= quarterStartIndex && i <= quarterEndIndex)) {
-					values.push(-amount);
-				} else {
-					values.push(0);
-				}
-				paramCounter++;
+			for (let i = 0; i <= 1440; i += 15) {
+				columns.push(`"${i}"`);
+				values.push(i >= startQuarter && i <= endQuarter ? -amount : 0);
+				placeholders.push(`$${paramIndex}`);
+				paramIndex++;
 			}
 
 			const query = `
-                INSERT INTO ${productType}_availability (${columnsList.join(', ')})
-                VALUES (${valuePlaceholders.join(', ')})
-            `;
+				INSERT INTO ${tableName} (${columns.join(', ')})
+				VALUES (${placeholders.join(', ')})
+			`;
+
 			await client.query(query, values);
 		} else {
-			// Uppdatera befintlig rad
 			const updates = [];
-			for (let i = 0; i < 96; i++) {
-				if (isMiddleDay || (i >= quarterStartIndex && i <= quarterEndIndex)) {
-					updates.push(`"${i * 15}" = COALESCE("${i * 15}", 0) - ${amount}`);
+			const values = [date];
+			let paramIndex = 2;
+
+			for (let i = 0; i <= 1440; i += 15) {
+				if (i >= startQuarter && i <= endQuarter) {
+					updates.push(`"${i}" = COALESCE("${i}", 0) - $${paramIndex}`);
+					values.push(amount);
+					paramIndex++;
 				}
 			}
 
 			if (updates.length > 0) {
 				const query = `
-                    UPDATE ${productType}_availability 
-                    SET ${updates.join(', ')}
-                    WHERE date = $1
-                `;
-				await client.query(query, [date]);
+					UPDATE ${tableName}
+					SET ${updates.join(', ')}
+					WHERE date = $1
+				`;
+
+				await client.query(query, values);
 			}
 		}
 	} catch (error) {
-		console.error(`Fel vid uppdatering av ${productType} tillgänglighet:`, error);
+		console.error(`Error updating ${tableName} for ${date}:`, error);
 		throw error;
 	}
 }

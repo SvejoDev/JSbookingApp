@@ -35,10 +35,13 @@ export async function POST({ request }) {
 		// Lägg till addon-metadata
 		const addonMetadata = Object.fromEntries(
 			addons.map((addon) => [
-				`amount_${addon.column_name}`,
-				requestData[`amount_${addon.name.toLowerCase()}`]?.toString() || '0'
+				addon.column_name,
+				requestData[`amount_${addon.name.toLowerCase().replace(/[:\s]/g, '_')}`]?.toString() || '0'
 			])
 		);
+
+		// Konvertera priset till ören (cents)
+		const unitAmount = Math.round(requestData.amount * 100);
 
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ['card'],
@@ -49,7 +52,7 @@ export async function POST({ request }) {
 						product_data: {
 							name: requestData.name
 						},
-						unit_amount: requestData.amount
+						unit_amount: unitAmount
 					},
 					quantity: 1
 				}
