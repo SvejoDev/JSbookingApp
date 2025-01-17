@@ -53,6 +53,10 @@ export async function POST({ request }) {
 					'start_time',
 					'end_date',
 					'end_time',
+					'start_slot',
+					'end_slot',
+					'booking_type',
+					'total_slots',
 					'number_of_adults',
 					'number_of_children',
 					'booking_name',
@@ -76,6 +80,10 @@ export async function POST({ request }) {
 					session.metadata.start_time,
 					session.metadata.end_date,
 					session.metadata.end_time,
+					parseInt(session.metadata.start_slot), // New
+					parseInt(session.metadata.end_slot), // New
+					session.metadata.booking_type, // New
+					parseInt(session.metadata.total_slots), // New
 					parseInt(session.metadata.number_of_adults),
 					parseInt(session.metadata.number_of_children || '0'),
 					session.metadata.booking_name,

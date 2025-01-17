@@ -195,6 +195,20 @@
 
 		returnDate = returnDateTime.toISOString().split('T')[0];
 		returnTime = returnDateTime.toTimeString().substring(0, 5);
+
+		// Calculate booking type info
+		const bookingTypeInfo = getBookingTypeInfo(
+			bookingLength.length,
+			data.openHours.open_time,
+			data.openHours.close_time
+		);
+
+		return {
+			startSlot: timeToSlot(startTime),
+			endSlot: timeToSlot(returnTime),
+			bookingType: bookingTypeInfo.type,
+			totalSlots: bookingTypeInfo.totalSlots
+		};
 	}
 
 	// Sorterar bokningslängder baserat på varaktighet och typ
@@ -306,11 +320,10 @@
 	async function handleCheckout() {
 		try {
 			const stripe = await stripePromise;
-			console.log('Sending request to create-checkout-session...');
 
-			// Konvertera selectedAddons till rätt format för API:et
+			const slotInfo = calculateReturnDate();
+
 			const addonAmounts = Object.entries(selectedAddons).reduce((acc, [name, quantity]) => {
-				// Normalisera namnet för att matcha databaskolumner
 				const apiKey = `amount_${name.toLowerCase().replace(/[:\s]/g, '_')}`;
 				return {
 					...acc,
@@ -328,9 +341,13 @@
 				start_time: startTime,
 				end_date: returnDate,
 				end_time: returnTime,
+				start_slot: slotInfo.startSlot,
+				end_slot: slotInfo.endSlot,
+				booking_type: slotInfo.bookingType,
+				total_slots: slotInfo.totalSlots,
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
-				...addonAmounts, // Sprider ut de konverterade addon-värdena
+				...addonAmounts,
 				booking_name: userName,
 				booking_lastname: userLastname,
 				customer_comment: userComment,
@@ -372,6 +389,49 @@
 			console.error('Checkout error:', error);
 			// Här kan du visa ett felmeddelande för användaren
 		}
+	}
+
+	function getBookingTypeInfo(bookingLength, openTime, closeTime) {
+		const openSlot = timeToSlot(openTime);
+		const closeSlot = timeToSlot(closeTime);
+
+		if (bookingLength === 'Hela dagen') {
+			return {
+				type: 'daily',
+				totalSlots: closeSlot - openSlot
+			};
+		} else if (bookingLength.includes('h')) {
+			const hours = parseInt(bookingLength);
+			return {
+				type: 'hourly',
+				totalSlots: (hours * 60) / 15
+			};
+		} else {
+			// Overnight booking
+			const nights = parseInt(bookingLength);
+			const days = nights + 1;
+
+			// För en övernattningsbokning med 2 nätter:
+			// Dag 1: Från starttid till midnatt (96 - startSlot)
+			// Dag 2: Hela dagen (96 slots)
+			// Dag 3: Från midnatt till sluttid (endSlot)
+
+			const slotsFirstDay = 96 - openSlot; // Från starttid till midnatt
+			const slotsMiddleDays = (days - 2) * 96; // Hela dagar (om några)
+			const slotsLastDay = closeSlot; // Från midnatt till sluttid
+
+			const totalSlots = slotsFirstDay + slotsMiddleDays + slotsLastDay;
+
+			return {
+				type: 'overnight',
+				totalSlots: totalSlots
+			};
+		}
+	}
+
+	function timeToSlot(timeStr) {
+		const [hours, minutes] = timeStr.split(':').map(Number);
+		return Math.floor((hours * 60 + minutes) / 15);
 	}
 </script>
 
