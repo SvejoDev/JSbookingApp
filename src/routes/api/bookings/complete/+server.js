@@ -1,107 +1,196 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/db.js';
-
-export async function POST({ request }) {
-	const { bookingId, endTime } = await request.json();
-
-	try {
-		await query('BEGIN');
-
-		// Get booking details and available addons
-		const [
-			{
-				rows: [booking]
-			},
-			{ rows: addons }
-		] = await Promise.all([
-			query('SELECT * FROM bookings WHERE id = $1', [bookingId]),
-			query('SELECT name FROM addons')
-		]);
-
-		if (!booking) {
-			throw new Error('Booking not found');
-		}
-
-		// Update booking status and end time
-		await query('UPDATE bookings SET status = $1, end_time = $2 WHERE id = $3', [
-			'completed',
-			endTime,
-			bookingId
-		]);
-
-		// Release equipment for each addon type
-		for (const addon of addons) {
-			const addonKey = `amount_${addon.name.toLowerCase()}`;
-			const amount = booking[addonKey];
-
-			if (amount > 0) {
-				await releaseEquipment(addon.name.toLowerCase(), booking, endTime);
-			}
-		}
-
-		await query('COMMIT');
-		return json({ success: true });
-	} catch (error) {
-		await query('ROLLBACK');
-		console.error('Error completing booking:', error);
-		return json({ error: 'Failed to complete booking' }, { status: 500 });
-	}
-}
-
-async function releaseEquipment(type, booking, newEndTime) {
-	const dates = generateDateRange(booking.start_date, booking.end_date);
-
-	for (let i = 0; i < dates.length; i++) {
-		const currentDate = dates[i];
-		const isFirstDay = i === 0;
-		const isLastDay = i === dates.length - 1;
-
-		let startSlot, endSlot;
-
-		if (isFirstDay) {
-			startSlot = timeToMinutes(booking.start_time) / 15;
-			endSlot = isLastDay ? timeToMinutes(newEndTime) / 15 : 96; // 96 slots in a day (24h * 4)
-		} else if (isLastDay) {
-			startSlot = 0;
-			endSlot = timeToMinutes(newEndTime) / 15;
-		} else {
-			startSlot = 0;
-			endSlot = 96;
-		}
-
-		const updates = [];
-		for (let slot = Math.floor(startSlot); slot <= Math.floor(endSlot); slot++) {
-			updates.push(`"${slot}" = COALESCE("${slot}", 0) + ${booking[`amount_${type}`]}`);
-		}
-
-		if (updates.length > 0) {
-			const tableName = `${type}_availability`.toLowerCase();
-			await query(
-				`UPDATE ${tableName}
-                SET ${updates.join(', ')} 
-                WHERE date = $1`,
-				[currentDate]
-			);
-		}
-	}
-}
+import { query, transaction } from '$lib/db.js';
 
 function generateDateRange(startDate, endDate) {
 	const dates = [];
-	let currentDate = new Date(startDate);
-	const lastDate = new Date(endDate);
+	let [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+	let [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
+	let currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+	const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
 
 	while (currentDate <= lastDate) {
-		dates.push(currentDate.toISOString().split('T')[0]);
-		currentDate.setDate(currentDate.getDate() + 1);
+		dates.push(
+			`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
+		);
+		currentDate.setUTCDate(currentDate.getUTCDate() + 1);
 	}
 
 	return dates;
 }
 
-function timeToMinutes(timeStr) {
-	const [hours, minutes] = timeStr.split(':').map(Number);
-	return hours * 60 + minutes;
+function timeToIndex(time) {
+	const [hours, minutes] = time.split(':').map(Number);
+	return Math.floor((hours * 60 + minutes) / 15);
 }
 
+async function restoreAvailabilityAfterBooking(client, bookingId) {
+	try {
+		const {
+			rows: [booking]
+		} = await client.query(
+			`SELECT 
+        start_date::text as start_date,
+        end_date::text as end_date,
+        start_time::text as start_time,
+        end_time::text as end_time
+      FROM bookings 
+      WHERE id = $1`,
+			[bookingId]
+		);
 
+		if (!booking) {
+			throw new Error('Bokning hittades inte');
+		}
+
+		console.log('Booking details:', booking);
+
+		const { rows: addons } = await client.query(
+			'SELECT name, column_name, availability_table_name FROM addons'
+		);
+
+		const addonAmounts = {};
+		for (const addon of addons) {
+			const {
+				rows: [amount]
+			} = await client.query(`SELECT ${addon.column_name} FROM bookings WHERE id = $1`, [
+				bookingId
+			]);
+			addonAmounts[addon.column_name] = amount[addon.column_name];
+			console.log(`Addon ${addon.name} amount:`, amount[addon.column_name]);
+		}
+
+		const dates = generateDateRange(booking.start_date, booking.end_date);
+		console.log('Dates to process:', dates);
+
+		for (let i = 0; i < dates.length; i++) {
+			const currentDate = dates[i];
+			const isFirstDay = i === 0;
+			const isLastDay = i === dates.length - 1;
+			const isMiddleDay = !isFirstDay && !isLastDay;
+
+			let startIndex, endIndex;
+
+			if (isFirstDay) {
+				// Första dagen: Från starttid till midnatt (23:45)
+				startIndex = timeToIndex(booking.start_time);
+				endIndex = 96; // Ändrad från 95 till 96 för att inkludera sista kolumnen
+			} else if (isMiddleDay) {
+				// Mellandagar: Hela dagen
+				startIndex = 0; // 00:00
+				endIndex = 96; // Ändrad från 95 till 96
+			} else if (isLastDay) {
+				// Sista dagen: Från midnatt till sluttid
+				startIndex = 0; // 00:00
+				endIndex = timeToIndex(booking.end_time);
+			}
+
+			console.log('Processing date:', {
+				date: currentDate,
+				isFirstDay,
+				isMiddleDay,
+				isLastDay,
+				startIndex,
+				endIndex
+			});
+
+			for (const addon of addons) {
+				const amount = addonAmounts[addon.column_name];
+				if (amount > 0) {
+					await restoreProductAvailability(
+						client,
+						addon.availability_table_name,
+						currentDate,
+						startIndex,
+						endIndex,
+						amount
+					);
+				}
+			}
+		}
+
+		await client.query('UPDATE bookings SET status = $1 WHERE id = $2', ['genomförd', bookingId]);
+
+		return true;
+	} catch (error) {
+		console.error('Fel vid återställning av tillgänglighet:', error);
+		throw error;
+	}
+}
+
+async function restoreProductAvailability(client, tableName, date, startIndex, endIndex, amount) {
+	try {
+		console.log('Restoring availability for:', {
+			tableName,
+			date,
+			startIndex,
+			endIndex,
+			amount
+		});
+
+		const updates = [];
+		const values = [date];
+		let paramIndex = 2;
+
+		// Inkludera alla kolumner från startIndex till och med endIndex
+		for (let i = startIndex; i <= endIndex; i++) {
+			const minutes = i * 15;
+			updates.push(`"${minutes}" = COALESCE("${minutes}", 0) + $${paramIndex}`);
+			values.push(amount);
+			paramIndex++;
+		}
+
+		if (updates.length > 0) {
+			const query = `
+        UPDATE ${tableName}
+        SET ${updates.join(', ')}
+        WHERE date = $1
+      `;
+
+			console.log(`Updating ${updates.length} columns for ${date}`, {
+				startMinutes: startIndex * 15,
+				endMinutes: endIndex * 15
+			});
+
+			await client.query(query, values);
+		}
+	} catch (error) {
+		console.error(`Fel vid återställning av ${tableName} för ${date}:`, error);
+		throw error;
+	}
+}
+
+export async function POST({ request }) {
+	try {
+		const { bookingId } = await request.json();
+
+		if (!bookingId) {
+			return json(
+				{
+					success: false,
+					error: 'Booking ID saknas'
+				},
+				{ status: 400 }
+			);
+		}
+
+		await transaction(async (client) => {
+			await restoreAvailabilityAfterBooking(client, bookingId);
+		});
+
+		return json({
+			success: true,
+			message: 'Tillgänglighet har återställts och bokning är markerad som genomförd'
+		});
+	} catch (error) {
+		console.error('Fel vid återställning:', error);
+		return json(
+			{
+				success: false,
+				error: 'Kunde inte återställa tillgänglighet',
+				details: error.message
+			},
+			{ status: 500 }
+		);
+	}
+}

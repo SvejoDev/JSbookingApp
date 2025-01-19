@@ -61,5 +61,3 @@ pool.query('SELECT NOW()', (err, res) => {
 		console.log('databasanslutning lyckades');
 	}
 });
-
-export { query };

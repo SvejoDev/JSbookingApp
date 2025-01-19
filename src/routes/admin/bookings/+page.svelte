@@ -3,52 +3,10 @@
 	import { Card } from '$lib/components/ui/card';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { toast } from 'svelte-sonner';
 
 	export let data;
 
-	async function handleStartBooking(bookingId) {
-		try {
-			const response = await fetch('/api/bookings/start', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ bookingId })
-			});
-
-			if (response.ok) {
-				// Refresh the page to show updated status
-				goto(`/admin/bookings?date=${data.selectedDate}`);
-			}
-		} catch (error) {
-			console.error('Error starting booking:', error);
-		}
-	}
-
-	async function handleCompleteBooking(bookingId) {
-		const currentTime = new Date().toLocaleTimeString('sv-SE', {
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-
-		try {
-			const response = await fetch('/api/bookings/complete', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					bookingId,
-					endTime: currentTime
-				})
-			});
-
-			if (response.ok) {
-				// Refresh the page to show updated status
-				goto(`/admin/bookings?date=${data.selectedDate}`);
-			}
-		} catch (error) {
-			console.error('Error completing booking:', error);
-		}
-	}
-
-	// debounce function to prevent rapid database queries
 	function debounce(func, wait) {
 		let timeout;
 		return function executedFunction(...args) {
@@ -95,13 +53,68 @@
 		goto(`/admin/bookings?date=${newDate}`);
 	}
 
-	// format equipment string
+	// format equipment display
 	function formatEquipment(booking) {
-		const equipment = [];
-		if (booking.amount_canoes > 0) equipment.push(`Kanot: ${booking.amount_canoes}`);
-		if (booking.amount_kayak > 0) equipment.push(`Kajak: ${booking.amount_kayak}`);
-		if (booking.amount_sup > 0) equipment.push(`SUP: ${booking.amount_sup}`);
-		return equipment.join(', ');
+		if (!booking || !data.addons) return '';
+
+		return data.addons
+			.map((addon) => {
+				const amount = booking[addon.column_name];
+				if (amount && amount > 0) {
+					return `${addon.name}: ${amount}`;
+				}
+				return null;
+			})
+			.filter((item) => item !== null)
+			.join('\n');
+	}
+
+	async function handleStartBooking(bookingId) {
+		try {
+			const response = await fetch('/api/bookings/start', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ bookingId })
+			});
+
+			const result = await response.json();
+			if (result.success) {
+				toast.success('Bokning har startats');
+				// Uppdatera sidan för att visa ny status
+				goto(`/admin/bookings?date=${data.selectedDate}`, { invalidateAll: true });
+			} else {
+				toast.error('Kunde inte starta bokningen');
+			}
+		} catch (error) {
+			console.error('Fel vid start av bokning:', error);
+			toast.error('Ett fel uppstod');
+		}
+	}
+
+	async function handleCompleteBooking(bookingId) {
+		try {
+			const response = await fetch('/api/bookings/complete', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ bookingId })
+			});
+
+			const result = await response.json();
+			if (result.success) {
+				toast.success('Bokning har markerats som genomförd');
+				// Uppdatera sidan för att visa ny status
+				goto(`/admin/bookings?date=${data.selectedDate}`, { invalidateAll: true });
+			} else {
+				toast.error('Kunde inte slutföra bokningen');
+			}
+		} catch (error) {
+			console.error('Fel vid slutförande av bokning:', error);
+			toast.error('Ett fel uppstod');
+		}
 	}
 </script>
 
@@ -176,14 +189,18 @@
 							Vuxna: {booking.number_of_adults}<br />
 							Barn: {booking.number_of_children}
 						</td>
-						<td class="border p-1 text-xs">
+						<td class="border p-1 text-xs whitespace-pre-line">
 							{formatEquipment(booking)}
 						</td>
 						<td class="border p-1">
 							<span
 								class="text-xs px-2 py-1 rounded {booking.status === 'betald'
 									? 'bg-green-100'
-									: 'bg-yellow-100'}"
+									: booking.status === 'started'
+										? 'bg-blue-100'
+										: booking.status === 'completed'
+											? 'bg-gray-100'
+											: 'bg-yellow-100'}"
 							>
 								{booking.status}
 							</span>
