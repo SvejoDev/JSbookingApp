@@ -7,24 +7,53 @@ export async function POST({ request }) {
 
 		console.log('Received booking request:', { date, bookingLength, addons, experienceId });
 
-		// Get experience opening hours and addon data
+		// First check if this is a specific date experience
+		const { rows: specificDates } = await query(
+			`SELECT available_date, open_time, close_time 
+             FROM experience_available_dates 
+             WHERE experience_id = $1 
+             AND available_date = $2`,
+			[experienceId, date]
+		);
+
+		// If no specific date found, check period-based dates
 		const {
 			rows: [openDateData]
-		} = await query('SELECT * FROM experience_open_dates WHERE experience_id = $1', [experienceId]);
+		} = await query(`SELECT * FROM experience_open_dates WHERE experience_id = $1`, [experienceId]);
 
-		if (!openDateData) {
-			console.error('Could not fetch opening hours');
-			return json({ error: 'Could not fetch opening hours for the experience' }, { status: 500 });
-		}
+		// Determine which opening hours to use
+		let openingHours;
+		if (specificDates.length > 0) {
+			// Use specific date's opening hours
+			openingHours = specificDates[0];
 
-		// Validate date is within allowed range
-		const selectedDate = new Date(date);
-		const startDate = new Date(openDateData.start_date);
-		const endDate = new Date(openDateData.end_date);
+			// Validate that the date is actually available
+			const selectedDate = new Date(date);
+			const availableDate = new Date(openingHours.available_date);
+			if (selectedDate.toDateString() !== availableDate.toDateString()) {
+				return json({
+					error: 'Selected date is not available',
+					availableStartTimes: []
+				});
+			}
+		} else if (openDateData) {
+			// Use period-based opening hours
+			openingHours = openDateData;
 
-		if (selectedDate < startDate || selectedDate > endDate) {
+			// Validate date is within allowed range
+			const selectedDate = new Date(date);
+			const startDate = new Date(openDateData.start_date);
+			const endDate = new Date(openDateData.end_date);
+
+			if (selectedDate < startDate || selectedDate > endDate) {
+				return json({
+					error: 'Selected date is outside the season',
+					availableStartTimes: []
+				});
+			}
+		} else {
 			return json({
-				error: 'Selected date is outside the season',
+				error: 'No opening hours found for this experience',
 				availableStartTimes: []
 			});
 		}
@@ -37,10 +66,9 @@ export async function POST({ request }) {
 			durationHours = parseInt(bookingLength);
 			numberOfNights = 0;
 		} else if (bookingLength === 'Hela dagen') {
-			durationHours = getHoursInDay(openDateData.open_time, openDateData.close_time);
+			durationHours = getHoursInDay(openingHours.open_time, openingHours.close_time);
 			numberOfNights = 0;
 		} else {
-			// För övernattningar är formatet t.ex. "1 natt", "2 nätter" etc.
 			numberOfNights = parseInt(bookingLength);
 			durationHours = numberOfNights * 24;
 		}
@@ -49,9 +77,9 @@ export async function POST({ request }) {
 
 		// Get all available addons from database
 		const { rows: addonsList } = await query(`
-			SELECT id, name, max_quantity, availability_table_name, column_name 
-			FROM addons
-		`);
+            SELECT id, name, max_quantity, availability_table_name, column_name 
+            FROM addons
+        `);
 
 		// Generate possible start times
 		const availableStartTimes = await checkAvailability({
@@ -60,8 +88,8 @@ export async function POST({ request }) {
 			numberOfNights,
 			addons,
 			addonsList,
-			openTime: openDateData.open_time,
-			closeTime: openDateData.close_time
+			openTime: openingHours.open_time,
+			closeTime: openingHours.close_time
 		});
 
 		return json({ availableStartTimes });

@@ -266,6 +266,13 @@
 		}
 	}
 
+	// lägg till denna reaktiva sats för att hantera enstaka bokningslängd
+	$: {
+		if (sortedBookingLengths.length === 1) {
+			selectedBookingLength = sortedBookingLengths[0].length;
+		}
+	}
+
 	onMount(async () => {
 		// Ta bort fetchMaxQuantities-anropet här
 		const today = new Date();
@@ -516,22 +523,30 @@
 								<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
 							{/if}
 						</Label>
-						<select
-							id="bookingLength"
-							bind:value={selectedBookingLength}
-							on:change={() => {
-								if (hasGeneratedTimes) handleSettingChange();
-							}}
-							class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-							disabled={!selectedStartLocation || settingsLocked}
-						>
-							<option value="" disabled selected>Välj bokningslängd</option>
-							{#each sortedBookingLengths as duration}
-								<option value={duration.length}>
-									{duration.length}
-								</option>
-							{/each}
-						</select>
+						{#if sortedBookingLengths.length === 1}
+							<div
+								class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+							>
+								{sortedBookingLengths[0].length}
+							</div>
+						{:else}
+							<select
+								id="bookingLength"
+								bind:value={selectedBookingLength}
+								on:change={() => {
+									if (hasGeneratedTimes) handleSettingChange();
+								}}
+								class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+								disabled={!selectedStartLocation || settingsLocked}
+							>
+								<option value="" disabled selected>Välj bokningslängd</option>
+								{#each sortedBookingLengths as duration}
+									<option value={duration.length}>
+										{duration.length}
+									</option>
+								{/each}
+							</select>
+						{/if}
 					</div>
 				</CardContent>
 			</Card>
@@ -549,12 +564,12 @@
 						<Calendar
 							{minDate}
 							{maxDate}
-							openingPeriods={[
-								{
-									start_date: data.openHours.start_date,
-									end_date: data.openHours.end_date
-								}
-							]}
+							openingPeriods={{
+								periods: data.openHours.periods || [],
+								specificDates: data.openHours.specificDates || [],
+								defaultOpenTime: data.openHours.defaultOpenTime || '',
+								defaultCloseTime: data.openHours.defaultCloseTime || ''
+							}}
 							{blockedDates}
 							selectedDate={startDate}
 							on:dateSelect={(event) => {
@@ -565,9 +580,7 @@
 								startDate = `${year}-${month}-${day}`;
 								if (hasGeneratedTimes) handleSettingChange();
 							}}
-							bookingLength={selectedBookingLength
-								? data.bookingLengths.find((b) => b.length === selectedBookingLength)
-								: null}
+							bookingLength={selectedBookingLength}
 						/>
 					</div>
 				</div>
@@ -576,13 +589,12 @@
 		{#if startDate && selectedBookingLength}
 			<Card id="equipment-section">
 				<CardHeader>
-					<CardTitle>Välj utrustning och tid</CardTitle>
+					<CardTitle>Välj utrustning</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<div class="grid gap-6">
 						<!-- Tillval -->
 						<div class="space-y-4">
-							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
 								{#each data.experience.addons as addon (addon.id)}
 									<div class="space-y-2">
