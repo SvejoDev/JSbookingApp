@@ -11,7 +11,12 @@
 	export let minDate = null;
 	export let maxDate = null;
 	export let blockedDates = [];
-	export let openingPeriods = [];
+	export let openingPeriods = {
+		periods: [],
+		specificDates: [],
+		defaultOpenTime: '',
+		defaultCloseTime: ''
+	};
 	export let selectedDate = null;
 
 	const dispatch = createEventDispatcher();
@@ -37,7 +42,18 @@
 	}
 
 	export function isDateOpen(date) {
-		return openingPeriods.some((period) => {
+		const dateStr = formatDate(date);
+
+		// Check if there are any specific dates
+		if (openingPeriods.specificDates && openingPeriods.specificDates.length > 0) {
+			// If we have specific dates, only those dates are available
+			return openingPeriods.specificDates.some(
+				(specificDate) => formatDate(new Date(specificDate.available_date)) === dateStr
+			);
+		}
+
+		// If no specific dates, check period-based availability
+		return openingPeriods.periods.some((period) => {
 			const start = new Date(period.start_date);
 			const end = new Date(period.end_date);
 			return date >= start && date <= end;
@@ -48,7 +64,7 @@
 		return blockedDates.some((blockedDate) => blockedDate.toDateString() === date.toDateString());
 	}
 
-	// Use optional chaining with a fallback value
+	// Generate key for forcing re-render
 	$: key = `${selectedDate}-${bookingLength?.length || ''}-${currentMonth.getTime()}`;
 </script>
 

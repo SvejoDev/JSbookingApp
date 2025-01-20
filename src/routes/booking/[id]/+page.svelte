@@ -549,12 +549,12 @@
 						<Calendar
 							{minDate}
 							{maxDate}
-							openingPeriods={[
-								{
-									start_date: data.openHours.start_date,
-									end_date: data.openHours.end_date
-								}
-							]}
+							openingPeriods={{
+								periods: data.openHours.periods || [],
+								specificDates: data.openHours.specificDates || [],
+								defaultOpenTime: data.openHours.defaultOpenTime || '',
+								defaultCloseTime: data.openHours.defaultCloseTime || ''
+							}}
 							{blockedDates}
 							selectedDate={startDate}
 							on:dateSelect={(event) => {
@@ -565,9 +565,7 @@
 								startDate = `${year}-${month}-${day}`;
 								if (hasGeneratedTimes) handleSettingChange();
 							}}
-							bookingLength={selectedBookingLength
-								? data.bookingLengths.find((b) => b.length === selectedBookingLength)
-								: null}
+							bookingLength={selectedBookingLength}
 						/>
 					</div>
 				</div>
