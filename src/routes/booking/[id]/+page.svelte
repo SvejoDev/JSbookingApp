@@ -11,12 +11,60 @@
 	import Calendar from '$lib/components/calendar/Calendar.svelte';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { loadStripe } from '@stripe/stripe-js';
 
 	export let data;
 
-	let selectedAddons = {};
+	// ==================
+	// tillståndsvariabler
+	// ==================
 
-	// Make sure we're properly initializing the selectedAddons
+	// stripe-relaterade variabler
+	let stripePromise;
+
+	// bokningsrelaterade variabler
+	let blockedDates = []; // datum som är blockerade för bokning
+	let startDate = null; // valt startdatum
+	let minDate = null; // tidigaste möjliga bokningsdatum
+	let maxDate = null; // senaste möjliga bokningsdatum
+	let startTime = null; // vald starttid
+	let possibleStartTimes = []; // lista med möjliga starttider
+	let selectedBookingLength = null;
+	let returnDate = null;
+	let returnTime = null;
+	let selectedStartLocation = null;
+	let selectedStartLocationName = '';
+	let selectedExperienceId = data.experience?.id;
+
+	// ui-kontrollvariabler
+	let isLoadingTimes = false;
+	let hasGeneratedTimes = false;
+	let settingsLocked = false;
+	let hasCheckedTimes = false;
+	let showContactSection = false;
+
+	// deltagarvariabler
+	let numAdults = 0;
+	let numChildren = 0;
+	let totalPrice = 0;
+
+	// kunduppgifter
+	let userName = '';
+	let userLastname = '';
+	let userPhone = '';
+	let userEmail = '';
+	let userComment = '';
+	let acceptTerms = false;
+
+	// tillvalshantering
+	let selectedAddons = {};
+	let sortedBookingLengths = [];
+
+	// ==================
+	// reaktiva uttryck
+	// ==================
+
+	// hanterar tillval när experience data laddas
 	$: {
 		if (data.experience?.addons) {
 			selectedAddons = {
@@ -31,6 +79,113 @@
 		}
 	}
 
+	// uppdaterar startplatsnamn när plats väljs
+	$: {
+		const selectedLocation = data.startLocations.find(
+			(location) => location.id === selectedStartLocation
+		);
+		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
+	}
+
+	// hanterar automatisk val av startplats om det bara finns en
+	$: {
+		if (data.startLocations && data.startLocations.length === 1) {
+			selectedStartLocation = data.startLocations[0].id;
+			selectedStartLocationName = data.startLocations[0].location;
+		}
+	}
+
+	// sorterar och filtrerar bokningslängder baserat på vald startplats
+	$: {
+		if (selectedStartLocation) {
+			const filtered = data.bookingLengths.filter((bl) => {
+				return Number(bl.location_id) === Number(selectedStartLocation);
+			});
+			sortedBookingLengths = sortBookingLengths(filtered);
+		} else {
+			sortedBookingLengths = [];
+		}
+	}
+
+	// väljer automatiskt bokningslängd om det bara finns ett alternativ
+	$: {
+		if (sortedBookingLengths.length === 1) {
+			selectedBookingLength = sortedBookingLengths[0].length;
+		}
+	}
+
+	// uppdaterar pris när relevanta val ändras
+	$: {
+		if (selectedStartLocation || numAdults) {
+			updatePrice();
+		}
+	}
+
+	// beräknar returdatum när nödvändig information finns
+	$: if (startDate && startTime && selectedBookingLength) {
+		calculateReturnDate();
+	}
+
+	// automatisk scrollning till relevanta sektioner
+	$: if (startTime) {
+		scrollToElement('booking-summary');
+	}
+	$: if (possibleStartTimes.length > 0) {
+		scrollToElement('time-selection');
+	}
+	$: if (startDate && selectedBookingLength && selectedStartLocation) {
+		scrollToElement('equipment-section');
+	}
+
+	// ==================
+	// hjälpfunktioner
+	// ==================
+
+	// scrollar till ett specifikt element
+	function scrollToElement(elementId) {
+		if (browser) {
+			setTimeout(() => {
+				const element = document.getElementById(elementId);
+				if (element) {
+					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}, 100);
+		}
+	}
+
+	// sorterar bokningslängder för bättre presentation
+	function sortBookingLengths(bookingLengths) {
+		return bookingLengths.sort((a, b) => {
+			if (a.length.includes('h') && b.length.includes('h')) {
+				return parseInt(a.length) - parseInt(b.length);
+			}
+			if (a.length.includes('h')) return -1;
+			if (b.length.includes('h')) return 1;
+			if (a.length === 'Hela dagen') return -1;
+			if (b.length === 'Hela dagen') return 1;
+			return 0;
+		});
+	}
+
+	// återställer bokningsinställningar när användaren gör ändringar
+	function handleSettingChange() {
+		startTime = null;
+		hasGeneratedTimes = false;
+		settingsLocked = false;
+		possibleStartTimes = [];
+	}
+
+	// visar kontaktformuläret när användaren går vidare från deltagarval
+	function handleNextStep() {
+		showContactSection = true;
+		scrollToElement('contact-section');
+	}
+
+	// ==================
+	// bokningsrelaterade funktioner
+	// ==================
+
+	// uppdaterar antalet av ett specifikt tillval
 	function updateAddonQuantity(addonId, increment) {
 		console.log('Updating addon quantity:', { addonId, increment });
 		const addon = data.experience.addons.find((a) => a.id === addonId);
@@ -55,52 +210,28 @@
 		}
 	}
 
-	let blockedDates = [];
-	let startDate = null;
-	let minDate = null;
-	let maxDate = null;
-	let startTime = null;
-	let possibleStartTimes = [];
-	let selectedBookingLength = null;
-	let returnDate = null;
-	let returnTime = null;
-	let selectedStartLocation = null;
-	let numAdults = 0;
-	let numChildren = 0;
-	let totalPrice = 0;
-	let isLoadingTimes = false;
-	let hasGeneratedTimes = false;
-	let settingsLocked = false;
-	let hasCheckedTimes = false;
-	let showContactSection = false;
-	let selectedExperienceId = data.experience?.id;
-
-	//Hitta namnet till tillvalsprodukten
-	let selectedStartLocationName = '';
-
-	$: {
-		const selectedLocation = data.startLocations.find(
-			(location) => location.id === selectedStartLocation
-		);
-		selectedStartLocationName = selectedLocation ? selectedLocation.location : '';
-	}
-
-	$: {
-		if (data.startLocations && data.startLocations.length === 1) {
-			selectedStartLocation = data.startLocations[0].id;
-			selectedStartLocationName = data.startLocations[0].location;
+	// beräknar totalpris baserat på val
+	function updatePrice() {
+		if (selectedStartLocation && data.startLocations) {
+			const selectedLocation = data.startLocations.find(
+				(location) => location.id === selectedStartLocation
+			);
+			if (selectedLocation) {
+				totalPrice = numAdults * selectedLocation.price;
+			} else {
+				console.error('Vald startplats hittades inte');
+				totalPrice = 0;
+			}
+		} else {
+			totalPrice = 0;
 		}
 	}
 
-	//Kunduppgifter:
-	let userName = '';
-	let userLastname = '';
-	let userPhone = '';
-	let userEmail = '';
-	let userComment = '';
-	let acceptTerms = false;
+	// ==================
+	// tidsrelaterade funktioner
+	// ==================
 
-	// Genererar möjliga starttider baserat på öppettider och vald bokningslängd
+	// beräknar möjliga starttider
 	async function generateStartTimes() {
 		if (!startDate || !selectedBookingLength) {
 			possibleStartTimes = [];
@@ -166,190 +297,101 @@
 			isLoadingTimes = false;
 		}
 	}
-	function handleSettingChange() {
-		if (hasGeneratedTimes) {
-			possibleStartTimes = [];
-			startTime = null;
-			hasGeneratedTimes = false;
-			settingsLocked = false;
-			hasCheckedTimes = false;
-		}
-	}
 
-	//Nästa steg för kontaktuppgifter
-	function handleNextStep() {
-		showContactSection = true;
-		scrollToElement('contact-section');
-	}
-	// Beräknar returdatum och returtid baserat på vald starttid och bokningslängd
+	// beräknar returdatum och tid
 	function calculateReturnDate() {
+		// Debug logging to check values
+		console.log('Calculating return date with:', {
+			selectedBookingLength,
+			startTime,
+			startDate,
+			openHours: data.openHours
+		});
+
+		// Early return if required data is missing
 		if (!selectedBookingLength || !startTime || !startDate) {
-			console.error('Data saknas för att beräkna returdatum.');
+			console.error('saknar grundläggande bokningsdata:', {
+				selectedBookingLength,
+				startTime,
+				startDate
+			});
+			return;
+		}
+
+		// Check if openHours exists and has required properties
+		if (!data.openHours?.defaultCloseTime) {
+			console.error('saknar öppettider:', data.openHours);
 			return;
 		}
 
 		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
 		if (!bookingLength) {
-			console.error('Data för bokningslängd saknas');
+			console.error('kunde inte hitta bokningslängd:', selectedBookingLength);
 			return;
 		}
 
-		const startDateTime = new Date(`${startDate}T${startTime}`);
-		if (isNaN(startDateTime.getTime())) {
-			console.error('Ogiltigt startdatum eller starttid');
-			return;
-		}
-
-		let returnDateTime = new Date(startDateTime);
-
-		if (bookingLength.overnight) {
-			returnDateTime.setDate(returnDateTime.getDate() + bookingLength.return_day_offset);
-			const closeTimeParts = data.openHours.close_time.split(':');
-			returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
-		} else if (bookingLength.length === 'Hela dagen') {
-			const closeTimeParts = data.openHours.close_time.split(':');
-			returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
-		} else {
-			const hoursToAdd = parseInt(bookingLength.length);
-			returnDateTime.setHours(returnDateTime.getHours() + hoursToAdd);
-
-			const closeTime = new Date(`${startDate}T${data.openHours.close_time}`);
-			if (returnDateTime > closeTime) {
-				returnDateTime = closeTime;
+		try {
+			const startDateTime = new Date(`${startDate}T${startTime}`);
+			if (isNaN(startDateTime.getTime())) {
+				console.error('ogiltigt startdatum eller starttid:', { startDate, startTime });
+				return;
 			}
-		}
 
-		returnDate = returnDateTime.toISOString().split('T')[0];
-		returnTime = returnDateTime.toTimeString().substring(0, 5);
+			let returnDateTime = new Date(startDateTime);
 
-		// Calculate booking type info
-		const bookingTypeInfo = getBookingTypeInfo(
-			bookingLength.length,
-			data.openHours.open_time,
-			data.openHours.close_time
-		);
-
-		return {
-			startSlot: timeToSlot(startTime),
-			endSlot: timeToSlot(returnTime),
-			bookingType: bookingTypeInfo.type,
-			totalSlots: bookingTypeInfo.totalSlots
-		};
-	}
-
-	// Sorterar bokningslängder baserat på varaktighet och typ
-	function sortBookingLengths(bookingLengths) {
-		return bookingLengths.sort((a, b) => {
-			if (a.length.includes('h') && b.length.includes('h')) {
-				return parseInt(a.length) - parseInt(b.length);
-			}
-			if (a.length.includes('h')) return -1;
-			if (b.length.includes('h')) return 1;
-			if (a.length === 'Hela dagen') return -1;
-			if (b.length === 'Hela dagen') return 1;
-			return 0;
-		});
-	}
-
-	let sortedBookingLengths = [];
-
-	$: {
-		if (selectedStartLocation) {
-			// Kontrollera om location_id är string eller number
-			const filtered = data.bookingLengths.filter((bl) => {
-				return Number(bl.location_id) === Number(selectedStartLocation);
-			});
-
-			sortedBookingLengths = sortBookingLengths(filtered);
-		} else {
-			sortedBookingLengths = [];
-		}
-	}
-
-	// lägg till denna reaktiva sats för att hantera enstaka bokningslängd
-	$: {
-		if (sortedBookingLengths.length === 1) {
-			selectedBookingLength = sortedBookingLengths[0].length;
-		}
-	}
-
-	onMount(async () => {
-		// Ta bort fetchMaxQuantities-anropet här
-		const today = new Date();
-
-		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
-			const dbMinDate = new Date(data.openHours.start_date);
-			minDate = dbMinDate > today ? dbMinDate : today;
-			maxDate = new Date(data.openHours.end_date);
-		}
-
-		if (data.blocked_dates) {
-			blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
-		}
-	});
-
-	function updatePrice() {
-		if (selectedStartLocation && data.startLocations) {
-			const selectedLocation = data.startLocations.find(
-				(location) => location.id === selectedStartLocation
-			);
-			if (selectedLocation) {
-				totalPrice = numAdults * selectedLocation.price;
+			if (bookingLength.overnight) {
+				returnDateTime.setDate(returnDateTime.getDate() + bookingLength.return_day_offset);
+				const closeTimeParts = data.openHours.defaultCloseTime.split(':');
+				returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
+			} else if (bookingLength.length === 'Hela dagen') {
+				const closeTimeParts = data.openHours.defaultCloseTime.split(':');
+				returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
 			} else {
-				console.error('Vald startplats hittades inte');
-				totalPrice = 0;
-			}
-		} else {
-			totalPrice = 0;
-		}
-	}
-	$: {
-		if (selectedStartLocation || numAdults) {
-			updatePrice();
-		}
-	}
+				const hoursToAdd = parseInt(bookingLength.length);
+				returnDateTime.setHours(returnDateTime.getHours() + hoursToAdd);
 
-	$: selectedExperienceId = data.experience?.id;
-
-	$: if (startDate && startTime && selectedBookingLength) {
-		calculateReturnDate();
-	}
-
-	$: if (startTime) {
-		scrollToElement('booking-summary');
-	}
-
-	$: if (possibleStartTimes.length > 0) {
-		scrollToElement('time-selection');
-	}
-
-	$: if (startDate && selectedBookingLength && selectedStartLocation) {
-		scrollToElement('equipment-section');
-	}
-
-	//Skrolla ned funktion:
-	function scrollToElement(elementId) {
-		if (browser) {
-			setTimeout(() => {
-				const element = document.getElementById(elementId);
-				if (element) {
-					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				const closeTime = new Date(`${startDate}T${data.openHours.defaultCloseTime}`);
+				if (returnDateTime > closeTime) {
+					returnDateTime = closeTime;
 				}
-			}, 100);
+			}
+
+			returnDate = returnDateTime.toISOString().split('T')[0];
+			returnTime = returnDateTime.toTimeString().substring(0, 5);
+
+			// Debug log successful calculation
+			console.log('Beräknat returdatum:', { returnDate, returnTime });
+
+			// Calculate booking type info
+			const bookingTypeInfo = getBookingTypeInfo(
+				bookingLength.length,
+				data.openHours.defaultOpenTime,
+				data.openHours.defaultCloseTime
+			);
+
+			return {
+				startSlot: timeToSlot(startTime),
+				endSlot: timeToSlot(returnTime),
+				bookingType: bookingTypeInfo.type,
+				totalSlots: bookingTypeInfo.totalSlots
+			};
+		} catch (error) {
+			console.error('fel vid beräkning av returdatum:', error);
+			return;
 		}
 	}
 
-	//Stripe
+	// konverterar tid till tidsluckor
+	function timeToSlot(timeStr) {
+		const [hours, minutes] = timeStr.split(':').map(Number);
+		return Math.floor((hours * 60 + minutes) / 15);
+	}
 
-	import { loadStripe } from '@stripe/stripe-js';
-	let stripePromise;
+	// ==================
+	// betalningsrelaterade funktioner
+	// ==================
 
-	onMount(async () => {
-		stripePromise = await loadStripe(
-			'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig'
-		);
-	});
-
+	// hanterar stripe-betalning
 	async function handleCheckout() {
 		try {
 			const stripe = await stripePromise;
@@ -423,48 +465,27 @@
 		}
 	}
 
-	function getBookingTypeInfo(bookingLength, openTime, closeTime) {
-		const openSlot = timeToSlot(openTime);
-		const closeSlot = timeToSlot(closeTime);
+	// ==================
+	// livscykelhantering
+	// ==================
 
-		if (bookingLength === 'Hela dagen') {
-			return {
-				type: 'daily',
-				totalSlots: closeSlot - openSlot
-			};
-		} else if (bookingLength.includes('h')) {
-			const hours = parseInt(bookingLength);
-			return {
-				type: 'hourly',
-				totalSlots: (hours * 60) / 15
-			};
-		} else {
-			// Overnight booking
-			const nights = parseInt(bookingLength);
-			const days = nights + 1;
+	onMount(async () => {
+		stripePromise = await loadStripe(
+			'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig'
+		);
 
-			// För en övernattningsbokning med 2 nätter:
-			// Dag 1: Från starttid till midnatt (96 - startSlot)
-			// Dag 2: Hela dagen (96 slots)
-			// Dag 3: Från midnatt till sluttid (endSlot)
+		const today = new Date();
 
-			const slotsFirstDay = 96 - openSlot; // Från starttid till midnatt
-			const slotsMiddleDays = (days - 2) * 96; // Hela dagar (om några)
-			const slotsLastDay = closeSlot; // Från midnatt till sluttid
-
-			const totalSlots = slotsFirstDay + slotsMiddleDays + slotsLastDay;
-
-			return {
-				type: 'overnight',
-				totalSlots: totalSlots
-			};
+		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
+			const dbMinDate = new Date(data.openHours.start_date);
+			minDate = dbMinDate > today ? dbMinDate : today;
+			maxDate = new Date(data.openHours.end_date);
 		}
-	}
 
-	function timeToSlot(timeStr) {
-		const [hours, minutes] = timeStr.split(':').map(Number);
-		return Math.floor((hours * 60 + minutes) / 15);
-	}
+		if (data.blocked_dates) {
+			blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
+		}
+	});
 </script>
 
 {#if data.experience && data.experience.id}
@@ -667,7 +688,10 @@
 									{#each possibleStartTimes as time}
 										<Button
 											variant={startTime === time ? 'default' : 'outline'}
-											on:click={() => (startTime = time)}
+											on:click={() => {
+												startTime = time;
+												console.log('Selected time:', time); // Add this debug line
+											}}
 											class="w-full"
 										>
 											{time}
