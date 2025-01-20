@@ -30,12 +30,13 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 			rows: [booking]
 		} = await client.query(
 			`SELECT 
-        start_date::text as start_date,
-        end_date::text as end_date,
-        start_time::text as start_time,
-        end_time::text as end_time
-      FROM bookings 
-      WHERE id = $1`,
+                start_date::text as start_date,
+                end_date::text as end_date,
+                start_time::text as start_time,
+                end_time::text as end_time,
+                booking_type
+            FROM bookings 
+            WHERE id = $1`,
 			[bookingId]
 		);
 
@@ -63,6 +64,8 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 		const dates = generateDateRange(booking.start_date, booking.end_date);
 		console.log('Dates to process:', dates);
 
+		const isMultiDayBooking = booking.booking_type === 'overnight';
+
 		for (let i = 0; i < dates.length; i++) {
 			const currentDate = dates[i];
 			const isFirstDay = i === 0;
@@ -71,18 +74,22 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 
 			let startIndex, endIndex;
 
-			if (isFirstDay) {
-				// Första dagen: Från starttid till midnatt (23:45)
+			if (!isMultiDayBooking) {
+				// Endagsbokning: Använd exakt start- och sluttid
 				startIndex = timeToIndex(booking.start_time);
-				endIndex = 96; // Ändrad från 95 till 96 för att inkludera sista kolumnen
-			} else if (isMiddleDay) {
-				// Mellandagar: Hela dagen
-				startIndex = 0; // 00:00
-				endIndex = 96; // Ändrad från 95 till 96
-			} else if (isLastDay) {
-				// Sista dagen: Från midnatt till sluttid
-				startIndex = 0; // 00:00
 				endIndex = timeToIndex(booking.end_time);
+			} else {
+				// Övernattningsbokning: Behåll existerande logik
+				if (isFirstDay) {
+					startIndex = timeToIndex(booking.start_time);
+					endIndex = 96;
+				} else if (isMiddleDay) {
+					startIndex = 0;
+					endIndex = 96;
+				} else if (isLastDay) {
+					startIndex = 0;
+					endIndex = timeToIndex(booking.end_time);
+				}
 			}
 
 			console.log('Processing date:', {
@@ -91,7 +98,8 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 				isMiddleDay,
 				isLastDay,
 				startIndex,
-				endIndex
+				endIndex,
+				bookingType: booking.booking_type
 			});
 
 			for (const addon of addons) {
@@ -103,7 +111,8 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 						currentDate,
 						startIndex,
 						endIndex,
-						amount
+						amount,
+						isMultiDayBooking
 					);
 				}
 			}
@@ -118,21 +127,29 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 	}
 }
 
-async function restoreProductAvailability(client, tableName, date, startIndex, endIndex, amount) {
+async function restoreProductAvailability(
+	client,
+	tableName,
+	date,
+	startIndex,
+	endIndex,
+	amount,
+	isMultiDayBooking
+) {
 	try {
 		console.log('Restoring availability for:', {
 			tableName,
 			date,
 			startIndex,
 			endIndex,
-			amount
+			amount,
+			isMultiDayBooking
 		});
 
 		const updates = [];
 		const values = [date];
 		let paramIndex = 2;
 
-		// Inkludera alla kolumner från startIndex till och med endIndex
 		for (let i = startIndex; i <= endIndex; i++) {
 			const minutes = i * 15;
 			updates.push(`"${minutes}" = COALESCE("${minutes}", 0) + $${paramIndex}`);
@@ -142,10 +159,10 @@ async function restoreProductAvailability(client, tableName, date, startIndex, e
 
 		if (updates.length > 0) {
 			const query = `
-        UPDATE ${tableName}
-        SET ${updates.join(', ')}
-        WHERE date = $1
-      `;
+                UPDATE ${tableName}
+                SET ${updates.join(', ')}
+                WHERE date = $1
+            `;
 
 			console.log(`Updating ${updates.length} columns for ${date}`, {
 				startMinutes: startIndex * 15,

@@ -32,6 +32,7 @@ export async function POST({ request }) {
 				const { rows: addons } = await client.query(
 					'SELECT name, column_name, availability_table_name FROM addons'
 				);
+
 				// hämta öppettider för korrekt hantering av tidsperioder
 				const {
 					rows: [openHours]
@@ -65,7 +66,6 @@ export async function POST({ request }) {
 				];
 
 				const addonColumns = addons.map((addon) => addon.column_name);
-
 				const allColumns = [...baseColumns, ...addonColumns, 'date_time_created'];
 
 				const baseValues = [
@@ -80,10 +80,10 @@ export async function POST({ request }) {
 					session.metadata.start_time,
 					session.metadata.end_date,
 					session.metadata.end_time,
-					parseInt(session.metadata.start_slot), // New
-					parseInt(session.metadata.end_slot), // New
-					session.metadata.booking_type, // New
-					parseInt(session.metadata.total_slots), // New
+					parseInt(session.metadata.start_slot),
+					parseInt(session.metadata.end_slot),
+					session.metadata.booking_type,
+					parseInt(session.metadata.total_slots),
 					parseInt(session.metadata.number_of_adults),
 					parseInt(session.metadata.number_of_children || '0'),
 					session.metadata.booking_name,
@@ -99,29 +99,21 @@ export async function POST({ request }) {
 					return value;
 				});
 
-				console.log(
-					'Addon metadata:',
-					addons.map((addon) => ({
-						name: addon.name,
-						metadataKey: `amount_${addon.name.toLowerCase()}`,
-						value: session.metadata[`amount_${addon.name.toLowerCase()}`]
-					}))
-				);
-
 				const placeholders = Array(allColumns.length - 1)
 					.fill(0)
 					.map((_, i) => `$${i + 1}`)
 					.concat('NOW()');
 
 				const insertQuery = `
-    			INSERT INTO bookings (${allColumns.filter((col) => col !== 'id').join(', ')})
-    			VALUES (${placeholders.join(', ')})
-    RETURNING *
-`;
+                    INSERT INTO bookings (${allColumns.filter((col) => col !== 'id').join(', ')})
+                    VALUES (${placeholders.join(', ')})
+                    RETURNING *
+                `;
 
 				const {
 					rows: [booking]
 				} = await client.query(insertQuery, [...baseValues, ...addonValues]);
+
 				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
 				const bookingData = {
 					start_date: session.metadata.start_date,
@@ -129,7 +121,8 @@ export async function POST({ request }) {
 					end_date: session.metadata.end_date,
 					end_time: session.metadata.end_time,
 					openTime: openHours.open_time,
-					closeTime: openHours.close_time
+					closeTime: openHours.close_time,
+					booking_type: session.metadata.booking_type
 				};
 
 				// lägg till addon-mängder dynamiskt
@@ -138,10 +131,6 @@ export async function POST({ request }) {
 				}
 
 				await updateAvailabilityForBooking(client, bookingData);
-
-				console.log('Base values:', baseValues);
-				console.log('Addon values:', addonValues);
-				console.log('All columns:', allColumns);
 
 				return booking;
 			});
@@ -155,6 +144,7 @@ export async function POST({ request }) {
 
 	return json({ received: true });
 }
+
 async function updateAvailabilityForBooking(client, booking) {
 	console.log('Starting availability update with booking data:', booking);
 
@@ -166,23 +156,36 @@ async function updateAvailabilityForBooking(client, booking) {
 	const dates = generateDateRange(booking.start_date, booking.end_date);
 	console.log('Generated date range:', dates);
 
-	const numberOfDays = dates.length;
+	const isMultiDayBooking = booking.booking_type === 'overnight';
 
-	for (let i = 0; i < numberOfDays; i++) {
+	for (let i = 0; i < dates.length; i++) {
 		const currentDate = dates[i];
 		const isFirstDay = i === 0;
-		const isLastDay = i === numberOfDays - 1;
+		const isLastDay = i === dates.length - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
-		// För första dagen: använd start_time till midnatt
-		// För mellandagar: hela dagen
-		// För sista dagen: från midnatt till end_time
-		let startIndex = isFirstDay ? timeToIndex(booking.start_time) : 0;
-		let endIndex = isLastDay ? timeToIndex(booking.end_time) : timeToIndex(booking.closeTime);
+		let startIndex, endIndex;
+
+		if (isMultiDayBooking) {
+			// Overnight booking logic
+			if (isFirstDay) {
+				startIndex = timeToIndex(booking.start_time);
+				endIndex = 96; // Till midnight
+			} else if (isMiddleDay) {
+				startIndex = 0;
+				endIndex = 96;
+			} else if (isLastDay) {
+				startIndex = 0;
+				endIndex = timeToIndex(booking.end_time);
+			}
+		} else {
+			// Single day booking logic
+			startIndex = timeToIndex(booking.start_time);
+			endIndex = timeToIndex(booking.end_time);
+		}
 
 		const productUpdates = [];
 
-		// hantera varje addon-typ dynamiskt
 		for (const addon of addons) {
 			const addonKey = addon.column_name;
 			const amount = booking[addonKey];
@@ -191,7 +194,6 @@ async function updateAvailabilityForBooking(client, booking) {
 				console.log(
 					`Updating availability for ${addon.name}: table=${addon.availability_table_name}, amount=${amount}`
 				);
-
 				productUpdates.push(
 					updateProductAvailability(
 						client,
@@ -200,7 +202,8 @@ async function updateAvailabilityForBooking(client, booking) {
 						startIndex,
 						endIndex,
 						amount,
-						isMiddleDay
+						isMiddleDay,
+						!isMultiDayBooking
 					)
 				);
 			}
@@ -217,7 +220,8 @@ async function updateProductAvailability(
 	startIndex,
 	endIndex,
 	amount,
-	isMiddleDay
+	isMiddleDay,
+	isSingleDayBooking
 ) {
 	try {
 		const { rows } = await client.query(`SELECT * FROM ${tableName} WHERE date = $1`, [date]);
@@ -225,21 +229,26 @@ async function updateProductAvailability(
 		// Beräkna start- och slutindex för blockering
 		let startQuarter, endQuarter;
 
-		if (isMiddleDay) {
+		if (isSingleDayBooking) {
+			// För endagsbokningar: Använd exakt start- och sluttid
+			startQuarter = startIndex * 15;
+			endQuarter = endIndex * 15;
+		} else if (isMiddleDay) {
 			// Mellandagar blockeras hela dagen
 			startQuarter = 0;
 			endQuarter = 1440;
 		} else if (startIndex > 0) {
-			// För första dagen, blockera från starttid till midnatt
-			startQuarter = Math.floor(startIndex * 15);
+			// För första dagen i övernattning, blockera från starttid till midnatt
+			startQuarter = startIndex * 15;
 			endQuarter = 1440;
 		} else {
-			// För sista dagen, blockera från midnatt till sluttid
+			// För sista dagen i övernattning, blockera från midnatt till sluttid
 			startQuarter = 0;
-			endQuarter = Math.floor(endIndex * 15);
+			endQuarter = endIndex * 15;
 		}
 
 		if (rows.length === 0) {
+			// Om ingen rad finns för datumet, skapa en ny
 			const columns = ['date'];
 			const values = [date];
 			const placeholders = ['$1'];
@@ -253,12 +262,13 @@ async function updateProductAvailability(
 			}
 
 			const query = `
-				INSERT INTO ${tableName} (${columns.join(', ')})
-				VALUES (${placeholders.join(', ')})
-			`;
+                INSERT INTO ${tableName} (${columns.join(', ')})
+                VALUES (${placeholders.join(', ')})
+            `;
 
 			await client.query(query, values);
 		} else {
+			// Uppdatera existerande rad
 			const updates = [];
 			const values = [date];
 			let paramIndex = 2;
@@ -273,10 +283,10 @@ async function updateProductAvailability(
 
 			if (updates.length > 0) {
 				const query = `
-					UPDATE ${tableName}
-					SET ${updates.join(', ')}
-					WHERE date = $1
-				`;
+                    UPDATE ${tableName}
+                    SET ${updates.join(', ')}
+                    WHERE date = $1
+                `;
 
 				await client.query(query, values);
 			}
@@ -289,12 +299,17 @@ async function updateProductAvailability(
 
 function generateDateRange(startDate, endDate) {
 	const dates = [];
-	let currentDate = new Date(startDate);
-	const lastDate = new Date(endDate);
+	const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+	const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
+	let currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+	const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
 
 	while (currentDate <= lastDate) {
-		dates.push(currentDate.toISOString().split('T')[0]);
-		currentDate.setDate(currentDate.getDate() + 1);
+		dates.push(
+			`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
+		);
+		currentDate.setUTCDate(currentDate.getUTCDate() + 1);
 	}
 
 	return dates;
