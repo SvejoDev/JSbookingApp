@@ -136,8 +136,16 @@ async function checkAvailability({
 	openTime,
 	closeTime
 }) {
-	// generera alla möjliga 30-minuters starttider
-	// skicka med durationHours endast för enkeldagsbokningar
+	console.log('\n=== Starting Availability Check ===');
+	console.log('Requested addons:', addons);
+
+	// Filter addonsList to only include requested addons
+	const requestedAddons = addonsList.filter((addon) => addons[addon.column_name] > 0);
+	console.log(
+		'Checking only these addons:',
+		requestedAddons.map((a) => a.name)
+	);
+
 	const possibleTimes = generateTimeSlots(
 		openTime,
 		closeTime,
@@ -151,45 +159,46 @@ async function checkAvailability({
 
 	const availableTimes = [];
 
-	// Convert times to minute indices for database queries
-	const openTimeMinutes = timeToMinutes(openTime);
-	const closeTimeMinutes = timeToMinutes(closeTime);
-
 	// Process each potential start time
 	for (const startTime of validStartTimes) {
 		let isTimeAvailable = true;
-		console.log(`\nChecking availability for start time: ${startTime}`);
+		console.log(`\n--- Checking start time: ${startTime} ---`);
 
-		// Check each requested addon
-		for (const addon of addonsList) {
-			const addonKey = `amount${addon.name.replace(/\s+/g, '')}s`;
-			const requestedAmount = addons[addonKey] || 0;
+		// Only check requested addons
+		for (const addon of requestedAddons) {
+			const requestedAmount = addons[addon.column_name];
+			console.log(`\nChecking ${addon.name} (${addon.column_name})`);
+			console.log(`Requested amount: ${requestedAmount}`);
+			console.log(`Max quantity: ${addon.max_quantity}`);
 
-			if (requestedAmount > 0) {
-				const isAvailable = await checkAddonAvailability({
-					addonId: addon.id,
-					amount: requestedAmount,
-					maxQuantity: addon.max_quantity,
-					startDate: date,
-					startTime,
-					numberOfNights,
-					durationHours,
-					openTime,
-					closeTime
-				});
+			const isAvailable = await checkAddonAvailability({
+				addonId: addon.id,
+				amount: requestedAmount,
+				maxQuantity: addon.max_quantity,
+				startDate: date,
+				startTime,
+				numberOfNights,
+				durationHours,
+				openTime,
+				closeTime
+			});
 
-				if (!isAvailable) {
-					isTimeAvailable = false;
-					break;
-				}
+			console.log(
+				`${addon.name} availability result: ${isAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`
+			);
+
+			if (!isAvailable) {
+				isTimeAvailable = false;
+				console.log(`Time ${startTime} is blocked due to ${addon.name} unavailability`);
+				break;
 			}
 		}
 
 		if (isTimeAvailable) {
-			console.log(`Time ${startTime} is AVAILABLE for booking`);
+			console.log(`\n✅ Time ${startTime} is AVAILABLE for booking (all addons available)`);
 			availableTimes.push(startTime);
 		} else {
-			console.log(`Time ${startTime} is NOT available for booking`);
+			console.log(`\n❌ Time ${startTime} is NOT available for booking`);
 		}
 	}
 
@@ -207,9 +216,10 @@ async function checkAddonAvailability({
 	openTime,
 	closeTime
 }) {
+	// hämta information om tillägget (addon) från databasen
 	const {
 		rows: [addon]
-	} = await query('SELECT availability_table_name FROM addons WHERE id = $1', [addonId]);
+	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
 
 	if (!addon) {
 		throw new Error(`Addon with id ${addonId} not found`);
@@ -218,23 +228,49 @@ async function checkAddonAvailability({
 	console.log(`\nChecking availability for ${addon.name} (${amount} requested)`);
 	console.log('Checking dates from', startDate, 'for', numberOfNights, 'nights');
 
-	const startTimeMinutes = timeToMinutes(startTime);
+	// skapa en array med alla datum som ska kontrolleras
 	const dates = Array.from({ length: numberOfNights + 1 }, (_, i) => getDateString(startDate, i));
-
 	console.log('Checking dates:', dates);
 
-	// Check availability for each affected date
+	// kontrollera tillgänglighet för varje datum
 	for (const [index, currentDate] of dates.entries()) {
+		// bestäm vilken typ av dag det är (första, mellan eller sista dagen)
 		const isFirstDay = index === 0;
 		const isLastDay = index === dates.length - 1;
+		const isMiddleDay = !isFirstDay && !isLastDay;
 
-		const dayStartMinutes = isFirstDay ? startTimeMinutes : timeToMinutes(openTime);
-		const dayEndMinutes =
-			isLastDay && numberOfNights === 0
-				? startTimeMinutes + durationHours * 60
-				: timeToMinutes(closeTime);
+		console.log(`\nProcessing date: ${currentDate}`);
+		console.log(`Day type: ${isFirstDay ? 'First day' : isMiddleDay ? 'Middle day' : 'Last day'}`);
 
-		// Get availability data for current date using the correct table name
+		let dayStartMinutes, dayEndMinutes;
+
+		// sätt start- och sluttider baserat på bokningstyp (övernattning eller dagsbokning)
+		if (numberOfNights > 0) {
+			// logik för övernattningsbokningar
+			if (isFirstDay) {
+				// första dagen: från starttid till midnatt
+				dayStartMinutes = timeToMinutes(startTime);
+				dayEndMinutes = timeToMinutes('23:59');
+			} else if (isMiddleDay) {
+				// mellandagar: hela dagen
+				dayStartMinutes = timeToMinutes('00:00');
+				dayEndMinutes = timeToMinutes('23:59');
+			} else if (isLastDay) {
+				// sista dagen: från midnatt till sluttid
+				dayStartMinutes = timeToMinutes('00:00');
+				dayEndMinutes = timeToMinutes(closeTime);
+			}
+		} else {
+			// logik för dagsbokningar
+			dayStartMinutes = timeToMinutes(startTime);
+			dayEndMinutes = dayStartMinutes + durationHours * 60;
+		}
+
+		console.log(
+			`Checking time range: ${Math.floor(dayStartMinutes / 60)}:${(dayStartMinutes % 60).toString().padStart(2, '0')} to ${Math.floor(dayEndMinutes / 60)}:${(dayEndMinutes % 60).toString().padStart(2, '0')}`
+		);
+
+		// hämta tillgänglighetsdata från databasen för aktuellt datum
 		const {
 			rows: [availabilityData]
 		} = await query(`SELECT * FROM ${addon.availability_table_name} WHERE date = $1`, [
@@ -242,14 +278,24 @@ async function checkAddonAvailability({
 		]);
 
 		if (availabilityData) {
-			for (let minutes = dayStartMinutes; minutes <= dayEndMinutes; minutes += 15) {
-				const slotIndex = Math.floor(minutes / 15).toString();
-				const bookedAmount = Math.abs(availabilityData[slotIndex] || 0);
-				const availableSlots = maxQuantity - bookedAmount;
+			// kontrollera varje 15-minuters intervall
+			for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
+				// beräkna kolumnnamnet i databasen (varje kolumn representerar en 15-minuters period)
+				const columnName = (Math.floor(minutes / 15) * 15).toString();
+				// hämta antalet bokade enheter (negativt tal i databasen)
+				const bookedAmount = parseInt(availabilityData[columnName] || '0');
+				// beräkna tillgängliga platser (maxQuantity + bookedAmount eftersom bookedAmount är negativt)
+				const availableSlots = maxQuantity + bookedAmount;
 
+				console.log(
+					`Checking ${currentDate} at ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')} - Column: "${columnName}", Booked: ${bookedAmount}, Available: ${availableSlots}`
+				);
+
+				// om det begärda antalet är större än tillgängliga platser, returnera false
 				if (amount > availableSlots) {
 					console.log(
-						`Cannot book: Insufficient capacity at ${currentDate} ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}`
+						`Cannot book: Insufficient capacity at ${currentDate} ${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}. ` +
+							`Available: ${availableSlots}, Requested: ${amount}`
 					);
 					return false;
 				}
@@ -257,5 +303,6 @@ async function checkAddonAvailability({
 		}
 	}
 
+	// om vi kommer hit finns tillräckligt med tillgängliga platser för hela bokningen
 	return true;
 }

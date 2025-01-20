@@ -16,26 +16,42 @@
 
 	let selectedAddons = {};
 
+	// Make sure we're properly initializing the selectedAddons
 	$: {
 		if (data.experience?.addons) {
-			// Initiera selectedAddons med 0 för varje tillgänglig addon
-			data.experience.addons.forEach((addon) => {
-				if (!(addon.name in selectedAddons)) {
-					selectedAddons[addon.name] = 0;
-				}
-			});
+			selectedAddons = {
+				...selectedAddons,
+				...Object.fromEntries(
+					data.experience.addons.map((addon) => [
+						addon.column_name,
+						selectedAddons[addon.column_name] || 0
+					])
+				)
+			};
 		}
 	}
 
 	function updateAddonQuantity(addonId, increment) {
+		console.log('Updating addon quantity:', { addonId, increment });
 		const addon = data.experience.addons.find((a) => a.id === addonId);
+		console.log('Found addon:', addon);
+
 		if (addon) {
-			const currentValue = selectedAddons[addonId] || 0;
+			const currentValue = selectedAddons[addon.column_name] || 0;
 			const newValue = increment
 				? Math.min(currentValue + 1, addon.max_quantity)
 				: Math.max(0, currentValue - 1);
-			selectedAddons[addonId] = newValue;
-			selectedAddons = { ...selectedAddons }; // trigger reaktivitet
+
+			console.log('Updating values:', {
+				columnName: addon.column_name,
+				currentValue,
+				newValue
+			});
+
+			selectedAddons = {
+				...selectedAddons,
+				[addon.column_name]: newValue
+			};
 		}
 	}
 
@@ -99,13 +115,23 @@
 
 		scrollToElement('available-times');
 
-		const addonsForRequest = Object.fromEntries(
-			Object.entries(selectedAddons).map(([name, quantity]) => {
-				// Konvertera namn till det format API:et förväntar sig
-				const apiName = `amount${name.replace(/\s+/g, '')}s`;
-				return [apiName, quantity];
-			})
-		);
+		// Debug log to check selectedAddons
+		console.log('Selected Addons:', selectedAddons);
+
+		const addonsForRequest = {};
+		Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
+			if (quantity > 0) {
+				addonsForRequest[columnName] = quantity;
+			}
+		});
+
+		// Debug log to check the request payload
+		console.log('Request Payload:', {
+			date: startDate,
+			bookingLength: selectedBookingLength,
+			addons: addonsForRequest,
+			experienceId: selectedExperienceId
+		});
 
 		try {
 			const response = await fetch('/api/check-availability', {
@@ -323,13 +349,12 @@
 
 			const slotInfo = calculateReturnDate();
 
-			const addonAmounts = Object.entries(selectedAddons).reduce((acc, [name, quantity]) => {
-				const apiKey = `amount_${name.toLowerCase().replace(/[:\s]/g, '_')}`;
-				return {
-					...acc,
-					[apiKey]: quantity
-				};
-			}, {});
+			const addonAmounts = {};
+			for (const [columnName, quantity] of Object.entries(selectedAddons)) {
+				if (quantity > 0) {
+					addonAmounts[columnName] = quantity;
+				}
+			}
 
 			const requestData = {
 				amount: totalPrice,
@@ -572,7 +597,7 @@
 												-
 											</Button>
 											<div class="w-12 text-center">
-												{selectedAddons[addon.id] || 0}
+												{selectedAddons[addon.column_name] || 0}
 											</div>
 											<Button
 												variant="outline"
@@ -640,10 +665,17 @@
 							</div>
 						{:else if hasCheckedTimes && !isLoadingTimes}
 							<Alert variant="destructive">
-								<AlertTitle>Inga tillgängliga tider</AlertTitle>
 								<AlertDescription>
-									Inga tillgängliga starttider hittades för valda produkter. Prova ett annat antal
-									produkter eller annat datum.
+									<p class="mb-2">Ditt önskemål kunde inte tillgodoses. Det kan bero på:</p>
+									<ul class="list-disc pl-6 space-y-1">
+										<li>Bokningslängd (Det intervall du önskat kan vara fullbokat)</li>
+										<li>Val av datum (Det datum du önskat kan vara fullbokat)</li>
+										<li>
+											Det antal enheter av utrustning du valt finns inte tillgängligt under den
+											tiden
+										</li>
+									</ul>
+									<b>Prova att ändra din bokning enligt annat önskemål</b>
 								</AlertDescription>
 							</Alert>
 						{/if}
@@ -664,10 +696,10 @@
 										<br />
 										<br />
 										Valda tillval:
-										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [addonId, quantity]}
+										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [columnName, quantity]}
 											<br />
 											{quantity} st {data.experience.addons.find(
-												(addon) => addon.id === parseInt(addonId)
+												(addon) => addon.column_name === columnName
 											)?.name}
 										{/each}
 									{/if}

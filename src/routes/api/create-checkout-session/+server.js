@@ -38,10 +38,7 @@ export async function POST({ request }) {
 
 		// Lägg till addon-metadata
 		const addonMetadata = Object.fromEntries(
-			addons.map((addon) => [
-				addon.column_name,
-				requestData[`amount_${addon.name.toLowerCase().replace(/[:\s]/g, '_')}`]?.toString() || '0'
-			])
+			addons.map((addon) => [addon.column_name, requestData[addon.column_name]?.toString() || '0'])
 		);
 
 		// Konvertera priset till ören (cents)
