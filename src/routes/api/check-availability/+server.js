@@ -95,12 +95,20 @@ function filterPastTimes(times, bookingDate) {
 	});
 }
 
-function generateTimeSlots(openTime, closeTime) {
+function generateTimeSlots(openTime, closeTime, durationHours = 0) {
 	const times = [];
 	let currentTime = new Date(`1970-01-01T${openTime}`);
 	const endTime = new Date(`1970-01-01T${closeTime}`);
 
-	while (currentTime < endTime) {
+	// för enkeldagsbokningar, beräkna sista möjliga starttid baserat på bokningslängd
+	if (durationHours > 0) {
+		const lastPossibleStart = new Date(endTime);
+		lastPossibleStart.setHours(lastPossibleStart.getHours() - Math.floor(durationHours));
+		lastPossibleStart.setMinutes(lastPossibleStart.getMinutes() - (durationHours % 1) * 60);
+		endTime.setTime(lastPossibleStart.getTime());
+	}
+
+	while (currentTime <= endTime) {
 		times.push(currentTime.toTimeString().slice(0, 5));
 		currentTime.setMinutes(currentTime.getMinutes() + 30);
 	}
@@ -128,8 +136,13 @@ async function checkAvailability({
 	openTime,
 	closeTime
 }) {
-	// Generate all possible 30-minute start times
-	const possibleTimes = generateTimeSlots(openTime, closeTime);
+	// generera alla möjliga 30-minuters starttider
+	// skicka med durationHours endast för enkeldagsbokningar
+	const possibleTimes = generateTimeSlots(
+		openTime,
+		closeTime,
+		numberOfNights === 0 ? durationHours : 0
+	);
 	const validStartTimes = filterPastTimes(possibleTimes, date);
 
 	if (validStartTimes.length === 0) {
