@@ -48,7 +48,10 @@ export async function POST({ request }) {
 		console.log('Calculated duration:', { durationHours, numberOfNights });
 
 		// Get all available addons from database
-		const { rows: addonsList } = await query('SELECT * FROM addons');
+		const { rows: addonsList } = await query(`
+			SELECT id, name, max_quantity, availability_table_name, column_name 
+			FROM addons
+		`);
 
 		// Generate possible start times
 		const availableStartTimes = await checkAvailability({
@@ -151,7 +154,7 @@ async function checkAvailability({
 
 			if (requestedAmount > 0) {
 				const isAvailable = await checkAddonAvailability({
-					addonType: addon.name.toLowerCase(),
+					addonId: addon.id,
 					amount: requestedAmount,
 					maxQuantity: addon.max_quantity,
 					startDate: date,
@@ -181,7 +184,7 @@ async function checkAvailability({
 }
 
 async function checkAddonAvailability({
-	addonType,
+	addonId,
 	amount,
 	maxQuantity,
 	startDate,
@@ -191,7 +194,15 @@ async function checkAddonAvailability({
 	openTime,
 	closeTime
 }) {
-	console.log(`\nChecking availability for ${addonType} (${amount} requested)`);
+	const {
+		rows: [addon]
+	} = await query('SELECT availability_table_name FROM addons WHERE id = $1', [addonId]);
+
+	if (!addon) {
+		throw new Error(`Addon with id ${addonId} not found`);
+	}
+
+	console.log(`\nChecking availability for ${addon.name} (${amount} requested)`);
 	console.log('Checking dates from', startDate, 'for', numberOfNights, 'nights');
 
 	const startTimeMinutes = timeToMinutes(startTime);
@@ -204,28 +215,20 @@ async function checkAddonAvailability({
 		const isFirstDay = index === 0;
 		const isLastDay = index === dates.length - 1;
 
-		// Determine time range to check for this day
 		const dayStartMinutes = isFirstDay ? startTimeMinutes : timeToMinutes(openTime);
 		const dayEndMinutes =
 			isLastDay && numberOfNights === 0
 				? startTimeMinutes + durationHours * 60
 				: timeToMinutes(closeTime);
 
-		console.log(`\nChecking date ${currentDate}:`);
-		console.log(
-			`- Start time: ${Math.floor(dayStartMinutes / 60)}:${(dayStartMinutes % 60).toString().padStart(2, '0')}`
-		);
-		console.log(
-			`- End time: ${Math.floor(dayEndMinutes / 60)}:${(dayEndMinutes % 60).toString().padStart(2, '0')}`
-		);
-
-		// Get availability data for current date
+		// Get availability data for current date using the correct table name
 		const {
 			rows: [availabilityData]
-		} = await query(`SELECT * FROM ${addonType}_availability WHERE date = $1`, [currentDate]);
+		} = await query(`SELECT * FROM ${addon.availability_table_name} WHERE date = $1`, [
+			currentDate
+		]);
 
 		if (availabilityData) {
-			// Check each 15-minute slot
 			for (let minutes = dayStartMinutes; minutes <= dayEndMinutes; minutes += 15) {
 				const slotIndex = Math.floor(minutes / 15).toString();
 				const bookedAmount = Math.abs(availabilityData[slotIndex] || 0);

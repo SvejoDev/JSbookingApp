@@ -30,7 +30,7 @@ export async function POST({ request }) {
 			await transaction(async (client) => {
 				// hämta alla addons från databasen för dynamisk hantering
 				const { rows: addons } = await client.query(
-					'SELECT name, column_name, availability_table_name FROM addons'
+					'SELECT id, name, column_name, availability_table_name FROM addons'
 				);
 
 				// hämta öppettider för korrekt hantering av tidsperioder
@@ -149,7 +149,7 @@ async function updateAvailabilityForBooking(client, booking) {
 	console.log('Starting availability update with booking data:', booking);
 
 	const { rows: addons } = await client.query(
-		'SELECT name, column_name, availability_table_name FROM addons'
+		'SELECT id, name, column_name, availability_table_name FROM addons'
 	);
 	console.log('Found addons:', addons);
 

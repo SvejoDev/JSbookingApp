@@ -47,7 +47,7 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 		console.log('Booking details:', booking);
 
 		const { rows: addons } = await client.query(
-			'SELECT name, column_name, availability_table_name FROM addons'
+			'SELECT id, name, column_name, availability_table_name FROM addons'
 		);
 
 		const addonAmounts = {};

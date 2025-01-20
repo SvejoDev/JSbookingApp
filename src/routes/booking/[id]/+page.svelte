@@ -27,14 +27,14 @@
 		}
 	}
 
-	function updateAddonQuantity(addonName, increment) {
-		const addon = data.experience.addons.find((a) => a.name === addonName);
+	function updateAddonQuantity(addonId, increment) {
+		const addon = data.experience.addons.find((a) => a.id === addonId);
 		if (addon) {
-			const currentValue = selectedAddons[addonName] || 0;
+			const currentValue = selectedAddons[addonId] || 0;
 			const newValue = increment
 				? Math.min(currentValue + 1, addon.max_quantity)
 				: Math.max(0, currentValue - 1);
-			selectedAddons[addonName] = newValue;
+			selectedAddons[addonId] = newValue;
 			selectedAddons = { ...selectedAddons }; // trigger reaktivitet
 		}
 	}
@@ -559,7 +559,7 @@
 						<div class="space-y-4">
 							<Label>Välj tillval:</Label>
 							<div class="grid gap-4 sm:grid-cols-3">
-								{#each data.experience.addons as addon}
+								{#each data.experience.addons as addon (addon.id)}
 									<div class="space-y-2">
 										<Label for={addon.name}>Antal {addon.name} (max {addon.max_quantity})</Label>
 										<div class="flex items-center space-x-2">
@@ -567,18 +567,18 @@
 												variant="outline"
 												class="px-3"
 												disabled={settingsLocked}
-												on:click={() => updateAddonQuantity(addon.name, false)}
+												on:click={() => updateAddonQuantity(addon.id, false)}
 											>
 												-
 											</Button>
 											<div class="w-12 text-center">
-												{selectedAddons[addon.name] || 0}
+												{selectedAddons[addon.id] || 0}
 											</div>
 											<Button
 												variant="outline"
 												class="px-3"
 												disabled={settingsLocked}
-												on:click={() => updateAddonQuantity(addon.name, true)}
+												on:click={() => updateAddonQuantity(addon.id, true)}
 											>
 												+
 											</Button>
@@ -664,9 +664,11 @@
 										<br />
 										<br />
 										Valda tillval:
-										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [name, quantity]}
+										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [addonId, quantity]}
 											<br />
-											{quantity} st {name}
+											{quantity} st {data.experience.addons.find(
+												(addon) => addon.id === parseInt(addonId)
+											)?.name}
 										{/each}
 									{/if}
 								</AlertDescription>
