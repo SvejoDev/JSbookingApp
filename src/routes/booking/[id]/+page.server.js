@@ -12,7 +12,8 @@ export async function load({ params }) {
                         'id', a.id,
                         'name', a.name,
                         'max_quantity', a.max_quantity,
-                        'image_url', a.image_url
+                        'image_url', a.image_url,
+                        'column_name', a.column_name
                     )
                 ) as addons
             FROM experiences e

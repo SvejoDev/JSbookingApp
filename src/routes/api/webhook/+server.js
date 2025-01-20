@@ -23,44 +23,14 @@ export async function POST({ request }) {
 
 	if (event.type === 'checkout.session.completed') {
 		const session = event.data.object;
-		console.log('bokning genomförd:', session.id);
+		console.log('Session metadata:', session.metadata);
+		console.log('Session ID:', session.id);
 
 		try {
 			await transaction(async (client) => {
-				// skapa bokningen
-				const {
-					rows: [booking]
-				} = await client.query(
-					`INSERT INTO bookings (
-                        stripe_session_id, customer_email, amount_total, status,
-                        experience_id, experience, startLocation, start_date,
-                        start_time, end_date, end_time, number_of_adults,
-                        number_of_children, amount_canoes, amount_kayak,
-                        amount_sup, booking_name, booking_lastname,
-                        customer_comment, date_time_created
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
-                    RETURNING *`,
-					[
-						session.id,
-						session.metadata.customer_email,
-						session.amount_total / 100,
-						'betald',
-						session.metadata.experience_id,
-						session.metadata.experience,
-						session.metadata.startLocation,
-						session.metadata.start_date,
-						session.metadata.start_time,
-						session.metadata.end_date,
-						session.metadata.end_time,
-						parseInt(session.metadata.number_of_adults),
-						parseInt(session.metadata.number_of_children || '0'),
-						parseInt(session.metadata.amount_canoes || '0'),
-						parseInt(session.metadata.amount_kayak || '0'),
-						parseInt(session.metadata.amount_sup || '0'),
-						session.metadata.booking_name,
-						session.metadata.booking_lastname,
-						session.metadata.customer_comment || ''
-					]
+				// hämta alla addons från databasen för dynamisk hantering
+				const { rows: addons } = await client.query(
+					'SELECT id, name, column_name, availability_table_name FROM addons'
 				);
 
 				// hämta öppettider för korrekt hantering av tidsperioder
@@ -71,18 +41,96 @@ export async function POST({ request }) {
 					[session.metadata.experience_id]
 				);
 
-				// uppdatera tillgänglighet för alla dagar i bokningen
-				await updateAvailabilityForBooking(client, {
+				// skapa dynamiska kolumner och värden för INSERT-frågan
+				const baseColumns = [
+					'stripe_session_id',
+					'customer_email',
+					'amount_total',
+					'status',
+					'experience_id',
+					'experience',
+					'startlocation',
+					'start_date',
+					'start_time',
+					'end_date',
+					'end_time',
+					'start_slot',
+					'end_slot',
+					'booking_type',
+					'total_slots',
+					'number_of_adults',
+					'number_of_children',
+					'booking_name',
+					'booking_lastname',
+					'customer_comment'
+				];
+
+				const addonColumns = addons.map((addon) => addon.column_name);
+				const allColumns = [...baseColumns, ...addonColumns, 'date_time_created'];
+
+				const baseValues = [
+					session.id,
+					session.metadata.customer_email,
+					Math.round(session.amount_total / 100),
+					'betald',
+					session.metadata.experience_id,
+					session.metadata.experience,
+					session.metadata.startLocation,
+					session.metadata.start_date,
+					session.metadata.start_time,
+					session.metadata.end_date,
+					session.metadata.end_time,
+					parseInt(session.metadata.start_slot),
+					parseInt(session.metadata.end_slot),
+					session.metadata.booking_type,
+					parseInt(session.metadata.total_slots),
+					parseInt(session.metadata.number_of_adults),
+					parseInt(session.metadata.number_of_children || '0'),
+					session.metadata.booking_name,
+					session.metadata.booking_lastname,
+					session.metadata.customer_comment || ''
+				];
+
+				const addonValues = addons.map((addon) => {
+					const value = parseInt(session.metadata[addon.column_name] || '0');
+					console.log(
+						`Processing addon ${addon.name}: column=${addon.column_name}, value=${value}`
+					);
+					return value;
+				});
+
+				const placeholders = Array(allColumns.length - 1)
+					.fill(0)
+					.map((_, i) => `$${i + 1}`)
+					.concat('NOW()');
+
+				const insertQuery = `
+                    INSERT INTO bookings (${allColumns.filter((col) => col !== 'id').join(', ')})
+                    VALUES (${placeholders.join(', ')})
+                    RETURNING *
+                `;
+
+				const {
+					rows: [booking]
+				} = await client.query(insertQuery, [...baseValues, ...addonValues]);
+
+				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
+				const bookingData = {
 					start_date: session.metadata.start_date,
 					start_time: session.metadata.start_time,
 					end_date: session.metadata.end_date,
 					end_time: session.metadata.end_time,
-					amount_canoes: parseInt(session.metadata.amount_canoes || '0'),
-					amount_kayak: parseInt(session.metadata.amount_kayak || '0'),
-					amount_sup: parseInt(session.metadata.amount_sup || '0'),
 					openTime: openHours.open_time,
-					closeTime: openHours.close_time
-				});
+					closeTime: openHours.close_time,
+					booking_type: session.metadata.booking_type
+				};
+
+				// lägg till addon-mängder dynamiskt
+				for (const addon of addons) {
+					bookingData[addon.column_name] = parseInt(session.metadata[addon.column_name] || '0');
+				}
+
+				await updateAvailabilityForBooking(client, bookingData);
 
 				return booking;
 			});
@@ -98,73 +146,67 @@ export async function POST({ request }) {
 }
 
 async function updateAvailabilityForBooking(client, booking) {
-	const dates = generateDateRange(booking.start_date, booking.end_date);
-	const numberOfDays = dates.length;
+	console.log('Starting availability update with booking data:', booking);
 
-	for (let i = 0; i < numberOfDays; i++) {
+	const { rows: addons } = await client.query(
+		'SELECT id, name, column_name, availability_table_name FROM addons'
+	);
+	console.log('Found addons:', addons);
+
+	const dates = generateDateRange(booking.start_date, booking.end_date);
+	console.log('Generated date range:', dates);
+
+	const isMultiDayBooking = booking.booking_type === 'overnight';
+
+	for (let i = 0; i < dates.length; i++) {
 		const currentDate = dates[i];
 		const isFirstDay = i === 0;
-		const isLastDay = i === numberOfDays - 1;
+		const isLastDay = i === dates.length - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
 		let startIndex, endIndex;
 
-		if (isFirstDay) {
-			startIndex = timeToIndex(booking.start_time);
-			endIndex = timeToIndex(booking.closeTime);
-		} else if (isLastDay) {
-			startIndex = timeToIndex(booking.openTime);
-			endIndex = timeToIndex(booking.end_time);
+		if (isMultiDayBooking) {
+			// Overnight booking logic
+			if (isFirstDay) {
+				startIndex = timeToIndex(booking.start_time);
+				endIndex = 96; // Till midnight
+			} else if (isMiddleDay) {
+				startIndex = 0;
+				endIndex = 96;
+			} else if (isLastDay) {
+				startIndex = 0;
+				endIndex = timeToIndex(booking.end_time);
+			}
 		} else {
-			startIndex = timeToIndex(booking.openTime);
-			endIndex = timeToIndex(booking.closeTime);
+			// Single day booking logic
+			startIndex = timeToIndex(booking.start_time);
+			endIndex = timeToIndex(booking.end_time);
 		}
 
 		const productUpdates = [];
 
-		// uppdatera kanottillgänglighet
-		if (booking.amount_canoes > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'canoe',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_canoes,
-					isMiddleDay
-				)
-			);
-		}
+		for (const addon of addons) {
+			const addonKey = addon.column_name;
+			const amount = booking[addonKey];
 
-		// uppdatera kajaktillgänglighet
-		if (booking.amount_kayak > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'kayak',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_kayak,
-					isMiddleDay
-				)
-			);
-		}
-
-		// uppdatera SUP-tillgänglighet
-		if (booking.amount_sup > 0) {
-			productUpdates.push(
-				updateProductAvailability(
-					client,
-					'sup',
-					currentDate,
-					startIndex,
-					endIndex,
-					booking.amount_sup,
-					isMiddleDay
-				)
-			);
+			if (amount > 0) {
+				console.log(
+					`Updating availability for ${addon.name}: table=${addon.availability_table_name}, amount=${amount}`
+				);
+				productUpdates.push(
+					updateProductAvailability(
+						client,
+						addon.availability_table_name,
+						currentDate,
+						startIndex,
+						endIndex,
+						amount,
+						isMiddleDay,
+						!isMultiDayBooking
+					)
+				);
+			}
 		}
 
 		await Promise.all(productUpdates);
@@ -173,105 +215,107 @@ async function updateAvailabilityForBooking(client, booking) {
 
 async function updateProductAvailability(
 	client,
-	productType,
+	tableName,
 	date,
 	startIndex,
 	endIndex,
 	amount,
-	isMiddleDay
+	isMiddleDay,
+	isSingleDayBooking
 ) {
 	try {
-		// kontrollera om det redan finns en rad för detta datum
-		const { rows } = await client.query(
-			`SELECT * FROM ${productType}_availability WHERE date = $1`,
-			[date]
-		);
+		const { rows } = await client.query(`SELECT * FROM ${tableName} WHERE date = $1`, [date]);
 
-		// först, hämta kolumnerna från databasen för att säkerställa att de finns
-		const { rows: columnInfo } = await client.query(
-			`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = $1 
-            AND column_name != 'date'
-            ORDER BY column_name::integer
-        `,
-			[`${productType}_availability`]
-		);
+		// Beräkna start- och slutindex för blockering
+		let startQuarter, endQuarter;
 
-		// skapa kolumnnamn array från faktisk databasstruktur
-		const timeColumns = columnInfo.map((col) => `"${col.column_name}"`);
+		if (isSingleDayBooking) {
+			// För endagsbokningar: Använd exakt start- och sluttid
+			startQuarter = startIndex * 15;
+			endQuarter = endIndex * 15;
+		} else if (isMiddleDay) {
+			// Mellandagar blockeras hela dagen
+			startQuarter = 0;
+			endQuarter = 1440;
+		} else if (startIndex > 0) {
+			// För första dagen i övernattning, blockera från starttid till midnatt
+			startQuarter = startIndex * 15;
+			endQuarter = 1440;
+		} else {
+			// För sista dagen i övernattning, blockera från midnatt till sluttid
+			startQuarter = 0;
+			endQuarter = endIndex * 15;
+		}
 
 		if (rows.length === 0) {
-			// förbered alla värden som ska införas
-			const values = [date]; // börja med datum
-			const columnsList = ['date']; // lista över kolumner att inkludera
-			const valuePlaceholders = ['$1']; // börja med första platshållaren
-			let paramCounter = 2;
+			// Om ingen rad finns för datumet, skapa en ny
+			const columns = ['date'];
+			const values = [date];
+			const placeholders = ['$1'];
+			let paramIndex = 2;
 
-			// lägg till värden för varje tidskolumn som faktiskt finns
-			timeColumns.forEach((column, index) => {
-				const colNum = parseInt(column.replace(/"/g, '')); // ta bort citattecken och konvertera till nummer
-				columnsList.push(column);
-				valuePlaceholders.push(`$${paramCounter}`);
-
-				if (isMiddleDay || (colNum >= startIndex && colNum <= endIndex)) {
-					values.push(-amount);
-				} else {
-					values.push(0);
-				}
-				paramCounter++;
-			});
+			for (let i = 0; i <= 1440; i += 15) {
+				columns.push(`"${i}"`);
+				values.push(i >= startQuarter && i <= endQuarter ? -amount : 0);
+				placeholders.push(`$${paramIndex}`);
+				paramIndex++;
+			}
 
 			const query = `
-                INSERT INTO ${productType}_availability (${columnsList.join(', ')})
-                VALUES (${valuePlaceholders.join(', ')})
+                INSERT INTO ${tableName} (${columns.join(', ')})
+                VALUES (${placeholders.join(', ')})
             `;
 
 			await client.query(query, values);
-			console.log(`skapat ny rad i ${productType}_availability för ${date}`);
 		} else {
-			// uppdatera befintlig rad
+			// Uppdatera existerande rad
 			const updates = [];
+			const values = [date];
+			let paramIndex = 2;
 
-			timeColumns.forEach((column) => {
-				const colNum = parseInt(column.replace(/"/g, '')); // ta bort citattecken och konvertera till nummer
-				if (isMiddleDay || (colNum >= startIndex && colNum <= endIndex)) {
-					updates.push(`${column} = COALESCE(${column}, 0) - ${amount}`);
+			for (let i = 0; i <= 1440; i += 15) {
+				if (i >= startQuarter && i <= endQuarter) {
+					updates.push(`"${i}" = COALESCE("${i}", 0) - $${paramIndex}`);
+					values.push(amount);
+					paramIndex++;
 				}
-			});
+			}
 
 			if (updates.length > 0) {
 				const query = `
-                    UPDATE ${productType}_availability 
+                    UPDATE ${tableName}
                     SET ${updates.join(', ')}
                     WHERE date = $1
                 `;
-				await client.query(query, [date]);
-				console.log(`uppdaterat befintlig rad i ${productType}_availability för ${date}`);
+
+				await client.query(query, values);
 			}
 		}
 	} catch (error) {
-		console.error(`fel vid uppdatering av ${productType} tillgänglighet för ${date}:`, error);
-		console.error('detaljer:', error.detail || 'inga ytterligare detaljer');
+		console.error(`Error updating ${tableName} for ${date}:`, error);
 		throw error;
 	}
 }
 
 function generateDateRange(startDate, endDate) {
 	const dates = [];
-	let currentDate = new Date(startDate);
-	const lastDate = new Date(endDate);
+	const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+	const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
+	let currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+	const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
 
 	while (currentDate <= lastDate) {
-		dates.push(currentDate.toISOString().split('T')[0]);
-		currentDate.setDate(currentDate.getDate() + 1);
+		dates.push(
+			`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
+		);
+		currentDate.setUTCDate(currentDate.getUTCDate() + 1);
 	}
 
 	return dates;
 }
 
-function timeToIndex(timeStr) {
-	const [hours, minutes] = timeStr.split(':').map(Number);
+function timeToIndex(time) {
+	const [hours, minutes] = time.split(':').map(Number);
 	return Math.floor((hours * 60 + minutes) / 15);
 }
