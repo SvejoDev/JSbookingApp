@@ -1,8 +1,8 @@
+// src/routes/booking/[id]/+page.server.js
 import { query } from '$lib/db.js';
 
 export async function load({ params }) {
 	try {
-		// Fetch experience with all its addons in a single query
 		const experienceResult = await query(
 			`
             SELECT 
@@ -63,8 +63,6 @@ export async function load({ params }) {
 		const openHours = {
 			periods: periodOpenDates.rows,
 			specificDates: specificDates.rows,
-			// If there are specific dates, use the first one's times as default,
-			// otherwise use period dates if they exist
 			defaultOpenTime: specificDates.rows[0]?.open_time || periodOpenDates.rows[0]?.open_time,
 			defaultCloseTime: specificDates.rows[0]?.close_time || periodOpenDates.rows[0]?.close_time
 		};
