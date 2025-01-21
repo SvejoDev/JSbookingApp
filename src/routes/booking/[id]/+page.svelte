@@ -181,6 +181,36 @@
 		scrollToElement('contact-section');
 	}
 
+	// Lägg till denna funktion bland de andra hjälpfunktionerna
+	function getBookingTypeInfo(bookingLength, defaultOpenTime, defaultCloseTime) {
+		// Konverterar öppettider till minuter sedan midnatt
+		const openMinutes = timeToMinutes(defaultOpenTime);
+		const closeMinutes = timeToMinutes(defaultCloseTime);
+		
+		// Beräknar totala antalet 15-minuters slots mellan öppning och stängning
+		const totalSlots = Math.floor((closeMinutes - openMinutes) / 15);
+		
+		let type;
+		if (bookingLength === 'Hela dagen') {
+			type = 'full_day';
+		} else if (bookingLength.includes('h')) {
+			type = 'hourly';
+		} else {
+			type = 'custom';
+		}
+		
+		return {
+			type,
+			totalSlots
+		};
+	}
+
+	// Hjälpfunktion för att konvertera tid till minuter
+	function timeToMinutes(timeStr) {
+		const [hours, minutes] = timeStr.split(':').map(Number);
+		return hours * 60 + minutes;
+	}
+
 	// ==================
 	// bokningsrelaterade funktioner
 	// ==================
