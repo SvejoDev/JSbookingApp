@@ -12,6 +12,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
+	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
 
 	export let data;
 
@@ -59,6 +60,19 @@
 	// tillvalshantering
 	let selectedAddons = {};
 	let sortedBookingLengths = [];
+
+	// Fakturahantering
+	let selectedPaymentMethod = null;
+	let invoiceData = {
+		invoiceType: 'pdf',
+		invoiceEmail: '',
+		glnPeppolId: '',
+		marking: '',
+		organization: '',
+		address: '',
+		postalCode: '',
+		city: ''
+	};
 
 	// ==================
 	// reaktiva uttryck
@@ -186,10 +200,10 @@
 		// Konverterar öppettider till minuter sedan midnatt
 		const openMinutes = timeToMinutes(defaultOpenTime);
 		const closeMinutes = timeToMinutes(defaultCloseTime);
-		
+
 		// Beräknar totala antalet 15-minuters slots mellan öppning och stängning
 		const totalSlots = Math.floor((closeMinutes - openMinutes) / 15);
-		
+
 		let type;
 		if (bookingLength === 'Hela dagen') {
 			type = 'full_day';
@@ -198,7 +212,7 @@
 		} else {
 			type = 'custom';
 		}
-		
+
 		return {
 			type,
 			totalSlots
@@ -492,6 +506,51 @@
 		} catch (error) {
 			console.error('Checkout error:', error);
 			// Här kan du visa ett felmeddelande för användaren
+		}
+	}
+
+	//Hantera faktura
+	async function handleInvoiceSubmission() {
+		try {
+			const requestData = {
+				...invoiceData,
+				experience_id: data.experience.id,
+				experience: data.experience.name,
+				startLocation: selectedStartLocationName,
+				start_date: startDate,
+				start_time: startTime,
+				end_date: returnDate,
+				end_time: returnTime,
+				start_slot: slotInfo.startSlot,
+				end_slot: slotInfo.endSlot,
+				booking_type: slotInfo.bookingType,
+				total_slots: slotInfo.totalSlots,
+				number_of_adults: numAdults,
+				number_of_children: numChildren,
+				amount_total: totalPrice,
+				booking_name: userName,
+				booking_lastname: userLastname,
+				customer_comment: userComment,
+				customer_email: userEmail
+			};
+
+			const response = await fetch('/api/handle-invoice', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(requestData)
+			});
+
+			if (!response.ok) {
+				throw new Error('Failed to submit invoice booking');
+			}
+
+			// Redirect to success page
+			window.location.href = '/success?booking_type=invoice';
+		} catch (error) {
+			console.error('Error submitting invoice booking:', error);
+			// Handle error (show error message to user)
 		}
 	}
 
@@ -884,9 +943,55 @@
 						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
 					</div>
 
-					<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-						Go to payment ({totalPrice}kr)
-					</Button>
+					<!-- Payment Section -->
+					{#if data.experience.experience_type === 'business_school'}
+						<div class="space-y-4">
+							<div class="flex gap-4">
+								<Button
+									variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
+									on:click={() => (selectedPaymentMethod = 'card')}
+									class="flex-1"
+								>
+									Betala med kort
+								</Button>
+								<Button
+									variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
+									on:click={() => (selectedPaymentMethod = 'invoice')}
+									class="flex-1"
+								>
+									Betala med faktura
+								</Button>
+							</div>
+
+							{#if selectedPaymentMethod === 'invoice'}
+								<Card class="mt-4">
+									<CardHeader>
+										<CardTitle>Fakturauppgifter</CardTitle>
+									</CardHeader>
+									<CardContent>
+										<InvoiceForm bind:invoiceData />
+
+										<Button
+											class="w-full mt-4"
+											disabled={!acceptTerms}
+											on:click={handleInvoiceSubmission}
+										>
+											Skicka fakturabegäran ({totalPrice}kr)
+										</Button>
+									</CardContent>
+								</Card>
+							{:else if selectedPaymentMethod === 'card'}
+								<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+									Gå till kortbetalning ({totalPrice}kr)
+								</Button>
+							{/if}
+						</div>
+					{:else}
+						<!-- Original payment button for public experiences -->
+						<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+							Gå till betalning ({totalPrice}kr)
+						</Button>
+					{/if}
 				</CardContent>
 			</Card>
 		{/if}
