@@ -564,17 +564,56 @@
 		);
 
 		const today = new Date();
+		const foresightHours = data.experience.booking_foresight_hours || 0;
+		const minDateTime = new Date(today.getTime() + foresightHours * 60 * 60 * 1000);
 
 		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
 			const dbMinDate = new Date(data.openHours.start_date);
-			minDate = dbMinDate > today ? dbMinDate : today;
+			minDate = dbMinDate > minDateTime ? dbMinDate : minDateTime;
 			maxDate = new Date(data.openHours.end_date);
 		}
 
-		if (data.blocked_dates) {
-			blockedDates = data.blocked_dates.map((blocked) => new Date(blocked.blocked_date));
-		}
+		// Combine regular blocked dates with foresight blocked dates
+		const foresightBlocked = generateForesightBlockedDates(data.experience.booking_foresight_hours);
+		blockedDates = [
+			...foresightBlocked,
+			...(data.blocked_dates?.map((blocked) => new Date(blocked.blocked_date)) || [])
+		];
+
+		// Remove duplicates
+		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
+			(date) => new Date(date)
+		);
 	});
+
+	function generateForesightBlockedDates(foresightHours) {
+		const blockedDates = [];
+		const today = new Date();
+		today.setHours(0, 0, 0, 0); // Reset time to start of day
+
+		// Block all past dates up to yesterday
+		const startDate = new Date(2024, 0, 1);
+		const currentDate = new Date(startDate);
+		const yesterday = new Date(today);
+		yesterday.setDate(yesterday.getDate() - 1);
+
+		while (currentDate <= yesterday) {
+			blockedDates.push(new Date(currentDate));
+			currentDate.setDate(currentDate.getDate() + 1);
+		}
+
+		// Don't block today if foresight hours is less than 24
+		if (foresightHours >= 24) {
+			const foresightDays = Math.floor(foresightHours / 24);
+			for (let i = 0; i < foresightDays; i++) {
+				const date = new Date(today);
+				date.setDate(date.getDate() + i);
+				blockedDates.push(new Date(date));
+			}
+		}
+
+		return blockedDates;
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -676,10 +715,11 @@
 							{maxDate}
 							openingPeriods={{
 								periods: data.openHours.periods || [],
-								specificDates: data.openHours.specificDates.map(date => ({
-									...date,
-									date: new Date(date.date).toISOString().split('T')[0]  // Ensure date is in YYYY-MM-DD format
-								})) || [],
+								specificDates:
+									data.openHours.specificDates.map((date) => ({
+										...date,
+										date: new Date(date.date).toISOString().split('T')[0]
+									})) || [],
 								defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
 								defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
 							}}

@@ -26,7 +26,7 @@ export async function POST({ request }) {
 				'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
 				[experienceId]
 			);
-			
+
 			if (periodData.length > 0) {
 				availableTimeSlots = periodData;
 			}
@@ -78,12 +78,23 @@ export async function POST({ request }) {
 		// Sort and remove duplicates
 		allAvailableTimes = [...new Set(allAvailableTimes)].sort();
 
-		return json({ availableStartTimes: allAvailableTimes });
+		// Filter times considering foresight
+		const availableTimes = await filterPastTimes(allAvailableTimes, date, experienceId);
+
+		if (availableTimes.length === 0) {
+			return json({
+				error: 'No available times found for this date due to booking foresight requirements',
+				availableStartTimes: []
+			});
+		}
+
+		return json({ availableStartTimes: availableTimes });
 	} catch (error) {
 		console.error('Error checking availability:', error);
-		return json({ error: error.message }, { status: 500 });
+		return json({ error: 'Internal server error', availableStartTimes: [] });
 	}
 }
+
 function getHoursInDay(openTime, closeTime) {
 	const [openHours, openMinutes] = openTime.split(':').map(Number);
 	const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
@@ -91,20 +102,42 @@ function getHoursInDay(openTime, closeTime) {
 	return Math.floor(totalOpenMinutes / 60);
 }
 
-function filterPastTimes(times, bookingDate) {
+async function filterPastTimes(times, bookingDate, experienceId) {
+	const { rows: [experience] } = await query(
+		'SELECT booking_foresight_hours FROM experiences WHERE id = $1',
+		[experienceId]
+	);
+	
+	const foresightHours = experience?.booking_foresight_hours || 0;
+	
+	// Calculate the earliest possible booking time
 	const currentDateTime = new Date();
-	const today = currentDateTime.toISOString().split('T')[0];
-
-	if (bookingDate !== today) {
-		return times;
-	}
-
-	const currentHours = currentDateTime.getHours();
-	const currentMinutes = currentDateTime.getMinutes();
-
+	const earliestPossibleTime = new Date(
+		currentDateTime.getTime() + (foresightHours * 60 * 60 * 1000)
+	);
+	const bookingDateTime = new Date(bookingDate);
+	
+	// Convert times to minutes for precise comparison
+	const earliestMinutesSinceMidnight = 
+		earliestPossibleTime.getHours() * 60 + 
+		earliestPossibleTime.getMinutes();
+	
 	return times.filter((time) => {
 		const [hours, minutes] = time.split(':').map(Number);
-		return hours > currentHours || (hours === currentHours && minutes >= currentMinutes);
+		const timeInMinutes = hours * 60 + minutes;
+		
+		// If booking date is future date, include all times
+		if (bookingDateTime.getDate() > earliestPossibleTime.getDate()) {
+			return true;
+		}
+		
+		// For same day bookings, compare exact minutes
+		if (bookingDateTime.getDate() === earliestPossibleTime.getDate()) {
+			// Add a small buffer (1 minute) to handle fractional hours
+			return timeInMinutes >= earliestMinutesSinceMidnight;
+		}
+		
+		return false;
 	});
 }
 
