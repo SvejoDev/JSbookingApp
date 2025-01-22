@@ -132,7 +132,7 @@
 				isOpen={isDateOpen(date)}
 				isBlocked={isDateBlocked(date)}
 				isOutsideMonth={isOutsideMonth(date)}
-				disabled={isDateDisabled(date)}
+				disabled={disabled || isDateDisabled(date)}
 				isStartDay={range.isStartDay}
 				isEndDay={range.isEndDay}
 				isInBetweenDay={range.isInBetweenDay}
