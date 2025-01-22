@@ -1,8 +1,8 @@
-// src/routes/booking/[id]/+page.server.js
 import { query } from '$lib/db.js';
 
 export async function load({ params }) {
 	try {
+		// Hämta upplevelsen med alla dess addons i en enda query
 		const experienceResult = await query(
 			`
             SELECT 
@@ -28,11 +28,11 @@ export async function load({ params }) {
 		const experience = experienceResult.rows[0];
 
 		if (!experience) {
-			console.error('Experience not found');
-			return { error: 'Experience not found' };
+			console.error('Upplevelsen hittades inte');
+			return { error: 'Upplevelsen hittades inte' };
 		}
 
-		// Fetch all necessary data for booking
+		// Hämta all nödvändig data för bokningen
 		const [
 			startLocations,
 			bookingLengths,
@@ -50,7 +50,7 @@ export async function load({ params }) {
 				[params.id]
 			),
 			query(
-				'SELECT available_date, open_time, close_time FROM experience_available_dates WHERE experience_id = $1',
+				'SELECT available_date, open_time, close_time FROM experience_available_dates WHERE experience_id = $1 ORDER BY available_date, open_time',
 				[params.id]
 			),
 			query('SELECT blocked_date FROM blocked_dates WHERE experience_id = $1', [params.id]),
@@ -59,13 +59,36 @@ export async function load({ params }) {
 			])
 		]);
 
-		// Structure the opening hours data
+		// Gruppera specifika datum med deras tidsintervall
+		const groupedSpecificDates = specificDates.rows.reduce((acc, curr) => {
+			// Convert the date string to YYYY-MM-DD format without timezone conversion
+			const dateStr = new Date(curr.available_date).toLocaleDateString('sv-SE'); // Uses Swedish locale for YYYY-MM-DD format
+			if (!acc[dateStr]) {
+				acc[dateStr] = {
+					date: dateStr,
+					timeSlots: []
+				};
+			}
+			acc[dateStr].timeSlots.push({
+				open_time: curr.open_time,
+				close_time: curr.close_time
+			});
+			return acc;
+		}, {});
+
+		// After grouping specific dates
+		console.log('Grouped Specific Dates:', groupedSpecificDates);
+		console.log('Specific Dates Rows:', specificDates.rows);
+
+		// Strukturera öppettider-datan
 		const openHours = {
 			periods: periodOpenDates.rows,
-			specificDates: specificDates.rows,
-			defaultOpenTime: specificDates.rows[0]?.open_time || periodOpenDates.rows[0]?.open_time,
-			defaultCloseTime: specificDates.rows[0]?.close_time || periodOpenDates.rows[0]?.close_time
+			specificDates: Object.values(groupedSpecificDates),
+			defaultOpenTimes: specificDates.rows.map(row => row.open_time) || [periodOpenDates.rows[0]?.open_time] || [''],
+			defaultCloseTimes: specificDates.rows.map(row => row.close_time) || [periodOpenDates.rows[0]?.close_time] || ['']
 		};
+
+		console.log('Final openHours structure:', openHours);
 
 		return {
 			experience: {
@@ -79,9 +102,9 @@ export async function load({ params }) {
 			blocked_start_times: blockedStartTimes.rows
 		};
 	} catch (error) {
-		console.error('Error fetching booking data:', error);
+		console.error('Fel vid hämtning av bokningsdata:', error);
 		return {
-			error: 'Could not load booking data'
+			error: 'Kunde inte ladda bokningsdata'
 		};
 	}
 }

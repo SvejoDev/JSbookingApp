@@ -7,53 +7,34 @@ export async function POST({ request }) {
 
 		console.log('Received booking request:', { date, bookingLength, addons, experienceId });
 
-		// First check if this is a specific date experience
-		const { rows: specificDates } = await query(
-			`SELECT available_date, open_time, close_time 
+		// Get all available time slots for the specific date
+		const { rows: specificTimeSlots } = await query(
+			`SELECT open_time, close_time 
              FROM experience_available_dates 
              WHERE experience_id = $1 
-             AND available_date = $2`,
+             AND available_date = $2
+             ORDER BY open_time`,
 			[experienceId, date]
 		);
 
-		// If no specific date found, check period-based dates
-		const {
-			rows: [openDateData]
-		} = await query(`SELECT * FROM experience_open_dates WHERE experience_id = $1`, [experienceId]);
-
-		// Determine which opening hours to use
-		let openingHours;
-		if (specificDates.length > 0) {
-			// Use specific date's opening hours
-			openingHours = specificDates[0];
-
-			// Validate that the date is actually available
-			const selectedDate = new Date(date);
-			const availableDate = new Date(openingHours.available_date);
-			if (selectedDate.toDateString() !== availableDate.toDateString()) {
-				return json({
-					error: 'Selected date is not available',
-					availableStartTimes: []
-				});
-			}
-		} else if (openDateData) {
-			// Use period-based opening hours
-			openingHours = openDateData;
-
-			// Validate date is within allowed range
-			const selectedDate = new Date(date);
-			const startDate = new Date(openDateData.start_date);
-			const endDate = new Date(openDateData.end_date);
-
-			if (selectedDate < startDate || selectedDate > endDate) {
-				return json({
-					error: 'Selected date is outside the season',
-					availableStartTimes: []
-				});
-			}
+		// If no specific time slots found, check period-based dates
+		let availableTimeSlots = [];
+		if (specificTimeSlots.length > 0) {
+			availableTimeSlots = specificTimeSlots;
 		} else {
+			const { rows: periodData } = await query(
+				'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
+				[experienceId]
+			);
+			
+			if (periodData.length > 0) {
+				availableTimeSlots = periodData;
+			}
+		}
+
+		if (availableTimeSlots.length === 0) {
 			return json({
-				error: 'No opening hours found for this experience',
+				error: 'No available time slots found for this date',
 				availableStartTimes: []
 			});
 		}
@@ -66,14 +47,16 @@ export async function POST({ request }) {
 			durationHours = parseInt(bookingLength);
 			numberOfNights = 0;
 		} else if (bookingLength === 'Hela dagen') {
-			durationHours = getHoursInDay(openingHours.open_time, openingHours.close_time);
+			// Use the full span of the first available time slot
+			durationHours = getHoursInDay(
+				availableTimeSlots[0].open_time,
+				availableTimeSlots[0].close_time
+			);
 			numberOfNights = 0;
 		} else {
 			numberOfNights = parseInt(bookingLength);
 			durationHours = numberOfNights * 24;
 		}
-
-		console.log('Calculated duration:', { durationHours, numberOfNights });
 
 		// Get all available addons from database
 		const { rows: addonsList } = await query(`
@@ -81,24 +64,26 @@ export async function POST({ request }) {
             FROM addons
         `);
 
-		// Generate possible start times
-		const availableStartTimes = await checkAvailability({
-			date,
-			durationHours,
-			numberOfNights,
-			addons,
-			addonsList,
-			openTime: openingHours.open_time,
-			closeTime: openingHours.close_time
-		});
+		// Generate available times for each time slot
+		let allAvailableTimes = [];
+		for (const slot of availableTimeSlots) {
+			const timesForSlot = generateTimeSlots(
+				slot.open_time,
+				slot.close_time,
+				numberOfNights === 0 ? durationHours : 0
+			);
+			allAvailableTimes = [...allAvailableTimes, ...timesForSlot];
+		}
 
-		return json({ availableStartTimes });
+		// Sort and remove duplicates
+		allAvailableTimes = [...new Set(allAvailableTimes)].sort();
+
+		return json({ availableStartTimes: allAvailableTimes });
 	} catch (error) {
 		console.error('Error checking availability:', error);
 		return json({ error: error.message }, { status: 500 });
 	}
 }
-
 function getHoursInDay(openTime, closeTime) {
 	const [openHours, openMinutes] = openTime.split(':').map(Number);
 	const [closeHours, closeMinutes] = closeTime.split(':').map(Number);

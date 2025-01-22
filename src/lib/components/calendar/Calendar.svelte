@@ -13,7 +13,7 @@
 	export let blockedDates = [];
 	export let openingPeriods = {
 		periods: [],
-		specificDates: [],
+		specificDates: [], // Now contains objects with date and timeSlots array
 		defaultOpenTime: '',
 		defaultCloseTime: ''
 	};
@@ -34,7 +34,16 @@
 		const date = event.detail;
 		selectedDate = formatDate(date);
 		forceUpdate += 1;
-		dispatch('dateSelect', date);
+
+		// Find available time slots for the selected date
+		const dateStr = formatDate(date);
+		const specificDate = openingPeriods.specificDates.find((d) => d.date === dateStr);
+
+		// Dispatch both date and available time slots
+		dispatch('dateSelect', {
+			date,
+			timeSlots: specificDate?.timeSlots || []
+		});
 	}
 
 	function handleMonthChange(event) {
@@ -47,9 +56,7 @@
 		// Check if there are any specific dates
 		if (openingPeriods.specificDates && openingPeriods.specificDates.length > 0) {
 			// If we have specific dates, only those dates are available
-			return openingPeriods.specificDates.some(
-				(specificDate) => formatDate(new Date(specificDate.available_date)) === dateStr
-			);
+			return openingPeriods.specificDates.some((specificDate) => specificDate.date === dateStr);
 		}
 
 		// If no specific dates, check period-based availability

@@ -676,17 +676,21 @@
 							{maxDate}
 							openingPeriods={{
 								periods: data.openHours.periods || [],
-								specificDates: data.openHours.specificDates || [],
-								defaultOpenTime: data.openHours.defaultOpenTime || '',
-								defaultCloseTime: data.openHours.defaultCloseTime || ''
+								specificDates: data.openHours.specificDates.map(date => ({
+									...date,
+									date: new Date(date.date).toISOString().split('T')[0]  // Ensure date is in YYYY-MM-DD format
+								})) || [],
+								defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
+								defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
 							}}
 							{blockedDates}
 							selectedDate={startDate}
 							on:dateSelect={(event) => {
-								const date = event.detail;
-								const year = date.getFullYear();
-								const month = String(date.getMonth() + 1).padStart(2, '0');
-								const day = String(date.getDate()).padStart(2, '0');
+								const { date, timeSlots } = event.detail;
+								const dateObj = new Date(date);
+								const year = dateObj.getFullYear();
+								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+								const day = String(dateObj.getDate()).padStart(2, '0');
 								startDate = `${year}-${month}-${day}`;
 								if (hasGeneratedTimes) handleSettingChange();
 							}}
