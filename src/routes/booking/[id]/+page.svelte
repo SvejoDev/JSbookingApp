@@ -26,9 +26,6 @@
 	// tillståndsvariabler
 	// ==================
 
-	// stripe-relaterade variabler
-	let stripePromise;
-
 	// bokningsrelaterade variabler
 	let blockedDates = []; // datum som är blockerade för bokning
 	let startDate = null; // valt startdatum
@@ -84,6 +81,9 @@
 	let participantsSection;
 	let contactSection;
 
+	// Initialize Stripe
+	let stripePromise;
+
 	// ==================
 	// reaktiva uttryck
 	// ==================
@@ -116,6 +116,9 @@
 		if (data.startLocations && data.startLocations.length === 1) {
 			selectedStartLocation = data.startLocations[0].id;
 			selectedStartLocationName = data.startLocations[0].location;
+			if (numAdults > 0) {
+				updatePrice();
+			}
 		}
 	}
 
@@ -292,13 +295,20 @@
 			const selectedLocation = data.startLocations.find(
 				(location) => location.id === selectedStartLocation
 			);
-			if (selectedLocation) {
-				totalPrice = numAdults * selectedLocation.price;
+
+			if (selectedLocation?.price && numAdults > 0) {
+				// säkerställ att priset är ett giltigt nummer
+				const basePrice = Number(selectedLocation.price) || 0;
+				totalPrice = Math.round(numAdults * basePrice);
 			} else {
-				console.error('Vald startplats hittades inte');
 				totalPrice = 0;
 			}
 		} else {
+			totalPrice = 0;
+		}
+
+		// säkerställ att totalPrice alltid är ett giltigt nummer
+		if (isNaN(totalPrice)) {
 			totalPrice = 0;
 		}
 	}
@@ -410,63 +420,51 @@
 	// hanterar stripe-betalning
 	async function handleCheckout() {
 		try {
-			// vänta på att stripe är redo
-			const stripe = await stripePromise;
-			if (!stripe) {
+			if (!totalPrice || isNaN(totalPrice) || totalPrice <= 0) {
+				throw new Error('Ogiltigt pris. Kontrollera dina val.');
+			}
+
+			if (!stripePromise) {
 				throw new Error('Kunde inte initiera Stripe');
 			}
 
-			// validera att all nödvändig data finns
-			if (!data.experience?.name || !startDate || !startTime || !returnDate || !returnTime) {
-				throw new Error('Saknar nödvändig bokningsinformation');
+			const stripe = await stripePromise;
+			if (!stripe) {
+				throw new Error('Stripe initialization failed');
 			}
-
-			const requestData = {
-				amount: totalPrice,
-				name: data.experience.name,
-				experience_id: data.experience.id,
-				experience: data.experience.name,
-				startLocation: selectedStartLocationName,
-				start_date: startDate,
-				start_time: startTime,
-				end_date: returnDate,
-				end_time: returnTime,
-				number_of_adults: numAdults,
-				number_of_children: numChildren,
-				booking_name: userName,
-				booking_lastname: userLastname,
-				customer_comment: userComment,
-				customer_email: userEmail,
-				// lägg till addons om de finns
-				addons: Object.entries(selectedAddons)
-					.filter(([_, quantity]) => quantity > 0)
-					.reduce((acc, [name, quantity]) => {
-						acc[name] = quantity;
-						return acc;
-					}, {})
-			};
-
-			// validera att alla värden är definierade
-			Object.entries(requestData).forEach(([key, value]) => {
-				if (value === undefined || value === null) {
-					throw new Error(`Saknar värde för ${key}`);
-				}
-			});
 
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify(requestData)
+				body: JSON.stringify({
+					startDate,
+					startTime,
+					returnDate,
+					returnTime,
+					selectedBookingLength,
+					selectedStartLocation,
+					numAdults,
+					numChildren,
+					selectedAddons,
+					userName,
+					userLastname,
+					userPhone,
+					userEmail,
+					userComment,
+					experienceId: data.experience?.id,
+					amount: totalPrice,
+					name: data.experience?.name || 'Bokning'
+				})
 			});
 
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.message || 'Kunde inte skapa checkout-session');
+			const session = await response.json();
+
+			if (session.error) {
+				throw new Error(session.error);
 			}
 
-			const session = await response.json();
 			const result = await stripe.redirectToCheckout({
 				sessionId: session.id
 			});
@@ -476,7 +474,7 @@
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
-			// här kan du lägga till en toast eller alert för att visa felmeddelandet för användaren
+			// här kan du lägga till en toast eller alert för att visa felet för användaren
 		}
 	}
 
@@ -529,7 +527,19 @@
 	// livscykelhantering
 	// ==================
 
-	onMount(() => {
+	onMount(async () => {
+		try {
+			// initialisera stripe med public key
+			const PUBLIC_STRIPE_KEY =
+				'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig';
+			stripePromise = await loadStripe(PUBLIC_STRIPE_KEY);
+			if (!stripePromise) {
+				console.error('Failed to initialize Stripe');
+			}
+		} catch (error) {
+			console.error('Error initializing Stripe:', error);
+		}
+
 		minDate = new Date();
 		maxDate = new Date();
 		maxDate.setFullYear(maxDate.getFullYear() + 1);
@@ -587,8 +597,9 @@
 	}
 
 	// scrollar till botten av sidan
-	function scrollToBottom() {
+	async function scrollToBottom() {
 		if (browser) {
+			await tick();
 			window.scrollTo({
 				top: document.documentElement.scrollHeight,
 				behavior: 'smooth'
@@ -1035,10 +1046,10 @@
 											{#each possibleStartTimes as time}
 												<Button
 													variant={startTime === time ? 'default' : 'outline'}
-													on:click={() => {
+													on:click={async () => {
 														startTime = time;
 														calculateReturnDate();
-														scrollToBottom();
+														await scrollToElement('participants-section');
 													}}
 													class="w-full"
 												>
