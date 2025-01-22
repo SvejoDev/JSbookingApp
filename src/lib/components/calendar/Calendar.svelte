@@ -18,6 +18,7 @@
 		defaultCloseTime: ''
 	};
 	export let selectedDate = null;
+	export let disabled = false;
 
 	const dispatch = createEventDispatcher();
 	let currentMonth = new Date(); // Set initial value
@@ -114,6 +115,7 @@
 			{isDateOpen}
 			{isDateBlocked}
 			{bookingLength}
+			{disabled}
 			on:dateSelect={handleDateSelect}
 		/>
 	</div>

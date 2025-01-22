@@ -636,7 +636,8 @@
 							}}
 							{blockedDates}
 							selectedDate={startDate}
-							disabled={startTime !== null}
+							disabled={settingsLocked || startTime !== null}
+							bookingLength={selectedBookingLength}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
 								const dateObj = new Date(date);
@@ -644,6 +645,15 @@
 								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
 								const day = String(dateObj.getDate()).padStart(2, '0');
 								startDate = `${year}-${month}-${day}`;
+
+								// Reset time-related states when date changes
+								startTime = null;
+								returnTime = null;
+								returnDate = null;
+								hasGeneratedTimes = false;
+								possibleStartTimes = [];
+								settingsLocked = false;
+
 								scrollToBottom();
 							}}
 						/>
@@ -919,6 +929,7 @@
 								{blockedDates}
 								selectedDate={startDate}
 								disabled={settingsLocked || startTime !== null}
+								bookingLength={selectedBookingLength}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
 									const dateObj = new Date(date);
@@ -937,7 +948,6 @@
 
 									scrollToBottom();
 								}}
-								bookingLength={selectedBookingLength}
 							/>
 						</div>
 					</div>

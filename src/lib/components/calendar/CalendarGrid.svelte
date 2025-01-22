@@ -9,6 +9,7 @@
 	export let isDateOpen;
 	export let isDateBlocked;
 	export let bookingLength = null;
+	export let disabled = false;
 
 	const dispatch = createEventDispatcher();
 	const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
