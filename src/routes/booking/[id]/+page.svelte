@@ -15,7 +15,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Loader2 } from 'lucide-svelte';
 	import Calendar from '$lib/components/calendar/Calendar.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
@@ -79,6 +79,10 @@
 		postalCode: '',
 		city: ''
 	};
+
+	// add these at the top of your script section
+	let participantsSection;
+	let contactSection;
 
 	// ==================
 	// reaktiva uttryck
@@ -146,15 +150,6 @@
 		calculateReturnDate();
 	}
 
-	// automatisk scrollning till relevanta sektioner
-	$: if (startDate && data.experience.experience_type === 'guided') {
-		scrollToElement('participants-section');
-	}
-
-	$: if (showContactSection) {
-		scrollToElement('contact-section');
-	}
-
 	// Add this near the other reactive statements
 	$: {
 		if (data.experience?.experience_type === 'guided') {
@@ -174,15 +169,28 @@
 	// ==================
 
 	// scrollar till ett specifikt element
-	function scrollToElement(elementId) {
-		if (browser) {
-			setTimeout(() => {
-				const element = document.getElementById(elementId);
-				if (element) {
-					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-				}
-			}, 100);
+	async function scrollToElement(elementId) {
+		if (!browser) return;
+
+		// vänta på att DOM:en har uppdaterats
+		await tick();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		const element = document.getElementById(elementId);
+		if (!element) {
+			console.warn(`Element med id '${elementId}' hittades inte`);
+			return;
 		}
+
+		// beräkna position och scrolla
+		const headerOffset = 100;
+		const elementPosition = element.getBoundingClientRect().top;
+		const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+		window.scrollTo({
+			top: offsetPosition,
+			behavior: 'smooth'
+		});
 	}
 
 	// sorterar bokningslängder för bättre presentation
@@ -208,9 +216,10 @@
 	}
 
 	// visar kontaktformuläret när användaren går vidare från deltagarval
-	function handleNextStep() {
+	async function handleNextStep() {
 		showContactSection = true;
-		scrollToElement('contact-section');
+		await tick();
+		scrollToBottom();
 	}
 
 	// Lägg till denna funktion bland de andra hjälpfunktionerna
@@ -337,7 +346,8 @@
 
 			possibleStartTimes = availableStartTimes;
 			if (possibleStartTimes.length > 0) {
-				scrollToElement('available-times');
+				await tick();
+				scrollToBottom();
 			}
 		} catch (error) {
 			possibleStartTimes = [];
@@ -350,63 +360,34 @@
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate) {
-			return;
-		}
-
-		if (!data.openHours?.defaultCloseTime) {
-			return;
-		}
-
-		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
-		if (!bookingLength) {
+			console.log('Missing required values:', { selectedBookingLength, startTime, startDate });
 			return;
 		}
 
 		try {
 			const startDateTime = new Date(`${startDate}T${startTime}`);
-			if (isNaN(startDateTime.getTime())) {
-				console.error('ogiltigt startdatum eller starttid:', { startDate, startTime });
-				return;
-			}
-
 			let returnDateTime = new Date(startDateTime);
 
-			if (bookingLength.overnight) {
-				returnDateTime.setDate(returnDateTime.getDate() + bookingLength.return_day_offset);
-				const closeTimeParts = data.openHours.defaultCloseTime.split(':');
-				returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
-			} else if (bookingLength.length === 'Hela dagen') {
-				const closeTimeParts = data.openHours.defaultCloseTime.split(':');
-				returnDateTime.setHours(parseInt(closeTimeParts[0]), parseInt(closeTimeParts[1]), 0, 0);
-			} else {
-				const hoursToAdd = parseInt(bookingLength.length);
-				returnDateTime.setHours(returnDateTime.getHours() + hoursToAdd);
-
-				const closeTime = new Date(`${startDate}T${data.openHours.defaultCloseTime}`);
-				if (returnDateTime > closeTime) {
-					returnDateTime = closeTime;
-				}
+			// för bokningar som är i timmar
+			if (selectedBookingLength.includes('h')) {
+				const hours = parseInt(selectedBookingLength);
+				returnDateTime.setHours(returnDateTime.getHours() + hours);
+			}
+			// för hela dagen bokningar
+			else if (selectedBookingLength === 'Hela dagen') {
+				returnDateTime.setHours(17, 0, 0); // sätt till 17:00
+			}
+			// för övriga bokningslängder (om det finns några)
+			else {
+				returnDateTime.setHours(17, 0, 0); // default till 17:00
 			}
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
 
-			// Calculate booking type info
-			const bookingTypeInfo = getBookingTypeInfo(
-				bookingLength.length,
-				data.openHours.defaultOpenTime,
-				data.openHours.defaultCloseTime
-			);
-
-			return {
-				startSlot: timeToSlot(startTime),
-				endSlot: timeToSlot(returnTime),
-				bookingType: bookingTypeInfo.type,
-				totalSlots: bookingTypeInfo.totalSlots
-			};
+			console.log('Return date calculated:', { returnDate, returnTime });
 		} catch (error) {
-			console.error('fel vid beräkning av returdatum:', error);
-			return;
+			console.error('Error calculating return date:', error);
 		}
 	}
 
@@ -563,6 +544,18 @@
 
 		return blockedDates;
 	}
+
+	// ersätt scrollToElement funktionen med en enklare version
+	function scrollToBottom() {
+		if (!browser) return;
+
+		setTimeout(() => {
+			window.scrollTo({
+				top: document.documentElement.scrollHeight,
+				behavior: 'smooth'
+			});
+		}, 100);
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -584,7 +577,7 @@
 			<!-- Guided Experience Flow -->
 			<div class="flex flex-col gap-6 max-w-3xl mx-auto">
 				<!-- Step 1: Date Selection -->
-				<Card>
+				<Card id="calendar-section">
 					<CardHeader>
 						<CardTitle>Välj datum</CardTitle>
 					</CardHeader>
@@ -624,7 +617,7 @@
 
 				{#if startDate}
 					<!-- Step 2: Participants -->
-					<Card id="participants-section">
+					<Card bind:this={participantsSection} id="participants-section">
 						<CardHeader>
 							<CardTitle>Antal deltagare</CardTitle>
 						</CardHeader>
@@ -670,7 +663,7 @@
 
 				<!-- Step 3: Contact Information -->
 				{#if showContactSection}
-					<Card id="contact-section">
+					<Card bind:this={contactSection} id="contact-section">
 						<CardHeader>
 							<CardTitle>Kontaktuppgifter</CardTitle>
 						</CardHeader>
@@ -885,6 +878,8 @@
 									if (data.openHours.defaultCloseTimes?.[0]) {
 										returnTime = data.openHours.defaultCloseTimes[0];
 									}
+									// scrolla till utrustningssektionen
+									scrollToBottom();
 								}}
 								bookingLength={selectedBookingLength}
 							/>
@@ -957,7 +952,7 @@
 										variant="outline"
 										on:click={() => {
 											handleSettingChange();
-											scrollToElement('equipment-section');
+											scrollToBottom();
 										}}
 									>
 										Ändra din bokning
@@ -965,73 +960,50 @@
 								{/if}
 							</div>
 
-							<!-- Tillgängliga tider -->
-							{#if possibleStartTimes.length > 0}
-								<div class="space-y-2" id="time-selection">
-									<Label>Tillgängliga starttider:</Label>
-									<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-										{#each possibleStartTimes as time}
-											<Button
-												variant={startTime === time ? 'default' : 'outline'}
-												on:click={() => {
-													startTime = time;
-												}}
-												class="w-full"
-											>
-												{time}
-											</Button>
-										{/each}
-									</div>
+							<!-- After the available times buttons -->
+							<div class="space-y-2" id="time-selection">
+								<Label>Tillgängliga starttider:</Label>
+								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+									{#each possibleStartTimes as time}
+										<Button
+											variant={startTime === time ? 'default' : 'outline'}
+											on:click={() => {
+												startTime = time;
+												calculateReturnDate();
+												scrollToBottom();
+											}}
+											class="w-full"
+										>
+											{time}
+										</Button>
+									{/each}
 								</div>
-							{:else if hasCheckedTimes && !isLoadingTimes}
-								<Alert variant="destructive">
-									<AlertDescription>
-										<p class="mb-2">Ditt önskemål kunde inte tillgodoses. Det kan bero på:</p>
-										<ul class="list-disc pl-6 space-y-1">
-											<li>Bokningslängd (Det intervall du önskat kan vara fullbokat)</li>
-											<li>Val av datum (Det datum du önskat kan vara fullbokat)</li>
-											<li>
-												Det antal enheter av utrustning du valt finns inte tillgängligt under den
-												tiden
-											</li>
-										</ul>
-										<b>Prova att ändra din bokning enligt annat önskemål</b>
-									</AlertDescription>
-								</Alert>
-							{/if}
+							</div>
 
-							<!-- Vald tid info -->
-							{#if startTime}
-								<Alert id="booking-summary">
-									<AlertTitle>Din bokning</AlertTitle>
-									<AlertDescription>
-										{#if returnDate && returnTime}
-											Startdatum: {startDate}
-											<br />
-											Starttid: {startTime}
-											<br />
-											Returdatum: {returnDate}
-											<br />
-											Returtid senast: {returnTime}
-											<br />
-											<br />
-											Valda tillval:
-											{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [columnName, quantity]}
-												<br />
-												{quantity} st {data.experience.addons.find(
-													(addon) => addon.column_name === columnName
-												)?.name}
-											{/each}
-										{/if}
-									</AlertDescription>
-								</Alert>
+							<!-- Booking summary - only show after start time is selected -->
+							{#if startTime && hasGeneratedTimes}
+								<Card class="mt-4">
+									<CardHeader>
+										<CardTitle>Din bokning</CardTitle>
+									</CardHeader>
+									<CardContent>
+										<div class="space-y-2">
+											<p><strong>Startdatum:</strong> {startDate}</p>
+											<p><strong>Starttid:</strong> {startTime}</p>
+											{#if returnDate && returnTime}
+												<p><strong>Returdatum:</strong> {returnDate}</p>
+												<p><strong>Returtid senast:</strong> {returnTime}</p>
+											{/if}
+										</div>
+									</CardContent>
+								</Card>
 							{/if}
 						</div>
 					</CardContent>
 				</Card>
 			{/if}
 
-			{#if selectedStartLocation && startTime}
+			{#if selectedStartLocation && startTime && hasGeneratedTimes}
 				<Card id="participants-section">
 					<CardHeader>
 						<CardTitle>Antal deltagare</CardTitle>
