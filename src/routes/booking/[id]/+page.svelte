@@ -19,7 +19,6 @@
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
-	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
 
 	export let data;
 
@@ -28,7 +27,7 @@
 	// ==================
 
 	// stripe-relaterade variabler
-	const stripePromise = loadStripe(PUBLIC_STRIPE_KEY);
+	let stripePromise;
 
 	// bokningsrelaterade variabler
 	let blockedDates = []; // datum som är blockerade för bokning
@@ -132,10 +131,15 @@
 		}
 	}
 
-	// väljer automatiskt bokningslängd om det bara finns ett alternativ
+	// väljer automatiskt bokningslängd om det bara finns ett alternativ och scrollar till botten
 	$: {
 		if (sortedBookingLengths.length === 1) {
 			selectedBookingLength = sortedBookingLengths[0].length;
+		}
+		if (selectedBookingLength) {
+			tick().then(() => {
+				scrollToBottom();
+			});
 		}
 	}
 
@@ -582,16 +586,14 @@
 		return blockedDates;
 	}
 
-	// ersätt scrollToElement funktionen med en enklare version
+	// scrollar till botten av sidan
 	function scrollToBottom() {
-		if (!browser) return;
-
-		setTimeout(() => {
+		if (browser) {
 			window.scrollTo({
 				top: document.documentElement.scrollHeight,
 				behavior: 'smooth'
 			});
-		}, 100);
+		}
 	}
 </script>
 
