@@ -9,6 +9,7 @@
 	export let isDateOpen;
 	export let isDateBlocked;
 	export let bookingLength = null;
+	export let disabled = false;
 
 	const dispatch = createEventDispatcher();
 	const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -102,9 +103,18 @@
 			isInBetweenDay: currentDateStr > startDateStr && currentDateStr < endDateStr
 		};
 	}
+
+	function isDateSelected(date) {
+		if (!selectedDate) return false;
+		return formatDate(date) === selectedDate;
+	}
 </script>
 
-<div class="calendar-grid">
+<div
+	class="calendar-grid"
+	data-calendar-month={currentMonth.getMonth()}
+	data-calendar-year={currentMonth.getFullYear()}
+>
 	<div class="weekdays">
 		{#each weekDays as day}
 			<div class="weekday">{day}</div>
@@ -117,12 +127,12 @@
 			<CalendarDay
 				{date}
 				{bookingLength}
-				isSelected={isSelected(date)}
+				isSelected={isDateSelected(date)}
 				isToday={isToday(date)}
 				isOpen={isDateOpen(date)}
 				isBlocked={isDateBlocked(date)}
 				isOutsideMonth={isOutsideMonth(date)}
-				disabled={isDateDisabled(date)}
+				disabled={disabled || isDateDisabled(date)}
 				isStartDay={range.isStartDay}
 				isEndDay={range.isEndDay}
 				isInBetweenDay={range.isInBetweenDay}
