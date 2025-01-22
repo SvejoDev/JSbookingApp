@@ -19,6 +19,7 @@
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
+	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
 
 	export let data;
 
@@ -27,7 +28,7 @@
 	// ==================
 
 	// stripe-relaterade variabler
-	let stripePromise;
+	const stripePromise = loadStripe(PUBLIC_STRIPE_KEY);
 
 	// bokningsrelaterade variabler
 	let blockedDates = []; // datum som är blockerade för bokning
@@ -405,25 +406,48 @@
 	// hanterar stripe-betalning
 	async function handleCheckout() {
 		try {
+			// vänta på att stripe är redo
 			const stripe = await stripePromise;
+			if (!stripe) {
+				throw new Error('Kunde inte initiera Stripe');
+			}
+
+			// validera att all nödvändig data finns
+			if (!data.experience?.name || !startDate || !startTime || !returnDate || !returnTime) {
+				throw new Error('Saknar nödvändig bokningsinformation');
+			}
 
 			const requestData = {
 				amount: totalPrice,
 				name: data.experience.name,
 				experience_id: data.experience.id,
 				experience: data.experience.name,
-				startLocation: data.startLocations[0]?.location,
+				startLocation: selectedStartLocationName,
 				start_date: startDate,
-				start_time: data.openHours.defaultOpenTimes[0],
-				end_date: startDate, // For guided experiences, same day
-				end_time: data.openHours.defaultCloseTimes[0],
+				start_time: startTime,
+				end_date: returnDate,
+				end_time: returnTime,
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
 				booking_name: userName,
 				booking_lastname: userLastname,
 				customer_comment: userComment,
-				customer_email: userEmail
+				customer_email: userEmail,
+				// lägg till addons om de finns
+				addons: Object.entries(selectedAddons)
+					.filter(([_, quantity]) => quantity > 0)
+					.reduce((acc, [name, quantity]) => {
+						acc[name] = quantity;
+						return acc;
+					}, {})
 			};
+
+			// validera att alla värden är definierade
+			Object.entries(requestData).forEach(([key, value]) => {
+				if (value === undefined || value === null) {
+					throw new Error(`Saknar värde för ${key}`);
+				}
+			});
 
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
@@ -434,7 +458,8 @@
 			});
 
 			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
+				const errorData = await response.json();
+				throw new Error(errorData.message || 'Kunde inte skapa checkout-session');
 			}
 
 			const session = await response.json();
@@ -447,6 +472,7 @@
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
+			// här kan du lägga till en toast eller alert för att visa felmeddelandet för användaren
 		}
 	}
 
@@ -990,7 +1016,7 @@
 
 							<!-- After the available times buttons -->
 							<div class="space-y-2" id="time-selection">
-								{#if hasGeneratedTimes}
+								{#if hasGeneratedTimes && !isLoadingTimes}
 									{#if possibleStartTimes.length > 0}
 										<Label>Tillgängliga starttider:</Label>
 										<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">

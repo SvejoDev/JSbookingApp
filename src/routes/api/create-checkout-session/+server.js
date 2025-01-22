@@ -17,23 +17,23 @@ export async function POST({ request }) {
 
 		// Skapa baseMetadata först
 		const baseMetadata = {
-			experience_id: requestData.experience_id.toString(),
-			experience: requestData.experience,
-			startLocation: requestData.startLocation,
-			start_date: requestData.start_date,
-			start_time: requestData.start_time,
-			end_date: requestData.end_date,
-			end_time: requestData.end_time,
-			start_slot: requestData.start_slot.toString(),
-			end_slot: requestData.end_slot.toString(),
-			booking_type: requestData.booking_type,
-			total_slots: requestData.total_slots.toString(),
-			number_of_adults: requestData.number_of_adults.toString(),
+			experience_id: requestData.experience_id?.toString() || '',
+			experience: requestData.experience || '',
+			startLocation: requestData.startLocation || '',
+			start_date: requestData.start_date || '',
+			start_time: requestData.start_time || '',
+			end_date: requestData.end_date || '',
+			end_time: requestData.end_time || '',
+			start_slot: requestData.start_slot?.toString() || '0',
+			end_slot: requestData.end_slot?.toString() || '0',
+			booking_type: requestData.booking_type || 'custom',
+			total_slots: requestData.total_slots?.toString() || '0',
+			number_of_adults: requestData.number_of_adults?.toString() || '0',
 			number_of_children: requestData.number_of_children?.toString() || '0',
-			booking_name: requestData.booking_name,
-			booking_lastname: requestData.booking_lastname,
+			booking_name: requestData.booking_name || '',
+			booking_lastname: requestData.booking_lastname || '',
 			customer_comment: requestData.customer_comment || '',
-			customer_email: requestData.customer_email
+			customer_email: requestData.customer_email || ''
 		};
 
 		// Lägg till addon-metadata
