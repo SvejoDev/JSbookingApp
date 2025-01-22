@@ -1,7 +1,13 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
 	import { Button } from '$lib/components/ui/button';
-	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardHeader,
+		CardTitle,
+		CardContent,
+		CardDescription
+	} from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
@@ -141,14 +147,26 @@
 	}
 
 	// automatisk scrollning till relevanta sektioner
-	$: if (startTime) {
-		scrollToElement('booking-summary');
+	$: if (startDate && data.experience.experience_type === 'guided') {
+		scrollToElement('participants-section');
 	}
-	$: if (possibleStartTimes.length > 0) {
-		scrollToElement('time-selection');
+
+	$: if (showContactSection) {
+		scrollToElement('contact-section');
 	}
-	$: if (startDate && selectedBookingLength && selectedStartLocation) {
-		scrollToElement('equipment-section');
+
+	// Add this near the other reactive statements
+	$: {
+		if (data.experience?.experience_type === 'guided') {
+			// For guided experiences, automatically set the first available location and booking length
+			selectedStartLocation = data.startLocations[0]?.id;
+			selectedBookingLength = data.bookingLengths[0]?.length;
+
+			// Update price when number of adults changes
+			if (numAdults >= 0) {
+				totalPrice = numAdults * data.startLocations[0]?.price;
+			}
+		}
 	}
 
 	// ==================
@@ -331,33 +349,16 @@
 
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
-		// Debug logging to check values
-		console.log('Calculating return date with:', {
-			selectedBookingLength,
-			startTime,
-			startDate,
-			openHours: data.openHours
-		});
-
-		// Early return if required data is missing
 		if (!selectedBookingLength || !startTime || !startDate) {
-			console.error('saknar grundläggande bokningsdata:', {
-				selectedBookingLength,
-				startTime,
-				startDate
-			});
 			return;
 		}
 
-		// Check if openHours exists and has required properties
 		if (!data.openHours?.defaultCloseTime) {
-			console.error('saknar öppettider:', data.openHours);
 			return;
 		}
 
 		const bookingLength = data.bookingLengths.find((b) => b.length === selectedBookingLength);
 		if (!bookingLength) {
-			console.error('kunde inte hitta bokningslängd:', selectedBookingLength);
 			return;
 		}
 
@@ -389,9 +390,6 @@
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
-
-			// Debug log successful calculation
-			console.log('Beräknat returdatum:', { returnDate, returnTime });
 
 			// Calculate booking type info
 			const bookingTypeInfo = getBookingTypeInfo(
@@ -427,39 +425,23 @@
 		try {
 			const stripe = await stripePromise;
 
-			const slotInfo = calculateReturnDate();
-
-			const addonAmounts = {};
-			for (const [columnName, quantity] of Object.entries(selectedAddons)) {
-				if (quantity > 0) {
-					addonAmounts[columnName] = quantity;
-				}
-			}
-
 			const requestData = {
 				amount: totalPrice,
 				name: data.experience.name,
 				experience_id: data.experience.id,
 				experience: data.experience.name,
-				startLocation: selectedStartLocationName,
+				startLocation: data.startLocations[0]?.location,
 				start_date: startDate,
-				start_time: startTime,
-				end_date: returnDate,
-				end_time: returnTime,
-				start_slot: slotInfo.startSlot,
-				end_slot: slotInfo.endSlot,
-				booking_type: slotInfo.bookingType,
-				total_slots: slotInfo.totalSlots,
+				start_time: data.openHours.defaultOpenTimes[0],
+				end_date: startDate, // For guided experiences, same day
+				end_time: data.openHours.defaultCloseTimes[0],
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
-				...addonAmounts,
 				booking_name: userName,
 				booking_lastname: userLastname,
 				customer_comment: userComment,
 				customer_email: userEmail
 			};
-
-			console.log('Request Data:', requestData);
 
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
@@ -470,29 +452,19 @@
 			});
 
 			if (!response.ok) {
-				const errorText = await response.text();
-				console.error('Server response:', response.status, errorText);
-				throw new Error(`Server error: ${response.status} ${errorText}`);
+				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
 			const session = await response.json();
-			console.log('Received session:', session);
-
-			if (!session.id) {
-				throw new Error('Invalid session data received from server');
-			}
-
 			const result = await stripe.redirectToCheckout({
 				sessionId: session.id
 			});
 
 			if (result.error) {
-				console.error('Stripe redirect error:', result.error);
 				throw new Error(result.error.message);
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
-			// Här kan du visa ett felmeddelande för användaren
 		}
 	}
 
@@ -545,20 +517,10 @@
 	// livscykelhantering
 	// ==================
 
-	onMount(async () => {
-		stripePromise = await loadStripe(
-			'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig'
-		);
-
-		const today = new Date();
-		const foresightHours = data.experience.booking_foresight_hours || 0;
-		const minDateTime = new Date(today.getTime() + foresightHours * 60 * 60 * 1000);
-
-		if (data.openHours && data.openHours.start_date && data.openHours.end_date) {
-			const dbMinDate = new Date(data.openHours.start_date);
-			minDate = dbMinDate > minDateTime ? dbMinDate : minDateTime;
-			maxDate = new Date(data.openHours.end_date);
-		}
+	onMount(() => {
+		minDate = new Date();
+		maxDate = new Date();
+		maxDate.setFullYear(maxDate.getFullYear() + 1);
 
 		// Combine regular blocked dates with foresight blocked dates
 		const foresightBlocked = generateForesightBlockedDates(data.experience.booking_foresight_hours);
@@ -604,99 +566,29 @@
 </script>
 
 {#if data.experience && data.experience.id}
-	<div class="max-w-7xl mx-auto p-4 overflow-hidden">
-		<!-- Added overflow-hidden -->
-		<div
-			class="flex flex-col lg:flex-row gap-6 justify-center items-start max-w-5xl mx-auto relative"
-		>
-			<!-- Added relative -->
-			<!-- First card -->
-			<Card
-				class="w-full lg:w-1/2 transition-all duration-300 ease-in-out {selectedStartLocation &&
-				selectedBookingLength
-					? 'lg:translate-x-[-5%]'
-					: 'lg:translate-x-0'}"
-			>
-				<CardHeader>
-					<CardTitle>{data.experience.name}</CardTitle>
-				</CardHeader>
-				<CardContent class="space-y-6">
-					<!-- StartLocation -->
-					<div class="space-y-2">
-						<Label for="startLocation">1. Välj startplats</Label>
-						{#if data.startLocations.length === 1}
-							<div
-								class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
-							>
-								{data.startLocations[0].location} - {data.startLocations[0].price}kr
-							</div>
-						{:else}
-							<select
-								id="startLocation"
-								bind:value={selectedStartLocation}
-								on:change={() => {
-									updatePrice();
-									if (hasGeneratedTimes) handleSettingChange();
-								}}
-								disabled={settingsLocked}
-								class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<option value="" disabled selected>Välj startplats</option>
-								{#each data.startLocations as location}
-									<option value={location.id}>
-										{location.location} - {location.price}kr
-									</option>
-								{/each}
-							</select>
-						{/if}
-					</div>
+	<div class="max-w-7xl mx-auto px-4 py-6 overflow-hidden">
+		<Card class="max-w-3xl mx-auto mb-8 shadow-sm">
+			<CardHeader class="py-6">
+				<CardTitle class="text-2xl sm:text-3xl font-semibold text-center text-primary">
+					{data.experience.name}
+				</CardTitle>
+				{#if data.experience.description}
+					<CardDescription class="text-base sm:text-lg mt-2 text-center text-muted-foreground">
+						{data.experience.description}
+					</CardDescription>
+				{/if}
+			</CardHeader>
+		</Card>
 
-					<!-- Booking Length -->
-					<div class="space-y-2">
-						<Label for="bookingLength">
-							2. Välj bokningslängd
-							{#if !selectedStartLocation}
-								<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
-							{/if}
-						</Label>
-						{#if sortedBookingLengths.length === 1}
-							<div
-								class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
-							>
-								{sortedBookingLengths[0].length}
-							</div>
-						{:else}
-							<select
-								id="bookingLength"
-								bind:value={selectedBookingLength}
-								on:change={() => {
-									if (hasGeneratedTimes) handleSettingChange();
-								}}
-								class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-								disabled={!selectedStartLocation || settingsLocked}
-							>
-								<option value="" disabled selected>Välj bokningslängd</option>
-								{#each sortedBookingLengths as duration}
-									<option value={duration.length}>
-										{duration.length}
-									</option>
-								{/each}
-							</select>
-						{/if}
-					</div>
-				</CardContent>
-			</Card>
-
-			{#if selectedStartLocation && selectedBookingLength}
-				<div
-					class="w-full lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[50%] animate-slideIn"
-				>
-					<!-- Adjusted from 100% to 50% -->
-
-					<div class="calendar-container mt-4">
-						<CardHeader class="mb-4">
-							<CardTitle>Välj datum</CardTitle>
-						</CardHeader>
+		{#if data.experience.experience_type === 'guided'}
+			<!-- Guided Experience Flow -->
+			<div class="flex flex-col gap-6 max-w-3xl mx-auto">
+				<!-- Step 1: Date Selection -->
+				<Card>
+					<CardHeader>
+						<CardTitle>Välj datum</CardTitle>
+					</CardHeader>
+					<CardContent>
 						<Calendar
 							{minDate}
 							{maxDate}
@@ -712,319 +604,592 @@
 							}}
 							{blockedDates}
 							selectedDate={startDate}
-							on:dateSelect={(event) => {
-								const { date, timeSlots } = event.detail;
+							on:dateSelect={({ detail }) => {
+								const { date } = detail;
 								const dateObj = new Date(date);
 								const year = dateObj.getFullYear();
 								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
 								const day = String(dateObj.getDate()).padStart(2, '0');
 								startDate = `${year}-${month}-${day}`;
-								if (hasGeneratedTimes) handleSettingChange();
+								if (data.openHours.defaultOpenTimes?.[0]) {
+									startTime = data.openHours.defaultOpenTimes[0];
+								}
+								if (data.openHours.defaultCloseTimes?.[0]) {
+									returnTime = data.openHours.defaultCloseTimes[0];
+								}
 							}}
-							bookingLength={selectedBookingLength}
 						/>
-					</div>
-				</div>
-			{/if}
-		</div>
-		{#if startDate && selectedBookingLength}
-			<Card id="equipment-section">
-				<CardHeader>
-					<CardTitle>Välj utrustning</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<div class="grid gap-6">
-						<!-- Tillval -->
-						<div class="space-y-4">
-							<div class="grid gap-4 sm:grid-cols-3">
-								{#each data.experience.addons as addon (addon.id)}
-									<div class="space-y-2">
-										<Label for={addon.name}>Antal {addon.name} (max {addon.max_quantity})</Label>
-										<div class="flex items-center space-x-2">
-											<Button
-												variant="outline"
-												class="px-3"
-												disabled={settingsLocked}
-												on:click={() => updateAddonQuantity(addon.id, false)}
-											>
-												-
-											</Button>
-											<div class="w-12 text-center">
-												{selectedAddons[addon.column_name] || 0}
-											</div>
-											<Button
-												variant="outline"
-												class="px-3"
-												disabled={settingsLocked}
-												on:click={() => updateAddonQuantity(addon.id, true)}
-											>
-												+
-											</Button>
-										</div>
-									</div>
-								{/each}
-							</div>
-						</div>
+					</CardContent>
+				</Card>
 
-						<!-- Sök tider knapp -->
-						<div class="flex gap-2 flex-wrap">
-							<Button
-								disabled={!startDate ||
-									!selectedBookingLength ||
-									isLoadingTimes ||
-									Object.values(selectedAddons).every((v) => v === 0)}
-								variant={isLoadingTimes ? 'outline' : 'default'}
-								class="sm:w-auto"
-								on:click={generateStartTimes}
-							>
-								{#if isLoadingTimes}
-									<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-									Söker tillgängliga tider...
-								{:else if Object.values(selectedAddons).every((v) => v === 0)}
-									Välj minst en produkt
-								{:else}
-									Visa tillgängliga tider
-								{/if}
-							</Button>
-
-							{#if settingsLocked}
-								<Button
-									variant="outline"
-									on:click={() => {
-										handleSettingChange();
-										scrollToElement('equipment-section');
-									}}
+				{#if startDate}
+					<!-- Step 2: Participants -->
+					<Card id="participants-section">
+						<CardHeader>
+							<CardTitle>Antal deltagare</CardTitle>
+						</CardHeader>
+						<CardContent class="space-y-4">
+							<div class="space-y-2">
+								<Label for="participants"
+									>Antal deltagare ({data.startLocations[0]?.price}kr/person)</Label
 								>
-									Ändra din bokning
+								<div class="flex items-center space-x-2">
+									<Button
+										variant="outline"
+										class="px-3"
+										on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+									>
+										-
+									</Button>
+									<div class="w-12 text-center">{numAdults}</div>
+									<Button
+										variant="outline"
+										class="px-3"
+										on:click={() => (numAdults = numAdults + 1)}
+									>
+										+
+									</Button>
+								</div>
+							</div>
+
+							<Alert>
+								<AlertTitle>Totalt pris</AlertTitle>
+								<AlertDescription>{totalPrice}kr</AlertDescription>
+							</Alert>
+
+							<Button
+								class="w-full mt-4"
+								disabled={numAdults === 0}
+								on:click={() => (showContactSection = true)}
+							>
+								{numAdults === 0 ? 'Välj antal deltagare' : 'Nästa steg'}
+							</Button>
+						</CardContent>
+					</Card>
+				{/if}
+
+				<!-- Step 3: Contact Information -->
+				{#if showContactSection}
+					<Card id="contact-section">
+						<CardHeader>
+							<CardTitle>Kontaktuppgifter</CardTitle>
+						</CardHeader>
+						<CardContent class="space-y-4">
+							<div class="grid gap-4 sm:grid-cols-2">
+								<div class="space-y-2">
+									<Label for="firstName">Förnamn</Label>
+									<Input type="text" id="firstName" bind:value={userName} required />
+								</div>
+								<div class="space-y-2">
+									<Label for="lastName">Efternamn</Label>
+									<Input type="text" id="lastName" bind:value={userLastname} required />
+								</div>
+							</div>
+
+							<div class="space-y-2">
+								<Label for="phone">Telefonnummer</Label>
+								<Input
+									type="tel"
+									id="phone"
+									bind:value={userPhone}
+									pattern="^\+?[1-9]\d{14}$"
+									required
+								/>
+							</div>
+
+							<div class="space-y-2">
+								<Label for="email">E-postadress</Label>
+								<Input type="email" id="email" bind:value={userEmail} required />
+							</div>
+
+							<div class="space-y-2">
+								<Label for="comment">Kommentar (valfri)</Label>
+								<Textarea id="comment" bind:value={userComment} />
+							</div>
+
+							<div class="flex items-center space-x-2">
+								<Checkbox bind:checked={acceptTerms} id="terms" />
+								<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+							</div>
+
+							<!-- Payment Section -->
+							{#if data.experience.experience_type === 'business_school'}
+								<div class="space-y-4">
+									<div class="flex gap-4">
+										<Button
+											variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
+											on:click={() => (selectedPaymentMethod = 'card')}
+											class="flex-1"
+										>
+											Betala med kort
+										</Button>
+										<Button
+											variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
+											on:click={() => (selectedPaymentMethod = 'invoice')}
+											class="flex-1"
+										>
+											Betala med faktura
+										</Button>
+									</div>
+
+									{#if selectedPaymentMethod === 'invoice'}
+										<Card class="mt-4">
+											<CardHeader>
+												<CardTitle>Fakturauppgifter</CardTitle>
+											</CardHeader>
+											<CardContent>
+												<InvoiceForm bind:invoiceData />
+
+												<Button
+													class="w-full mt-4"
+													disabled={!acceptTerms}
+													on:click={handleInvoiceSubmission}
+												>
+													Skicka fakturabegäran ({totalPrice}kr)
+												</Button>
+											</CardContent>
+										</Card>
+									{:else if selectedPaymentMethod === 'card'}
+										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+											Gå till kortbetalning ({totalPrice}kr)
+										</Button>
+									{/if}
+								</div>
+							{:else}
+								<!-- Original payment button for public experiences -->
+								<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+									Gå till betalning ({totalPrice}kr)
 								</Button>
+							{/if}
+						</CardContent>
+					</Card>
+				{/if}
+			</div>
+		{:else}
+			<!-- Original booking flow for non-guided experiences -->
+			<div
+				class="flex flex-col lg:flex-row gap-6 justify-center items-start max-w-5xl mx-auto relative"
+			>
+				<!-- First card -->
+				<Card
+					class="w-full lg:w-1/2 transition-all duration-300 ease-in-out {selectedStartLocation &&
+					selectedBookingLength
+						? 'lg:translate-x-[-5%]'
+						: 'lg:translate-x-0'}"
+				>
+					<CardHeader>
+						<CardTitle>1. Välj startplats och bokningslängd</CardTitle>
+					</CardHeader>
+					<CardContent class="space-y-6">
+						<!-- StartLocation -->
+						<div class="space-y-2">
+							<Label for="startLocation">1. Välj startplats</Label>
+							{#if data.startLocations.length === 1}
+								<div
+									class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+								>
+									{data.startLocations[0].location} - {data.startLocations[0].price}kr
+								</div>
+							{:else}
+								<select
+									id="startLocation"
+									bind:value={selectedStartLocation}
+									on:change={() => {
+										updatePrice();
+										if (hasGeneratedTimes) handleSettingChange();
+									}}
+									disabled={settingsLocked}
+									class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<option value="" disabled selected>Välj startplats</option>
+									{#each data.startLocations as location}
+										<option value={location.id}>
+											{location.location} - {location.price}kr
+										</option>
+									{/each}
+								</select>
 							{/if}
 						</div>
 
-						<!-- Tillgängliga tider -->
-						{#if possibleStartTimes.length > 0}
-							<div class="space-y-2" id="time-selection">
-								<Label>Tillgängliga starttider:</Label>
-								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-									{#each possibleStartTimes as time}
-										<Button
-											variant={startTime === time ? 'default' : 'outline'}
-											on:click={() => {
-												startTime = time;
-												console.log('Selected time:', time); // Add this debug line
-											}}
-											class="w-full"
-										>
-											{time}
-										</Button>
+						<!-- Booking Length -->
+						<div class="space-y-2">
+							<Label for="bookingLength">
+								2. Välj bokningslängd
+								{#if !selectedStartLocation}
+									<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
+								{/if}
+							</Label>
+							{#if sortedBookingLengths.length === 1}
+								<div
+									class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+								>
+									{sortedBookingLengths[0].length}
+								</div>
+							{:else}
+								<select
+									id="bookingLength"
+									bind:value={selectedBookingLength}
+									on:change={() => {
+										if (hasGeneratedTimes) handleSettingChange();
+									}}
+									class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+									disabled={!selectedStartLocation || settingsLocked}
+								>
+									<option value="" disabled selected>Välj bokningslängd</option>
+									{#each sortedBookingLengths as duration}
+										<option value={duration.length}>
+											{duration.length}
+										</option>
+									{/each}
+								</select>
+							{/if}
+						</div>
+					</CardContent>
+				</Card>
+
+				{#if selectedStartLocation && selectedBookingLength}
+					<div
+						class="w-full lg:w-1/2 transition-all duration-300 ease-in-out translate-x-[50%] animate-slideIn"
+					>
+						<!-- Adjusted from 100% to 50% -->
+
+						<div class="calendar-container mt-4">
+							<CardHeader class="mb-4">
+								<CardTitle>Välj datum</CardTitle>
+							</CardHeader>
+							<Calendar
+								{minDate}
+								{maxDate}
+								openingPeriods={{
+									periods: data.openHours.periods || [],
+									specificDates:
+										data.openHours.specificDates.map((date) => ({
+											...date,
+											date: new Date(date.date).toISOString().split('T')[0]
+										})) || [],
+									defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
+									defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
+								}}
+								{blockedDates}
+								selectedDate={startDate}
+								on:dateSelect={({ detail }) => {
+									const { date } = detail;
+									const dateObj = new Date(date);
+									const year = dateObj.getFullYear();
+									const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+									const day = String(dateObj.getDate()).padStart(2, '0');
+									startDate = `${year}-${month}-${day}`;
+									if (data.openHours.defaultOpenTimes?.[0]) {
+										startTime = data.openHours.defaultOpenTimes[0];
+									}
+									if (data.openHours.defaultCloseTimes?.[0]) {
+										returnTime = data.openHours.defaultCloseTimes[0];
+									}
+								}}
+								bookingLength={selectedBookingLength}
+							/>
+						</div>
+					</div>
+				{/if}
+			</div>
+			{#if startDate && selectedBookingLength}
+				<Card id="equipment-section">
+					<CardHeader>
+						<CardTitle>Välj utrustning</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div class="grid gap-6">
+							<!-- Tillval -->
+							<div class="space-y-4">
+								<div class="grid gap-4 sm:grid-cols-3">
+									{#each data.experience.addons as addon (addon.id)}
+										<div class="space-y-2">
+											<Label for={addon.name}>Antal {addon.name} (max {addon.max_quantity})</Label>
+											<div class="flex items-center space-x-2">
+												<Button
+													variant="outline"
+													class="px-3"
+													disabled={settingsLocked}
+													on:click={() => updateAddonQuantity(addon.id, false)}
+												>
+													-
+												</Button>
+												<div class="w-12 text-center">
+													{selectedAddons[addon.column_name] || 0}
+												</div>
+												<Button
+													variant="outline"
+													class="px-3"
+													disabled={settingsLocked}
+													on:click={() => updateAddonQuantity(addon.id, true)}
+												>
+													+
+												</Button>
+											</div>
+										</div>
 									{/each}
 								</div>
 							</div>
-						{:else if hasCheckedTimes && !isLoadingTimes}
-							<Alert variant="destructive">
-								<AlertDescription>
-									<p class="mb-2">Ditt önskemål kunde inte tillgodoses. Det kan bero på:</p>
-									<ul class="list-disc pl-6 space-y-1">
-										<li>Bokningslängd (Det intervall du önskat kan vara fullbokat)</li>
-										<li>Val av datum (Det datum du önskat kan vara fullbokat)</li>
-										<li>
-											Det antal enheter av utrustning du valt finns inte tillgängligt under den
-											tiden
-										</li>
-									</ul>
-									<b>Prova att ändra din bokning enligt annat önskemål</b>
-								</AlertDescription>
-							</Alert>
-						{/if}
 
-						<!-- Vald tid info -->
-						{#if startTime}
-							<Alert id="booking-summary">
-								<AlertTitle>Din bokning</AlertTitle>
-								<AlertDescription>
-									{#if returnDate && returnTime}
-										Startdatum: {startDate}
-										<br />
-										Starttid: {startTime}
-										<br />
-										Returdatum: {returnDate}
-										<br />
-										Returtid senast: {returnTime}
-										<br />
-										<br />
-										Valda tillval:
-										{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [columnName, quantity]}
-											<br />
-											{quantity} st {data.experience.addons.find(
-												(addon) => addon.column_name === columnName
-											)?.name}
-										{/each}
+							<!-- Sök tider knapp -->
+							<div class="flex gap-2 flex-wrap">
+								<Button
+									disabled={!startDate ||
+										!selectedBookingLength ||
+										isLoadingTimes ||
+										Object.values(selectedAddons).every((v) => v === 0)}
+									variant={isLoadingTimes ? 'outline' : 'default'}
+									class="sm:w-auto"
+									on:click={generateStartTimes}
+								>
+									{#if isLoadingTimes}
+										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+										Söker tillgängliga tider...
+									{:else if Object.values(selectedAddons).every((v) => v === 0)}
+										Välj minst en produkt
+									{:else}
+										Visa tillgängliga tider
 									{/if}
-								</AlertDescription>
-							</Alert>
-						{/if}
-					</div>
-				</CardContent>
-			</Card>
-		{/if}
-
-		{#if selectedStartLocation && startTime}
-			<Card id="participants-section">
-				<CardHeader>
-					<CardTitle>Antal deltagare</CardTitle>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					<!-- Adults -->
-					<div class="space-y-2">
-						<Label for="adults">Antal vuxna</Label>
-						<div class="flex items-center space-x-2">
-							<Button
-								variant="outline"
-								class="px-3"
-								on:click={() => (numAdults = Math.max(0, numAdults - 1))}
-							>
-								-
-							</Button>
-							<div class="w-12 text-center">{numAdults}</div>
-							<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
-								+
-							</Button>
-						</div>
-					</div>
-
-					<!-- Children -->
-					<div class="space-y-2">
-						<Label for="children">Antal barn (gratis)</Label>
-						<div class="flex items-center space-x-2">
-							<Button
-								variant="outline"
-								class="px-3"
-								disabled={numAdults === 0}
-								on:click={() => (numChildren = Math.max(0, numChildren - 1))}
-							>
-								-
-							</Button>
-							<div class="w-12 text-center">{numChildren}</div>
-							<Button
-								variant="outline"
-								class="px-3"
-								disabled={numAdults === 0}
-								on:click={() => (numChildren = numChildren + 1)}
-							>
-								+
-							</Button>
-						</div>
-					</div>
-
-					<Alert>
-						<AlertTitle>Totalt pris</AlertTitle>
-						<AlertDescription>{totalPrice}kr</AlertDescription>
-					</Alert>
-
-					<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
-						{#if numAdults === 0}
-							Välj antal deltagare
-						{:else}
-							Nästa steg
-						{/if}
-					</Button>
-				</CardContent>
-			</Card>
-		{/if}
-
-		{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
-			<Card id="contact-section">
-				<CardHeader>
-					<CardTitle>Kontaktuppgifter</CardTitle>
-				</CardHeader>
-				<CardContent class="space-y-4">
-					<div class="grid gap-4 sm:grid-cols-2">
-						<div class="space-y-2">
-							<Label for="firstName">Förnamn</Label>
-							<Input type="text" id="firstName" bind:value={userName} required />
-						</div>
-						<div class="space-y-2">
-							<Label for="lastName">Efternamn</Label>
-							<Input type="text" id="lastName" bind:value={userLastname} required />
-						</div>
-					</div>
-
-					<div class="space-y-2">
-						<Label for="phone">Telefonnummer</Label>
-						<Input
-							type="tel"
-							id="phone"
-							bind:value={userPhone}
-							pattern="^\+?[1-9]\d{14}$"
-							required
-						/>
-					</div>
-
-					<div class="space-y-2">
-						<Label for="email">E-postadress</Label>
-						<Input type="email" id="email" bind:value={userEmail} required />
-					</div>
-
-					<div class="space-y-2">
-						<Label for="comment">Kommentar (valfri)</Label>
-						<Textarea id="comment" bind:value={userComment} />
-					</div>
-
-					<div class="flex items-center space-x-2">
-						<Checkbox bind:checked={acceptTerms} id="terms" />
-						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
-					</div>
-
-					<!-- Payment Section -->
-					{#if data.experience.experience_type === 'business_school'}
-						<div class="space-y-4">
-							<div class="flex gap-4">
-								<Button
-									variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
-									on:click={() => (selectedPaymentMethod = 'card')}
-									class="flex-1"
-								>
-									Betala med kort
 								</Button>
-								<Button
-									variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
-									on:click={() => (selectedPaymentMethod = 'invoice')}
-									class="flex-1"
-								>
-									Betala med faktura
-								</Button>
+
+								{#if settingsLocked}
+									<Button
+										variant="outline"
+										on:click={() => {
+											handleSettingChange();
+											scrollToElement('equipment-section');
+										}}
+									>
+										Ändra din bokning
+									</Button>
+								{/if}
 							</div>
 
-							{#if selectedPaymentMethod === 'invoice'}
-								<Card class="mt-4">
-									<CardHeader>
-										<CardTitle>Fakturauppgifter</CardTitle>
-									</CardHeader>
-									<CardContent>
-										<InvoiceForm bind:invoiceData />
+							<!-- Tillgängliga tider -->
+							{#if possibleStartTimes.length > 0}
+								<div class="space-y-2" id="time-selection">
+									<Label>Tillgängliga starttider:</Label>
+									<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+										{#each possibleStartTimes as time}
+											<Button
+												variant={startTime === time ? 'default' : 'outline'}
+												on:click={() => {
+													startTime = time;
+												}}
+												class="w-full"
+											>
+												{time}
+											</Button>
+										{/each}
+									</div>
+								</div>
+							{:else if hasCheckedTimes && !isLoadingTimes}
+								<Alert variant="destructive">
+									<AlertDescription>
+										<p class="mb-2">Ditt önskemål kunde inte tillgodoses. Det kan bero på:</p>
+										<ul class="list-disc pl-6 space-y-1">
+											<li>Bokningslängd (Det intervall du önskat kan vara fullbokat)</li>
+											<li>Val av datum (Det datum du önskat kan vara fullbokat)</li>
+											<li>
+												Det antal enheter av utrustning du valt finns inte tillgängligt under den
+												tiden
+											</li>
+										</ul>
+										<b>Prova att ändra din bokning enligt annat önskemål</b>
+									</AlertDescription>
+								</Alert>
+							{/if}
 
-										<Button
-											class="w-full mt-4"
-											disabled={!acceptTerms}
-											on:click={handleInvoiceSubmission}
-										>
-											Skicka fakturabegäran ({totalPrice}kr)
-										</Button>
-									</CardContent>
-								</Card>
-							{:else if selectedPaymentMethod === 'card'}
-								<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
-									Gå till kortbetalning ({totalPrice}kr)
-								</Button>
+							<!-- Vald tid info -->
+							{#if startTime}
+								<Alert id="booking-summary">
+									<AlertTitle>Din bokning</AlertTitle>
+									<AlertDescription>
+										{#if returnDate && returnTime}
+											Startdatum: {startDate}
+											<br />
+											Starttid: {startTime}
+											<br />
+											Returdatum: {returnDate}
+											<br />
+											Returtid senast: {returnTime}
+											<br />
+											<br />
+											Valda tillval:
+											{#each Object.entries(selectedAddons).filter(([_, quantity]) => quantity > 0) as [columnName, quantity]}
+												<br />
+												{quantity} st {data.experience.addons.find(
+													(addon) => addon.column_name === columnName
+												)?.name}
+											{/each}
+										{/if}
+									</AlertDescription>
+								</Alert>
 							{/if}
 						</div>
-					{:else}
-						<!-- Original payment button for public experiences -->
-						<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-							Gå till betalning ({totalPrice}kr)
+					</CardContent>
+				</Card>
+			{/if}
+
+			{#if selectedStartLocation && startTime}
+				<Card id="participants-section">
+					<CardHeader>
+						<CardTitle>Antal deltagare</CardTitle>
+					</CardHeader>
+					<CardContent class="space-y-4">
+						<!-- Adults -->
+						<div class="space-y-2">
+							<Label for="adults">Antal vuxna</Label>
+							<div class="flex items-center space-x-2">
+								<Button
+									variant="outline"
+									class="px-3"
+									on:click={() => (numAdults = Math.max(0, numAdults - 1))}
+								>
+									-
+								</Button>
+								<div class="w-12 text-center">{numAdults}</div>
+								<Button variant="outline" class="px-3" on:click={() => (numAdults = numAdults + 1)}>
+									+
+								</Button>
+							</div>
+						</div>
+
+						<!-- Children -->
+						<div class="space-y-2">
+							<Label for="children">Antal barn (gratis)</Label>
+							<div class="flex items-center space-x-2">
+								<Button
+									variant="outline"
+									class="px-3"
+									disabled={numAdults === 0}
+									on:click={() => (numChildren = Math.max(0, numChildren - 1))}
+								>
+									-
+								</Button>
+								<div class="w-12 text-center">{numChildren}</div>
+								<Button
+									variant="outline"
+									class="px-3"
+									disabled={numAdults === 0}
+									on:click={() => (numChildren = numChildren + 1)}
+								>
+									+
+								</Button>
+							</div>
+						</div>
+
+						<Alert>
+							<AlertTitle>Totalt pris</AlertTitle>
+							<AlertDescription>{totalPrice}kr</AlertDescription>
+						</Alert>
+
+						<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+							{#if numAdults === 0}
+								Välj antal deltagare
+							{:else}
+								Nästa steg
+							{/if}
 						</Button>
-					{/if}
-				</CardContent>
-			</Card>
+					</CardContent>
+				</Card>
+			{/if}
+
+			{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+				<Card id="contact-section">
+					<CardHeader>
+						<CardTitle>Kontaktuppgifter</CardTitle>
+					</CardHeader>
+					<CardContent class="space-y-4">
+						<div class="grid gap-4 sm:grid-cols-2">
+							<div class="space-y-2">
+								<Label for="firstName">Förnamn</Label>
+								<Input type="text" id="firstName" bind:value={userName} required />
+							</div>
+							<div class="space-y-2">
+								<Label for="lastName">Efternamn</Label>
+								<Input type="text" id="lastName" bind:value={userLastname} required />
+							</div>
+						</div>
+
+						<div class="space-y-2">
+							<Label for="phone">Telefonnummer</Label>
+							<Input
+								type="tel"
+								id="phone"
+								bind:value={userPhone}
+								pattern="^\+?[1-9]\d{14}$"
+								required
+							/>
+						</div>
+
+						<div class="space-y-2">
+							<Label for="email">E-postadress</Label>
+							<Input type="email" id="email" bind:value={userEmail} required />
+						</div>
+
+						<div class="space-y-2">
+							<Label for="comment">Kommentar (valfri)</Label>
+							<Textarea id="comment" bind:value={userComment} />
+						</div>
+
+						<div class="flex items-center space-x-2">
+							<Checkbox bind:checked={acceptTerms} id="terms" />
+							<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+						</div>
+
+						<!-- Payment Section -->
+						{#if data.experience.experience_type === 'business_school'}
+							<div class="space-y-4">
+								<div class="flex gap-4">
+									<Button
+										variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
+										on:click={() => (selectedPaymentMethod = 'card')}
+										class="flex-1"
+									>
+										Betala med kort
+									</Button>
+									<Button
+										variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
+										on:click={() => (selectedPaymentMethod = 'invoice')}
+										class="flex-1"
+									>
+										Betala med faktura
+									</Button>
+								</div>
+
+								{#if selectedPaymentMethod === 'invoice'}
+									<Card class="mt-4">
+										<CardHeader>
+											<CardTitle>Fakturauppgifter</CardTitle>
+										</CardHeader>
+										<CardContent>
+											<InvoiceForm bind:invoiceData />
+
+											<Button
+												class="w-full mt-4"
+												disabled={!acceptTerms}
+												on:click={handleInvoiceSubmission}
+											>
+												Skicka fakturabegäran ({totalPrice}kr)
+											</Button>
+										</CardContent>
+									</Card>
+								{:else if selectedPaymentMethod === 'card'}
+									<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+										Gå till kortbetalning ({totalPrice}kr)
+									</Button>
+								{/if}
+							</div>
+						{:else}
+							<!-- Original payment button for public experiences -->
+							<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+								Gå till betalning ({totalPrice}kr)
+							</Button>
+						{/if}
+					</CardContent>
+				</Card>
+			{/if}
 		{/if}
 	</div>
 {:else}

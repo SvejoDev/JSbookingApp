@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import CalendarHeader from './CalendarHeader.svelte';
 	import CalendarGrid from './CalendarGrid.svelte';
 
@@ -20,8 +20,41 @@
 	export let selectedDate = null;
 
 	const dispatch = createEventDispatcher();
-	let currentMonth = new Date();
+	let currentMonth = new Date(); // Set initial value
 	let forceUpdate = 0;
+
+	// Find first available date based on opening periods or specific dates
+	$: {
+		if (minDate) {
+			let targetDate;
+
+			// First check specific dates if they exist
+			if (openingPeriods.specificDates?.length > 0) {
+				targetDate = openingPeriods.specificDates
+					.map((d) => new Date(d.date))
+					.sort((a, b) => a - b)
+					.find((date) => !isDateBlocked(date) && date >= new Date());
+			}
+
+			// If no specific dates found, check periods
+			if (!targetDate && openingPeriods.periods?.length > 0) {
+				const validPeriod = openingPeriods.periods
+					.sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
+					.find((period) => {
+						const endDate = new Date(period.end_date);
+						return endDate >= new Date();
+					});
+
+				if (validPeriod) {
+					targetDate = new Date(validPeriod.start_date);
+				}
+			}
+
+			if (targetDate) {
+				currentMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+			}
+		}
+	}
 
 	function formatDate(date) {
 		const year = date.getFullYear();
@@ -32,18 +65,13 @@
 
 	function handleDateSelect(event) {
 		const date = event.detail;
+		if (!(date instanceof Date) || isNaN(date.getTime())) {
+			console.error('Invalid date received:', date);
+			return;
+		}
+
 		selectedDate = formatDate(date);
-		forceUpdate += 1;
-
-		// Find available time slots for the selected date
-		const dateStr = formatDate(date);
-		const specificDate = openingPeriods.specificDates.find((d) => d.date === dateStr);
-
-		// Dispatch both date and available time slots
-		dispatch('dateSelect', {
-			date,
-			timeSlots: specificDate?.timeSlots || []
-		});
+		dispatch('dateSelect', { date });
 	}
 
 	function handleMonthChange(event) {
@@ -72,7 +100,7 @@
 	}
 
 	// Generate key for forcing re-render
-	$: key = `${selectedDate}-${bookingLength?.length || ''}-${currentMonth.getTime()}`;
+	$: key = `${selectedDate}-${bookingLength?.length || ''}-${currentMonth?.getTime() || Date.now()}`;
 </script>
 
 {#key key}
@@ -83,9 +111,9 @@
 			{minDate}
 			{maxDate}
 			{selectedDate}
-			{bookingLength}
 			{isDateOpen}
 			{isDateBlocked}
+			{bookingLength}
 			on:dateSelect={handleDateSelect}
 		/>
 	</div>
