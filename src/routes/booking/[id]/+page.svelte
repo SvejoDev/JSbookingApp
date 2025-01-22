@@ -519,10 +519,11 @@
 
 	function generateForesightBlockedDates(foresightHours) {
 		const blockedDates = [];
+		const now = new Date();
 		const today = new Date();
-		today.setHours(0, 0, 0, 0); // Reset time to start of day
+		today.setHours(0, 0, 0, 0);
 
-		// Block all past dates up to yesterday
+		// blockera alla datum fram till igår
 		const startDate = new Date(2024, 0, 1);
 		const currentDate = new Date(startDate);
 		const yesterday = new Date(today);
@@ -533,14 +534,23 @@
 			currentDate.setDate(currentDate.getDate() + 1);
 		}
 
-		// Don't block today if foresight hours is less than 24
-		if (foresightHours >= 24) {
-			const foresightDays = Math.floor(foresightHours / 24);
-			for (let i = 0; i < foresightDays; i++) {
-				const date = new Date(today);
-				date.setDate(date.getDate() + i);
-				blockedDates.push(new Date(date));
-			}
+		// hämta stängningstid från openHours
+		const defaultCloseTime = data.openHours.defaultCloseTimes[0] || '16:00';
+		const [closeHours, closeMinutes] = defaultCloseTime.split(':').map(Number);
+
+		// beräkna stängningstid för morgondagen
+		const tomorrowClose = new Date(today);
+		tomorrowClose.setDate(tomorrowClose.getDate() + 1);
+		tomorrowClose.setHours(closeHours, closeMinutes, 0, 0);
+
+		// beräkna senaste bokningstid (stängningstid minus framförhållning)
+		const latestBookingTime = new Date(tomorrowClose.getTime() - foresightHours * 60 * 60 * 1000);
+
+		// om nuvarande tid är efter senaste bokningstid, blockera morgondagen
+		if (now > latestBookingTime) {
+			const tomorrow = new Date(today);
+			tomorrow.setDate(tomorrow.getDate() + 1);
+			blockedDates.push(new Date(tomorrow));
 		}
 
 		return blockedDates;
@@ -606,15 +616,6 @@
 								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
 								const day = String(dateObj.getDate()).padStart(2, '0');
 								startDate = `${year}-${month}-${day}`;
-
-								// Reset time-related states when date changes
-								startTime = null;
-								returnTime = null;
-								returnDate = null;
-								hasGeneratedTimes = false;
-								possibleStartTimes = [];
-								settingsLocked = false;
-
 								scrollToBottom();
 							}}
 						/>
@@ -622,6 +623,23 @@
 				</Card>
 
 				{#if startDate}
+					<!-- Booking Summary -->
+					<Card class="mt-4">
+						<CardHeader>
+							<CardTitle>Din bokning</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div class="space-y-2">
+								<p><strong>Datum:</strong> {startDate}</p>
+								<p>
+									<strong>Tid:</strong>
+									{data.openHours.defaultOpenTimes[0]} - {data.openHours.defaultCloseTimes[0]}
+								</p>
+								<p><strong>Plats:</strong> {data.startLocations[0]?.location}</p>
+							</div>
+						</CardContent>
+					</Card>
+
 					<!-- Step 2: Participants -->
 					<Card bind:this={participantsSection} id="participants-section">
 						<CardHeader>
@@ -665,103 +683,104 @@
 							</Button>
 						</CardContent>
 					</Card>
-				{/if}
 
-				<!-- Step 3: Contact Information -->
-				{#if showContactSection}
-					<Card bind:this={contactSection} id="contact-section">
-						<CardHeader>
-							<CardTitle>Kontaktuppgifter</CardTitle>
-						</CardHeader>
-						<CardContent class="space-y-4">
-							<div class="grid gap-4 sm:grid-cols-2">
-								<div class="space-y-2">
-									<Label for="firstName">Förnamn</Label>
-									<Input type="text" id="firstName" bind:value={userName} required />
-								</div>
-								<div class="space-y-2">
-									<Label for="lastName">Efternamn</Label>
-									<Input type="text" id="lastName" bind:value={userLastname} required />
-								</div>
-							</div>
-
-							<div class="space-y-2">
-								<Label for="phone">Telefonnummer</Label>
-								<Input
-									type="tel"
-									id="phone"
-									bind:value={userPhone}
-									pattern="^\+?[1-9]\d{14}$"
-									required
-								/>
-							</div>
-
-							<div class="space-y-2">
-								<Label for="email">E-postadress</Label>
-								<Input type="email" id="email" bind:value={userEmail} required />
-							</div>
-
-							<div class="space-y-2">
-								<Label for="comment">Kommentar (valfri)</Label>
-								<Textarea id="comment" bind:value={userComment} />
-							</div>
-
-							<div class="flex items-center space-x-2">
-								<Checkbox bind:checked={acceptTerms} id="terms" />
-								<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
-							</div>
-
-							<!-- Payment Section -->
-							{#if data.experience.experience_type === 'business_school'}
-								<div class="space-y-4">
-									<div class="flex gap-4">
-										<Button
-											variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
-											on:click={() => (selectedPaymentMethod = 'card')}
-											class="flex-1"
-										>
-											Betala med kort
-										</Button>
-										<Button
-											variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
-											on:click={() => (selectedPaymentMethod = 'invoice')}
-											class="flex-1"
-										>
-											Betala med faktura
-										</Button>
+					<!-- Step 3: Contact Information -->
+					{#if showContactSection}
+						<Card bind:this={contactSection} id="contact-section">
+							<CardHeader>
+								<CardTitle>Kontaktuppgifter</CardTitle>
+							</CardHeader>
+							<CardContent class="space-y-4">
+								<div class="grid gap-4 sm:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="firstName">Förnamn</Label>
+										<Input type="text" id="firstName" bind:value={userName} required />
 									</div>
-
-									{#if selectedPaymentMethod === 'invoice'}
-										<Card class="mt-4">
-											<CardHeader>
-												<CardTitle>Fakturauppgifter</CardTitle>
-											</CardHeader>
-											<CardContent>
-												<InvoiceForm bind:invoiceData />
-
-												<Button
-													class="w-full mt-4"
-													disabled={!acceptTerms}
-													on:click={handleInvoiceSubmission}
-												>
-													Skicka fakturabegäran ({totalPrice}kr)
-												</Button>
-											</CardContent>
-										</Card>
-									{:else if selectedPaymentMethod === 'card'}
-										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
-											Gå till kortbetalning ({totalPrice}kr)
-										</Button>
-									{/if}
+									<div class="space-y-2">
+										<Label for="lastName">Efternamn</Label>
+										<Input type="text" id="lastName" bind:value={userLastname} required />
+									</div>
 								</div>
-							{:else}
-								<!-- Original payment button for public experiences -->
-								<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-									Gå till betalning ({totalPrice}kr)
-								</Button>
-							{/if}
-						</CardContent>
-					</Card>
+
+								<div class="space-y-2">
+									<Label for="phone">Telefonnummer</Label>
+									<Input
+										type="tel"
+										id="phone"
+										bind:value={userPhone}
+										pattern="^\+?[1-9]\d{14}$"
+										required
+									/>
+								</div>
+
+								<div class="space-y-2">
+									<Label for="email">E-postadress</Label>
+									<Input type="email" id="email" bind:value={userEmail} required />
+								</div>
+
+								<div class="space-y-2">
+									<Label for="comment">Kommentar (valfri)</Label>
+									<Textarea id="comment" bind:value={userComment} />
+								</div>
+
+								<div class="flex items-center space-x-2">
+									<Checkbox bind:checked={acceptTerms} id="terms" />
+									<Label for="terms">I accept the booking agreement and the terms of purchase</Label
+									>
+								</div>
+
+								<!-- Payment Section -->
+								{#if data.experience.experience_type === 'business_school'}
+									<div class="space-y-4">
+										<div class="flex gap-4">
+											<Button
+												variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
+												on:click={() => (selectedPaymentMethod = 'card')}
+												class="flex-1"
+											>
+												Betala med kort
+											</Button>
+											<Button
+												variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
+												on:click={() => (selectedPaymentMethod = 'invoice')}
+												class="flex-1"
+											>
+												Betala med faktura
+											</Button>
+										</div>
+
+										{#if selectedPaymentMethod === 'invoice'}
+											<Card class="mt-4">
+												<CardHeader>
+													<CardTitle>Fakturauppgifter</CardTitle>
+												</CardHeader>
+												<CardContent>
+													<InvoiceForm bind:invoiceData />
+
+													<Button
+														class="w-full mt-4"
+														disabled={!acceptTerms}
+														on:click={handleInvoiceSubmission}
+													>
+														Skicka fakturabegäran ({totalPrice}kr)
+													</Button>
+												</CardContent>
+											</Card>
+										{:else if selectedPaymentMethod === 'card'}
+											<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+												Gå till kortbetalning ({totalPrice}kr)
+											</Button>
+										{/if}
+									</div>
+								{:else}
+									<!-- Original payment button for public experiences -->
+									<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+										Gå till betalning ({totalPrice}kr)
+									</Button>
+								{/if}
+							</CardContent>
+						</Card>
+					{/if}
 				{/if}
 			</div>
 		{:else}
