@@ -288,27 +288,14 @@
 		hasGeneratedTimes = true;
 		settingsLocked = true;
 
-		scrollToElement('available-times');
-
-		// Debug log to check selectedAddons
-		console.log('Selected Addons:', selectedAddons);
-
-		const addonsForRequest = {};
-		Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
-			if (quantity > 0) {
-				addonsForRequest[columnName] = quantity;
-			}
-		});
-
-		// Debug log to check the request payload
-		console.log('Request Payload:', {
-			date: startDate,
-			bookingLength: selectedBookingLength,
-			addons: addonsForRequest,
-			experienceId: selectedExperienceId
-		});
-
 		try {
+			const addonsForRequest = {};
+			Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
+				if (quantity > 0) {
+					addonsForRequest[columnName] = quantity;
+				}
+			});
+
 			const response = await fetch('/api/check-availability', {
 				method: 'POST',
 				headers: {
@@ -325,8 +312,8 @@
 			const { availableStartTimes, error } = await response.json();
 
 			if (error) {
-				console.error('Server error:', error);
 				possibleStartTimes = [];
+				// Instead of console.error, we'll handle the error gracefully
 				return;
 			}
 
@@ -335,8 +322,8 @@
 				scrollToElement('available-times');
 			}
 		} catch (error) {
-			console.error('Error checking availability:', error);
 			possibleStartTimes = [];
+			// Handle any unexpected errors silently
 		} finally {
 			isLoadingTimes = false;
 		}

@@ -103,40 +103,41 @@ function getHoursInDay(openTime, closeTime) {
 }
 
 async function filterPastTimes(times, bookingDate, experienceId) {
-	const { rows: [experience] } = await query(
-		'SELECT booking_foresight_hours FROM experiences WHERE id = $1',
-		[experienceId]
-	);
-	
+	const {
+		rows: [experience]
+	} = await query('SELECT booking_foresight_hours FROM experiences WHERE id = $1', [experienceId]);
+
 	const foresightHours = experience?.booking_foresight_hours || 0;
-	
+
 	// Calculate the earliest possible booking time
 	const currentDateTime = new Date();
 	const earliestPossibleTime = new Date(
-		currentDateTime.getTime() + (foresightHours * 60 * 60 * 1000)
+		currentDateTime.getTime() + foresightHours * 60 * 60 * 1000
 	);
 	const bookingDateTime = new Date(bookingDate);
-	
+
 	// Convert times to minutes for precise comparison
-	const earliestMinutesSinceMidnight = 
-		earliestPossibleTime.getHours() * 60 + 
-		earliestPossibleTime.getMinutes();
-	
+	const earliestMinutesSinceMidnight =
+		earliestPossibleTime.getHours() * 60 + earliestPossibleTime.getMinutes();
+
 	return times.filter((time) => {
 		const [hours, minutes] = time.split(':').map(Number);
 		const timeInMinutes = hours * 60 + minutes;
-		
-		// If booking date is future date, include all times
-		if (bookingDateTime.getDate() > earliestPossibleTime.getDate()) {
+
+		// Compare full dates (year, month, day)
+		const bookingTime = new Date(bookingDateTime);
+		bookingTime.setHours(hours, minutes, 0, 0);
+
+		// If booking time is after earliest possible time, include it
+		if (bookingTime > earliestPossibleTime) {
 			return true;
 		}
-		
-		// For same day bookings, compare exact minutes
-		if (bookingDateTime.getDate() === earliestPossibleTime.getDate()) {
-			// Add a small buffer (1 minute) to handle fractional hours
+
+		// For same day bookings, compare minutes
+		if (bookingTime.toDateString() === earliestPossibleTime.toDateString()) {
 			return timeInMinutes >= earliestMinutesSinceMidnight;
 		}
-		
+
 		return false;
 	});
 }
