@@ -309,6 +309,7 @@
 			return;
 		}
 
+		// Lock settings immediately when button is clicked
 		isLoadingTimes = true;
 		startTime = null;
 		hasCheckedTimes = true;
@@ -340,7 +341,7 @@
 
 			if (error) {
 				possibleStartTimes = [];
-				// Instead of console.error, we'll handle the error gracefully
+				settingsLocked = false;
 				return;
 			}
 
@@ -351,7 +352,7 @@
 			}
 		} catch (error) {
 			possibleStartTimes = [];
-			// Handle any unexpected errors silently
+			settingsLocked = false;
 		} finally {
 			isLoadingTimes = false;
 		}
@@ -597,6 +598,7 @@
 							}}
 							{blockedDates}
 							selectedDate={startDate}
+							disabled={startTime !== null}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
 								const dateObj = new Date(date);
@@ -604,12 +606,16 @@
 								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
 								const day = String(dateObj.getDate()).padStart(2, '0');
 								startDate = `${year}-${month}-${day}`;
-								if (data.openHours.defaultOpenTimes?.[0]) {
-									startTime = data.openHours.defaultOpenTimes[0];
-								}
-								if (data.openHours.defaultCloseTimes?.[0]) {
-									returnTime = data.openHours.defaultCloseTimes[0];
-								}
+
+								// Reset time-related states when date changes
+								startTime = null;
+								returnTime = null;
+								returnDate = null;
+								hasGeneratedTimes = false;
+								possibleStartTimes = [];
+								settingsLocked = false;
+
+								scrollToBottom();
 							}}
 						/>
 					</CardContent>
@@ -865,6 +871,7 @@
 								}}
 								{blockedDates}
 								selectedDate={startDate}
+								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
 									const dateObj = new Date(date);
@@ -872,13 +879,15 @@
 									const month = String(dateObj.getMonth() + 1).padStart(2, '0');
 									const day = String(dateObj.getDate()).padStart(2, '0');
 									startDate = `${year}-${month}-${day}`;
-									if (data.openHours.defaultOpenTimes?.[0]) {
-										startTime = data.openHours.defaultOpenTimes[0];
-									}
-									if (data.openHours.defaultCloseTimes?.[0]) {
-										returnTime = data.openHours.defaultCloseTimes[0];
-									}
-									// scrolla till utrustningssektionen
+
+									// Reset time-related states when date changes
+									startTime = null;
+									returnTime = null;
+									returnDate = null;
+									hasGeneratedTimes = false;
+									possibleStartTimes = [];
+									settingsLocked = false;
+
 									scrollToBottom();
 								}}
 								bookingLength={selectedBookingLength}
@@ -962,22 +971,34 @@
 
 							<!-- After the available times buttons -->
 							<div class="space-y-2" id="time-selection">
-								<Label>Tillgängliga starttider:</Label>
-								<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-									{#each possibleStartTimes as time}
-										<Button
-											variant={startTime === time ? 'default' : 'outline'}
-											on:click={() => {
-												startTime = time;
-												calculateReturnDate();
-												scrollToBottom();
-											}}
-											class="w-full"
-										>
-											{time}
-										</Button>
-									{/each}
-								</div>
+								{#if hasGeneratedTimes}
+									{#if possibleStartTimes.length > 0}
+										<Label>Tillgängliga starttider:</Label>
+										<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+											{#each possibleStartTimes as time}
+												<Button
+													variant={startTime === time ? 'default' : 'outline'}
+													on:click={() => {
+														startTime = time;
+														calculateReturnDate();
+														scrollToBottom();
+													}}
+													class="w-full"
+												>
+													{time}
+												</Button>
+											{/each}
+										</div>
+									{:else}
+										<Alert variant="destructive">
+											<AlertTitle>Inga lediga tider</AlertTitle>
+											<AlertDescription>
+												Tyvärr hittades inga lediga tider för valt datum och utrustning. Vänligen
+												prova ett annat datum eller ändra din utrustning.
+											</AlertDescription>
+										</Alert>
+									{/if}
+								{/if}
 							</div>
 
 							<!-- Booking summary - only show after start time is selected -->
