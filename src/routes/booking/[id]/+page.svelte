@@ -84,6 +84,13 @@
 	// Initialize Stripe
 	let stripePromise;
 
+	// Lägg till denna reaktiva validering
+	$: isFormValid = acceptTerms && 
+				 userName.trim() !== '' && 
+				 userLastname.trim() !== '' && 
+				 userPhone.trim() !== '' && 
+				 userEmail.trim() !== '';
+
 	// ==================
 	// reaktiva uttryck
 	// ==================
@@ -812,7 +819,7 @@
 
 													<Button
 														class="w-full mt-4"
-														disabled={!acceptTerms}
+														disabled={!isFormValid}
 														on:click={handleInvoiceSubmission}
 													>
 														Skicka fakturabegäran ({totalPrice}kr)
@@ -820,14 +827,22 @@
 												</CardContent>
 											</Card>
 										{:else if selectedPaymentMethod === 'card'}
-											<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+											<Button 
+												disabled={!isFormValid} 
+												on:click={handleCheckout} 
+												class="w-full mt-4"
+											>
 												Gå till kortbetalning ({totalPrice}kr)
 											</Button>
 										{/if}
 									</div>
 								{:else}
 									<!-- Original payment button for public experiences -->
-									<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+									<Button 
+										disabled={!isFormValid} 
+										on:click={handleCheckout} 
+										class="w-full"
+									>
 										Gå till betalning ({totalPrice}kr)
 									</Button>
 								{/if}
@@ -1233,7 +1248,7 @@
 
 											<Button
 												class="w-full mt-4"
-												disabled={!acceptTerms}
+												disabled={!isFormValid}
 												on:click={handleInvoiceSubmission}
 											>
 												Skicka fakturabegäran ({totalPrice}kr)
@@ -1241,14 +1256,22 @@
 										</CardContent>
 									</Card>
 								{:else if selectedPaymentMethod === 'card'}
-									<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full mt-4">
+									<Button 
+										disabled={!isFormValid} 
+										on:click={handleCheckout} 
+										class="w-full mt-4"
+									>
 										Gå till kortbetalning ({totalPrice}kr)
 									</Button>
 								{/if}
 							</div>
 						{:else}
 							<!-- Original payment button for public experiences -->
-							<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+							<Button 
+								disabled={!isFormValid} 
+								on:click={handleCheckout} 
+								class="w-full"
+							>
 								Gå till betalning ({totalPrice}kr)
 							</Button>
 						{/if}
