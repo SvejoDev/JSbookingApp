@@ -726,7 +726,11 @@
 							<Button
 								class="w-full mt-4"
 								disabled={numAdults === 0}
-								on:click={() => (showContactSection = true)}
+								on:click={async () => {
+									showContactSection = true;
+									await tick();
+									scrollToBottom();
+								}}
 							>
 								{numAdults === 0 ? 'Välj antal deltagare' : 'Nästa steg'}
 							</Button>
