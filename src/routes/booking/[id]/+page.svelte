@@ -85,11 +85,12 @@
 	let stripePromise;
 
 	// Lägg till denna reaktiva validering
-	$: isFormValid = acceptTerms && 
-				 userName.trim() !== '' && 
-				 userLastname.trim() !== '' && 
-				 userPhone.trim() !== '' && 
-				 userEmail.trim() !== '';
+	$: isFormValid =
+		acceptTerms &&
+		userName.trim() !== '' &&
+		userLastname.trim() !== '' &&
+		userPhone.trim() !== '' &&
+		userEmail.trim() !== '';
 
 	// ==================
 	// reaktiva uttryck
@@ -427,53 +428,47 @@
 	// hanterar stripe-betalning
 	async function handleCheckout() {
 		try {
-			if (!totalPrice || isNaN(totalPrice) || totalPrice <= 0) {
-				throw new Error('Ogiltigt pris. Kontrollera dina val.');
-			}
-
-			if (!stripePromise) {
-				throw new Error('Kunde inte initiera Stripe');
-			}
-
 			const stripe = await stripePromise;
-			if (!stripe) {
-				throw new Error('Stripe initialization failed');
-			}
+			if (!stripe) throw new Error('Stripe not initialized');
+
+			// Skapa checkout data
+			const checkoutData = {
+				startDate,
+				startTime,
+				returnDate,
+				returnTime,
+				selectedBookingLength,
+				selectedStartLocation,
+				numAdults,
+				numChildren,
+				// Konvertera addon-värdena till strings för metadata
+				...Object.entries(selectedAddons).reduce((acc, [key, value]) => ({
+					...acc,
+					[key]: value.toString()
+				}), {}),
+				userName,
+				userLastname,
+				userPhone,
+				userEmail,
+				userComment,
+				experienceId: selectedExperienceId,
+				amount: totalPrice,
+				name: data.experience.name
+			};
 
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({
-					startDate,
-					startTime,
-					returnDate,
-					returnTime,
-					selectedBookingLength,
-					selectedStartLocation,
-					numAdults,
-					numChildren,
-					selectedAddons,
-					userName,
-					userLastname,
-					userPhone,
-					userEmail,
-					userComment,
-					experienceId: data.experience?.id,
-					amount: totalPrice,
-					name: data.experience?.name || 'Bokning'
-				})
+				body: JSON.stringify(checkoutData)
 			});
 
-			const session = await response.json();
-
-			if (session.error) {
-				throw new Error(session.error);
-			}
+			const { sessionId } = await response.json();
+			if (!sessionId) throw new Error('No session ID returned');
 
 			const result = await stripe.redirectToCheckout({
-				sessionId: session.id
+				sessionId: sessionId
 			});
 
 			if (result.error) {
@@ -481,7 +476,6 @@
 			}
 		} catch (error) {
 			console.error('Checkout error:', error);
-			// här kan du lägga till en toast eller alert för att visa felet för användaren
 		}
 	}
 
@@ -562,6 +556,36 @@
 		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
 			(date) => new Date(date)
 		);
+
+		// Add near the start of your handleBooking function
+		console.group('🎫 New Booking Request');
+		console.log('📅 Booking Details:', {
+			experience: data.experience.name,
+			experienceId: selectedExperienceId,
+			startDate,
+			startTime,
+			returnDate,
+			returnTime,
+			bookingType: selectedBookingLength
+		});
+
+		console.log('👥 Participants:', {
+			adults: numAdults,
+			children: numChildren,
+			totalParticipants: numAdults + numChildren
+		});
+
+		console.log('💰 Pricing:', {
+			basePrice: totalPrice,
+			addons: selectedAddons,
+			finalTotal: calculateTotalPrice()
+		});
+
+		console.log('📍 Location:', {
+			name: selectedStartLocationName,
+			id: selectedStartLocation
+		});
+		console.groupEnd();
 	});
 
 	function generateForesightBlockedDates(foresightHours) {
@@ -612,6 +636,21 @@
 				behavior: 'smooth'
 			});
 		}
+	}
+
+	// Lägg till denna funktion bland dina andra funktioner i script-taggen
+	function calculateTotalPrice() {
+		let total = totalPrice; // Baspriser för vuxna
+
+		// Lägg till priser för addons
+		Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
+			const addon = data.experience.addons.find((a) => a.column_name === columnName);
+			if (addon && addon.price) {
+				total += addon.price * quantity;
+			}
+		});
+
+		return total;
 	}
 </script>
 
@@ -827,22 +866,14 @@
 												</CardContent>
 											</Card>
 										{:else if selectedPaymentMethod === 'card'}
-											<Button 
-												disabled={!isFormValid} 
-												on:click={handleCheckout} 
-												class="w-full mt-4"
-											>
+											<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
 												Gå till kortbetalning ({totalPrice}kr)
 											</Button>
 										{/if}
 									</div>
 								{:else}
 									<!-- Original payment button for public experiences -->
-									<Button 
-										disabled={!isFormValid} 
-										on:click={handleCheckout} 
-										class="w-full"
-									>
+									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
 										Gå till betalning ({totalPrice}kr)
 									</Button>
 								{/if}
@@ -1256,22 +1287,14 @@
 										</CardContent>
 									</Card>
 								{:else if selectedPaymentMethod === 'card'}
-									<Button 
-										disabled={!isFormValid} 
-										on:click={handleCheckout} 
-										class="w-full mt-4"
-									>
+									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
 										Gå till kortbetalning ({totalPrice}kr)
 									</Button>
 								{/if}
 							</div>
 						{:else}
 							<!-- Original payment button for public experiences -->
-							<Button 
-								disabled={!isFormValid} 
-								on:click={handleCheckout} 
-								class="w-full"
-							>
+							<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
 								Gå till betalning ({totalPrice}kr)
 							</Button>
 						{/if}

@@ -2,6 +2,10 @@ import { query } from '$lib/db.js';
 
 export async function load({ params }) {
 	try {
+		// Lägg till console.group i början av funktionen
+		console.group('📋 Laddar bokningssida');
+		console.log('Experience ID:', params.id);
+
 		// Hämta upplevelsen med alla dess addons i en enda query
 		const experienceResult = await query(
 			`
@@ -76,10 +80,6 @@ export async function load({ params }) {
 			return acc;
 		}, {});
 
-		// After grouping specific dates
-		console.log('Grouped Specific Dates:', groupedSpecificDates);
-		console.log('Specific Dates Rows:', specificDates.rows);
-
 		// Strukturera öppettider-datan
 		const openHours = {
 			periods: periodOpenDates.rows,
@@ -88,7 +88,20 @@ export async function load({ params }) {
 			defaultCloseTimes: specificDates.rows.map(row => row.close_time) || [periodOpenDates.rows[0]?.close_time] || ['']
 		};
 
-		console.log('Final openHours structure:', openHours);
+		// Logga relevant data innan vi returnerar
+		console.log('📅 Öppettider:', {
+			periodDates: periodOpenDates.rows.length,
+			specificDates: specificDates.rows.length,
+			blockedDates: blockedDates.rows.length
+		});
+
+		console.log('🎯 Experience Data:', {
+			name: experience.name,
+			type: experience.experience_type,
+			addons: experience.addons.length
+		});
+
+		console.groupEnd();
 
 		return {
 			experience: {
@@ -102,9 +115,7 @@ export async function load({ params }) {
 			blocked_start_times: blockedStartTimes.rows
 		};
 	} catch (error) {
-		console.error('Fel vid hämtning av bokningsdata:', error);
-		return {
-			error: 'Kunde inte ladda bokningsdata'
-		};
+		console.error('❌ Fel vid laddning av bokningssida:', error);
+		throw error;
 	}
 }

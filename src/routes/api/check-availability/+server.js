@@ -212,8 +212,13 @@ async function checkAvailability({
 	openTime,
 	closeTime
 }) {
-	console.log('\n=== Starting Availability Check ===');
-	console.log('Requested addons:', addons);
+	console.group('🔍 Availability Check');
+	console.log('📅 Request:', {
+		date,
+		bookingLength,
+		experienceId,
+		addons: JSON.stringify(addons)
+	});
 
 	// Filter addonsList to only include requested addons
 	const requestedAddons = addonsList.filter((addon) => addons[addon.column_name] > 0);
@@ -277,6 +282,9 @@ async function checkAvailability({
 			console.log(`\n❌ Time ${startTime} is NOT available for booking`);
 		}
 	}
+
+	console.log('✅ Available Times:', availableTimes);
+	console.groupEnd();
 
 	return availableTimes;
 }

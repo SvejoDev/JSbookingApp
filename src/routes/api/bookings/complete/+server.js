@@ -192,7 +192,13 @@ export async function POST({ request }) {
 		}
 
 		await transaction(async (client) => {
+			console.group('🏁 Completing Booking');
+			console.log('🎫 Booking ID:', bookingId);
+
 			await restoreAvailabilityAfterBooking(client, bookingId);
+
+			console.log('✅ Booking Completed');
+			console.groupEnd();
 		});
 
 		return json({

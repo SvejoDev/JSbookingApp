@@ -15,7 +15,8 @@ export async function POST({ request }) {
 
 	try {
 		event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
-		console.log('stripe event mottagen:', event.type);
+		console.group('💫 Stripe Webhook Event');
+		console.log('🎫 Event Type:', event.type);
 	} catch (err) {
 		console.error(`webhook fel: ${err.message}`);
 		return json({ error: `webhook fel: ${err.message}` }, { status: 400 });
@@ -117,24 +118,36 @@ export async function POST({ request }) {
 				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
 				const bookingData = {
 					start_date: session.metadata.start_date,
-					start_time: session.metadata.start_time,
 					end_date: session.metadata.end_date,
+					start_time: session.metadata.start_time,
 					end_time: session.metadata.end_time,
-					openTime: openHours.open_time,
-					closeTime: openHours.close_time,
-					booking_type: session.metadata.booking_type
+					booking_type: session.metadata.booking_type,
+					...Object.fromEntries(
+						addons.map(addon => [
+							addon.column_name,
+							parseInt(session.metadata[addon.column_name] || '0')
+						])
+					)
 				};
 
-				// lägg till addon-mängder dynamiskt
-				for (const addon of addons) {
-					bookingData[addon.column_name] = parseInt(session.metadata[addon.column_name] || '0');
-				}
-
 				await updateAvailabilityForBooking(client, bookingData);
+
+				console.log('📝 Booking Data:', {
+					sessionId: session.id,
+					experience: session.metadata.experience,
+					startDate: session.metadata.start_date,
+					startTime: session.metadata.start_time,
+					participants: {
+						adults: session.metadata.number_of_adults,
+						children: session.metadata.number_of_children
+					},
+					amount: Math.round(session.amount_total / 100)
+				});
 
 				return booking;
 			});
 
+			console.log('✅ Booking Complete');
 			return json({ received: true, message: 'bokning genomförd' });
 		} catch (error) {
 			console.error('fel vid bokning:', error);
@@ -148,11 +161,13 @@ export async function POST({ request }) {
 async function updateAvailabilityForBooking(client, booking) {
 	console.log('Starting availability update with booking data:', booking);
 
+	// Hämta alla addons från databasen
 	const { rows: addons } = await client.query(
 		'SELECT id, name, column_name, availability_table_name FROM addons'
 	);
 	console.log('Found addons:', addons);
 
+	// Generera datumintervall
 	const dates = generateDateRange(booking.start_date, booking.end_date);
 	console.log('Generated date range:', dates);
 
@@ -164,52 +179,40 @@ async function updateAvailabilityForBooking(client, booking) {
 		const isLastDay = i === dates.length - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
-		let startIndex, endIndex;
+		let startIndex = timeToIndex(isFirstDay ? booking.start_time : '00:00');
+		let endIndex = timeToIndex(isLastDay ? booking.end_time : '23:59');
 
-		if (isMultiDayBooking) {
-			// Overnight booking logic
-			if (isFirstDay) {
-				startIndex = timeToIndex(booking.start_time);
-				endIndex = 96; // Till midnight
-			} else if (isMiddleDay) {
-				startIndex = 0;
-				endIndex = 96;
-			} else if (isLastDay) {
-				startIndex = 0;
-				endIndex = timeToIndex(booking.end_time);
-			}
-		} else {
-			// Single day booking logic
-			startIndex = timeToIndex(booking.start_time);
-			endIndex = timeToIndex(booking.end_time);
-		}
-
-		const productUpdates = [];
-
+		// Uppdatera tillgänglighet för varje addon
 		for (const addon of addons) {
-			const addonKey = addon.column_name;
-			const amount = booking[addonKey];
-
+			const amount = parseInt(booking[addon.column_name] || '0');
+			
 			if (amount > 0) {
-				console.log(
-					`Updating availability for ${addon.name}: table=${addon.availability_table_name}, amount=${amount}`
+				console.log(`Updating availability for ${addon.name}:`, {
+					table: addon.availability_table_name,
+					date: currentDate,
+					startIndex,
+					endIndex,
+					amount
+				});
+
+				await updateProductAvailability(
+					client,
+					addon.availability_table_name,
+					currentDate,
+					startIndex,
+					endIndex,
+					amount,
+					isMultiDayBooking
 				);
-				productUpdates.push(
-					updateProductAvailability(
-						client,
-						addon.availability_table_name,
-						currentDate,
-						startIndex,
-						endIndex,
-						amount,
-						isMiddleDay,
-						!isMultiDayBooking
-					)
-				);
+
+				console.log('📊 Availability Update:', {
+					table: addon.availability_table_name,
+					date: currentDate,
+					timeRange: `${startIndex * 15}-${endIndex * 15}`,
+					amount: amount
+				});
 			}
 		}
-
-		await Promise.all(productUpdates);
 	}
 }
 
@@ -220,8 +223,7 @@ async function updateProductAvailability(
 	startIndex,
 	endIndex,
 	amount,
-	isMiddleDay,
-	isSingleDayBooking
+	isMultiDayBooking
 ) {
 	try {
 		const { rows } = await client.query(`SELECT * FROM ${tableName} WHERE date = $1`, [date]);
@@ -229,21 +231,13 @@ async function updateProductAvailability(
 		// Beräkna start- och slutindex för blockering
 		let startQuarter, endQuarter;
 
-		if (isSingleDayBooking) {
-			// För endagsbokningar: Använd exakt start- och sluttid
+		if (isMultiDayBooking) {
+			// Overnight booking logic
 			startQuarter = startIndex * 15;
 			endQuarter = endIndex * 15;
-		} else if (isMiddleDay) {
-			// Mellandagar blockeras hela dagen
-			startQuarter = 0;
-			endQuarter = 1440;
-		} else if (startIndex > 0) {
-			// För första dagen i övernattning, blockera från starttid till midnatt
-			startQuarter = startIndex * 15;
-			endQuarter = 1440;
 		} else {
-			// För sista dagen i övernattning, blockera från midnatt till sluttid
-			startQuarter = 0;
+			// Single day booking logic
+			startQuarter = startIndex * 15;
 			endQuarter = endIndex * 15;
 		}
 
