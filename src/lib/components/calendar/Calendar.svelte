@@ -18,6 +18,7 @@
 		defaultCloseTime: ''
 	};
 	export let selectedDate = null;
+	export let endDate = null;
 	export let disabled = false;
 
 	const dispatch = createEventDispatcher();
@@ -109,12 +110,13 @@
 		<CalendarHeader {currentMonth} on:monthChange={handleMonthChange} />
 		<CalendarGrid
 			{currentMonth}
+			{selectedDate}
+			{endDate}
+			{bookingLength}
 			{minDate}
 			{maxDate}
-			{selectedDate}
 			{isDateOpen}
 			{isDateBlocked}
-			{bookingLength}
 			{disabled}
 			on:dateSelect={handleDateSelect}
 		/>

@@ -693,17 +693,21 @@
 							}}
 							{blockedDates}
 							selectedDate={startDate}
+							endDate={returnDate}
+							bookingLength={{
+								length: selectedBookingLength,
+								overnight: selectedBookingLength?.includes('övernattning'),
+								return_day_offset: selectedBookingLength?.includes('övernattning') 
+									? parseInt(selectedBookingLength) || 1 
+									: 0
+							}}
 							disabled={settingsLocked || startTime !== null}
-							bookingLength={selectedBookingLength}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
 								const dateObj = new Date(date);
-								const year = dateObj.getFullYear();
-								const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-								const day = String(dateObj.getDate()).padStart(2, '0');
-								startDate = `${year}-${month}-${day}`;
-
-								// Reset time-related states when date changes
+								startDate = dateObj.toISOString().split('T')[0];
+								
+								// Reset time-related states
 								startTime = null;
 								returnTime = null;
 								returnDate = null;
@@ -989,17 +993,21 @@
 								}}
 								{blockedDates}
 								selectedDate={startDate}
+								endDate={returnDate}
+								bookingLength={{
+									length: selectedBookingLength,
+									overnight: selectedBookingLength?.includes('övernattning'),
+									return_day_offset: selectedBookingLength?.includes('övernattning') 
+										? parseInt(selectedBookingLength) || 1 
+										: 0
+								}}
 								disabled={settingsLocked || startTime !== null}
-								bookingLength={selectedBookingLength}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
 									const dateObj = new Date(date);
-									const year = dateObj.getFullYear();
-									const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-									const day = String(dateObj.getDate()).padStart(2, '0');
-									startDate = `${year}-${month}-${day}`;
-
-									// Reset time-related states when date changes
+									startDate = dateObj.toISOString().split('T')[0];
+									
+									// Reset time-related states
 									startTime = null;
 									returnTime = null;
 									returnDate = null;
