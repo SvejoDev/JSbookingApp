@@ -292,7 +292,6 @@ async function checkAddonAvailability({
 	openTime,
 	closeTime
 }) {
-	// hämta information om tillägget (addon) från databasen
 	const {
 		rows: [addon]
 	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
@@ -303,26 +302,19 @@ async function checkAddonAvailability({
 
 	console.log('\n🔍 KONTROLL AV TILLÄGG');
 	console.log(`📦 Tillägg: ${addon.name}`);
+	console.log(`🗄️ Tabell: ${addon.availability_table_name}`);
 	console.log(`📊 Antal begärda: ${amount}`);
 	console.log(`⚡ Max antal tillåtna: ${maxQuantity}`);
-	console.log(`📅 Startdatum: ${startDate}`);
-	console.log(`⏰ Starttid: ${startTime}`);
-	console.log(`🌙 Antal nätter: ${numberOfNights}`);
 
-	// skapa en array med alla datum som ska kontrolleras
 	const dates = Array.from({ length: numberOfNights + 1 }, (_, i) => getDateString(startDate, i));
 	console.log('\n📆 Kontrollerar följande datum:', dates.join(', '));
 
-	// kontrollera tillgänglighet för varje datum
 	for (const [index, currentDate] of dates.entries()) {
 		const isFirstDay = index === 0;
 		const isLastDay = index === dates.length - 1;
 		const isMiddleDay = !isFirstDay && !isLastDay;
 
 		console.log(`\n🔄 PROCESSAR DATUM: ${currentDate}`);
-		console.log(
-			`📍 Typ av dag: ${isFirstDay ? 'Första dagen' : isMiddleDay ? 'Mellandag' : 'Sista dagen'}`
-		);
 
 		let dayStartMinutes, dayEndMinutes;
 
@@ -342,10 +334,6 @@ async function checkAddonAvailability({
 			dayEndMinutes = dayStartMinutes + durationHours * 60;
 		}
 
-		console.log(
-			`⏱️ Kontrollerar tidsintervall: ${Math.floor(dayStartMinutes / 60)}:${(dayStartMinutes % 60).toString().padStart(2, '0')} till ${Math.floor(dayEndMinutes / 60)}:${(dayEndMinutes % 60).toString().padStart(2, '0')}`
-		);
-
 		// hämta tillgänglighetsdata från databasen för aktuellt datum
 		const {
 			rows: [availabilityData]
@@ -353,36 +341,45 @@ async function checkAddonAvailability({
 			currentDate
 		]);
 
-		if (availabilityData) {
-			console.log('\n📊 TILLGÄNGLIGHETSANALYS:');
-			// kontrollera varje 15-minuters intervall
-			for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
-				const columnName = (Math.floor(minutes / 15) * 15).toString();
-				const bookedAmount = parseInt(availabilityData[columnName] || '0');
-				const availableSlots = maxQuantity + bookedAmount;
-				const timeString = `${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}`;
+		console.log('\n📊 DATABASKONTROLL:');
+		console.log(`   Söker i tabell: ${addon.availability_table_name}`);
+		console.log(`   Datum: ${currentDate}`);
+		console.log(`   Hittade data: ${availabilityData ? 'Ja' : 'Nej'}`);
 
-				console.log(`\n⚖️ Kontroll för ${timeString}:`);
-				console.log(`   📝 Kolumn i databasen: "${columnName}"`);
-				console.log(`   ➖ Redan bokat: ${Math.abs(bookedAmount)}`);
-				console.log(`   ➕ Max tillåtna: ${maxQuantity}`);
-				console.log(`   ✨ Tillgängliga platser: ${availableSlots}`);
-				console.log(`   🎯 Begärda platser: ${amount}`);
+		if (!availabilityData) {
+			console.log('   ℹ️ Ingen data hittad för detta datum - antar full tillgänglighet');
+			continue; // fortsätt med nästa datum
+		}
 
-				if (amount > availableSlots) {
-					console.log(`\n❌ BOKNING EJ MÖJLIG:`);
-					console.log(`   Tid: ${timeString}`);
-					console.log(`   Tillgängligt: ${availableSlots}`);
-					console.log(`   Begärt: ${amount}`);
-					console.log(`   Anledning: Otillräcklig kapacitet`);
-					return false;
-				}
+		console.log('\n⏰ TIDSINTERVALLKONTROLL:');
+		console.log(
+			`   Start: ${Math.floor(dayStartMinutes / 60)}:${(dayStartMinutes % 60).toString().padStart(2, '0')}`
+		);
+		console.log(
+			`   Slut: ${Math.floor(dayEndMinutes / 60)}:${(dayEndMinutes % 60).toString().padStart(2, '0')}`
+		);
+
+		// kontrollera varje 15-minuters intervall
+		for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
+			const columnName = (Math.floor(minutes / 15) * 15).toString();
+			const bookedAmount = parseInt(availabilityData[columnName] || '0');
+			const availableSlots = maxQuantity + bookedAmount;
+			const timeString = `${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, '0')}`;
+
+			console.log(`\n⚖️ ${timeString}:`);
+			console.log(`   Kolumn: "${columnName}"`);
+			console.log(`   Bokade: ${Math.abs(bookedAmount)}`);
+			console.log(`   Tillgängliga: ${availableSlots}`);
+			console.log(`   Begärda: ${amount}`);
+
+			if (amount > availableSlots) {
+				console.log(`\n❌ BOKNING EJ MÖJLIG vid ${timeString}`);
+				console.log(`   Anledning: Behöver ${amount}, men bara ${availableSlots} tillgängliga`);
+				return false;
 			}
 		}
 	}
 
-	console.log('\n✅ BOKNING MÖJLIG:');
-	console.log(`   Tillägg: ${addon.name}`);
-	console.log(`   Antal: ${amount}`);
+	console.log('\n✅ BOKNING MÖJLIG');
 	return true;
 }
