@@ -744,7 +744,7 @@
 									: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
-							on:dateSelect={({ detail }) => {
+							on:dateSelect={async ({ detail }) => {
 								const { date } = detail;
 								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 								const selectedDate = new Date(date);
@@ -769,6 +769,10 @@
 									hasGeneratedTimes = false;
 									possibleStartTimes = [];
 									settingsLocked = false;
+
+									// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+									await tick();
+									await scrollToElement('equipment-section');
 								}
 							}}
 						/>
@@ -1056,7 +1060,7 @@
 										: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
-								on:dateSelect={({ detail }) => {
+								on:dateSelect={async ({ detail }) => {
 									const { date } = detail;
 									// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 									const selectedDate = new Date(date);
@@ -1081,6 +1085,10 @@
 										hasGeneratedTimes = false;
 										possibleStartTimes = [];
 										settingsLocked = false;
+
+										// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+										await tick();
+										await scrollToElement('equipment-section');
 									}
 								}}
 							/>
