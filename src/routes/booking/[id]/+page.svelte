@@ -177,6 +177,13 @@
 			if (numAdults >= 0) {
 				totalPrice = numAdults * data.startLocations[0]?.price;
 			}
+
+			// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+			tick().then(async () => {
+				// Vänta 100ms för att ge en mer naturlig känsla
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				await scrollToElement('equipment-section');
+			});
 		}
 	}
 
@@ -772,7 +779,7 @@
 
 									// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
 									await tick();
-									await scrollToElement('equipment-section');
+									await scrollToElement('participants-section');
 								}
 							}}
 						/>
