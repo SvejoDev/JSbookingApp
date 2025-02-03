@@ -5,6 +5,8 @@
 		return_day_offset: 0
 	};
 	export let date;
+	export let selectedDate;
+	export let endDate;
 	export let isSelected = false;
 	export let isToday = false;
 	export let isOpen = false;
@@ -17,6 +19,19 @@
 
 	import { createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
+
+	function formatDate(date) {
+		return date.toISOString().split('T')[0];
+	}
+
+	$: currentDateStr = formatDate(date);
+	$: classes = [
+		'day',
+		isStartDay ? 'selected start-day' : '',
+		isEndDay ? 'selected end-day' : '',
+		isInBetweenDay ? 'in-between-day' : '',
+		(isStartDay || isEndDay || isInBetweenDay) && bookingLength?.overnight ? 'show-line' : ''
+	].filter(Boolean).join(' ');
 
 	function handleClick() {
 		if (!disabled && !isBlocked) {
@@ -42,7 +57,7 @@
 	on:click={handleClick}
 	disabled={disabled || isBlocked}
 >
-	<div class="day">
+	<div class={classes}>
 		<span class="date">{date.getDate()}</span>
 		{#if isOpen}
 			<span class="indicator" class:blocked={isBlocked} />
@@ -91,24 +106,36 @@
 	.show-line.in-between-day::after {
 		content: '';
 		position: absolute;
-		left: 16px; /* Justerad från 0 till 16px för att inte sticka ut */
+		left: 50%;
 		right: -50%;
 		top: 50%;
 		transform: translateY(-50%);
-		height: 30px; /* Ökad från 8px till 16px för högre linje */
-		background-color: hsl(220 13% 91%);
+		height: 8px;
+		background-color: hsl(var(--primary) / 0.1);
 		z-index: 1;
 	}
 
 	.show-line.in-between-day::before {
 		content: '';
 		position: absolute;
-		right: 16px; /* Justerad från 0 till 16px för att inte sticka ut */
+		right: 50%;
 		left: -50%;
 		top: 50%;
 		transform: translateY(-50%);
-		height: 30px; /* Ökad från 8px till 16px för högre linje */
-		background-color: hsl(220 13% 91%);
+		height: 8px;
+		background-color: hsl(var(--primary) / 0.1);
+		z-index: 1;
+	}
+
+	.show-line.end-day::before {
+		content: '';
+		position: absolute;
+		right: 50%;
+		left: -50%;
+		top: 50%;
+		transform: translateY(-50%);
+		height: 8px;
+		background-color: hsl(var(--primary) / 0.1);
 		z-index: 1;
 	}
 

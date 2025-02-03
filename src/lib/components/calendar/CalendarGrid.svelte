@@ -6,6 +6,7 @@
 	export let minDate = null;
 	export let maxDate = null;
 	export let selectedDate = null;
+	export let endDate = null;
 	export let isDateOpen;
 	export let isDateBlocked;
 	export let bookingLength = null;
@@ -16,6 +17,17 @@
 
 	$: calendarDays = getCalendarDays(currentMonth);
 	$: selectedDateStr = selectedDate;
+
+	$: {
+		if (selectedDate && bookingLength?.overnight) {
+			const startDate = new Date(selectedDate);
+			const tempEndDate = new Date(startDate);
+			tempEndDate.setDate(startDate.getDate() + (bookingLength.return_day_offset || 1));
+			endDate = formatDate(tempEndDate);
+		} else {
+			endDate = null;
+		}
+	}
 
 	function getCalendarDays(date) {
 		const days = [];
@@ -65,10 +77,7 @@
 	}
 
 	function formatDate(date) {
-		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, '0');
-		const day = String(date.getDate()).padStart(2, '0');
-		return `${year}-${month}-${day}`;
+		return date.toISOString().split('T')[0];
 	}
 
 	function isDateInRange(date) {
@@ -81,26 +90,28 @@
 		}
 
 		const startDateObj = new Date(selectedDate);
-		let endDateObj = new Date(startDateObj);
-
+		startDateObj.setHours(0, 0, 0, 0);
+		
+		const currentDateObj = new Date(date);
+		currentDateObj.setHours(0, 0, 0, 0);
+		
+		let endDateObj;
 		if (bookingLength.overnight) {
-			endDateObj.setDate(endDateObj.getDate() + bookingLength.return_day_offset);
+			endDateObj = new Date(startDateObj);
+			endDateObj.setDate(startDateObj.getDate() + bookingLength.return_day_offset);
+			endDateObj.setHours(0, 0, 0, 0);
 		} else {
-			return {
-				isStartDay: formatDate(date) === selectedDate,
-				isEndDay: false,
-				isInBetweenDay: false
-			};
+			endDateObj = startDateObj;
 		}
 
-		const currentDateStr = formatDate(date);
-		const startDateStr = formatDate(startDateObj);
-		const endDateStr = formatDate(endDateObj);
+		const currentTime = currentDateObj.getTime();
+		const startTime = startDateObj.getTime();
+		const endTime = endDateObj.getTime();
 
 		return {
-			isStartDay: currentDateStr === startDateStr,
-			isEndDay: currentDateStr === endDateStr,
-			isInBetweenDay: currentDateStr > startDateStr && currentDateStr < endDateStr
+			isStartDay: currentTime === startTime,
+			isEndDay: currentTime === endTime,
+			isInBetweenDay: currentTime > startTime && currentTime < endTime
 		};
 	}
 
@@ -126,6 +137,8 @@
 			{@const range = isDateInRange(date)}
 			<CalendarDay
 				{date}
+				{selectedDate}
+				{endDate}
 				{bookingLength}
 				isSelected={isDateSelected(date)}
 				isToday={isToday(date)}
