@@ -657,8 +657,11 @@
 	}
 
 	function getDateString(date, addDays = 0) {
+		// Ensure we're working with a Date object
 		const newDate = new Date(date);
-		newDate.setDate(newDate.getDate() + addDays);
+		// Add the specified number of days without timezone adjustments
+		newDate.setUTCDate(newDate.getUTCDate() + addDays);
+		// Return the date in YYYY-MM-DD format
 		return newDate.toISOString().split('T')[0];
 	}
 </script>
@@ -713,17 +716,8 @@
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
-								console.log('Raw date from calendar:', date); // Debug log
-
-								// Ensure we're working with a Date object
-								const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-								// Add one day to account for timezone issues
-								dateObj.setDate(dateObj.getDate() + 1);
-
-								// Format the date correctly
-								startDate = dateObj.toISOString().split('T')[0];
-								console.log('Final startDate value:', startDate);
+								// Use the date directly without any adjustments
+								startDate = new Date(date).toISOString().split('T')[0];
 
 								// Reset time-related states
 								startTime = null;
@@ -1022,17 +1016,8 @@
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
-									console.log('Raw date from calendar:', date); // Debug log
-
-									// Ensure we're working with a Date object
-									const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-									// Add one day to account for timezone issues
-									dateObj.setDate(dateObj.getDate() + 1);
-
-									// Format the date correctly
-									startDate = dateObj.toISOString().split('T')[0];
-									console.log('Final startDate value:', startDate);
+									// Use the date directly without any adjustments
+									startDate = new Date(date).toISOString().split('T')[0];
 
 									// Reset time-related states
 									startTime = null;
