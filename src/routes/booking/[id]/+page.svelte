@@ -716,18 +716,30 @@
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
-								// Use the date directly without any adjustments
-								startDate = new Date(date).toISOString().split('T')[0];
+								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
+								const selectedDate = new Date(date);
+								selectedDate.setHours(12, 0, 0, 0);
+								const newDateStr = selectedDate.toISOString().split('T')[0];
 
-								// Reset time-related states
-								startTime = null;
-								returnTime = null;
-								returnDate = null;
-								hasGeneratedTimes = false;
-								possibleStartTimes = [];
-								settingsLocked = false;
+								console.log('📅 Date Selection:', {
+									rawDate: date,
+									selectedDate: selectedDate,
+									formattedDate: newDateStr,
+									currentDate: startDate,
+									isSameDate: startDate === newDateStr
+								});
 
-								scrollToBottom();
+								// Only update if we don't have a date yet or if it's a different date
+								if (!startDate || startDate !== newDateStr) {
+									startDate = newDateStr;
+									// Reset time-related states
+									startTime = null;
+									returnTime = null;
+									returnDate = null;
+									hasGeneratedTimes = false;
+									possibleStartTimes = [];
+									settingsLocked = false;
+								}
 							}}
 						/>
 					</CardContent>
@@ -1016,18 +1028,30 @@
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
-									// Use the date directly without any adjustments
-									startDate = new Date(date).toISOString().split('T')[0];
+									// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
+									const selectedDate = new Date(date);
+									selectedDate.setHours(12, 0, 0, 0);
+									const newDateStr = selectedDate.toISOString().split('T')[0];
 
-									// Reset time-related states
-									startTime = null;
-									returnTime = null;
-									returnDate = null;
-									hasGeneratedTimes = false;
-									possibleStartTimes = [];
-									settingsLocked = false;
+									console.log('📅 Date Selection:', {
+										rawDate: date,
+										selectedDate: selectedDate,
+										formattedDate: newDateStr,
+										currentDate: startDate,
+										isSameDate: startDate === newDateStr
+									});
 
-									scrollToBottom();
+									// Only update if we don't have a date yet or if it's a different date
+									if (!startDate || startDate !== newDateStr) {
+										startDate = newDateStr;
+										// Reset time-related states
+										startTime = null;
+										returnTime = null;
+										returnDate = null;
+										hasGeneratedTimes = false;
+										possibleStartTimes = [];
+										settingsLocked = false;
+									}
 								}}
 							/>
 						</div>

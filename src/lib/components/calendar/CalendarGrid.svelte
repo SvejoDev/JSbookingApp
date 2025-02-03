@@ -91,18 +91,18 @@
 			};
 		}
 
-		// Create date objects and normalize them to midnight UTC
+		// Create date objects and normalize them to noon local time
 		const startDateObj = new Date(selectedDate);
-		startDateObj.setUTCHours(0, 0, 0, 0);
+		startDateObj.setHours(12, 0, 0, 0);
 
 		const currentDateObj = new Date(date);
-		currentDateObj.setUTCHours(0, 0, 0, 0);
+		currentDateObj.setHours(12, 0, 0, 0);
 
 		let endDateObj;
 		if (bookingLength.overnight) {
 			endDateObj = new Date(startDateObj);
-			endDateObj.setUTCDate(startDateObj.getUTCDate() + bookingLength.return_day_offset);
-			endDateObj.setUTCHours(0, 0, 0, 0);
+			endDateObj.setDate(startDateObj.getDate() + bookingLength.return_day_offset);
+			endDateObj.setHours(12, 0, 0, 0);
 		} else {
 			endDateObj = startDateObj;
 		}

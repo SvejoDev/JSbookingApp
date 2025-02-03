@@ -21,7 +21,9 @@
 	const dispatch = createEventDispatcher();
 
 	function formatDate(date) {
-		return date.toISOString().split('T')[0];
+		const d = new Date(date);
+		d.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+		return d.toISOString().split('T')[0];
 	}
 
 	$: currentDateStr = formatDate(date);
@@ -30,8 +32,11 @@
 		isStartDay ? 'selected start-day' : '',
 		isEndDay ? 'selected end-day' : '',
 		isInBetweenDay ? 'in-between-day' : '',
-		(isStartDay || isEndDay || isInBetweenDay) && bookingLength?.overnight ? 'show-line' : ''
-	].filter(Boolean).join(' ');
+		(isStartDay || isEndDay) && bookingLength?.overnight ? 'show-line' : '',
+		isInBetweenDay && bookingLength?.overnight ? 'between-overnight' : ''
+	]
+		.filter(Boolean)
+		.join(' ');
 
 	function handleClick() {
 		if (!disabled && !isBlocked) {
