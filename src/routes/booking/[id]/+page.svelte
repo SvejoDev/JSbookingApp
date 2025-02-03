@@ -177,6 +177,13 @@
 			if (numAdults >= 0) {
 				totalPrice = numAdults * data.startLocations[0]?.price;
 			}
+
+			// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+			tick().then(async () => {
+				// Vänta 100ms för att ge en mer naturlig känsla
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				await scrollToElement('equipment-section');
+			});
 		}
 	}
 
@@ -744,7 +751,7 @@
 									: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
-							on:dateSelect={({ detail }) => {
+							on:dateSelect={async ({ detail }) => {
 								const { date } = detail;
 								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 								const selectedDate = new Date(date);
@@ -769,6 +776,10 @@
 									hasGeneratedTimes = false;
 									possibleStartTimes = [];
 									settingsLocked = false;
+
+									// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+									await tick();
+									await scrollToElement('participants-section');
 								}
 							}}
 						/>
@@ -1056,7 +1067,7 @@
 										: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
-								on:dateSelect={({ detail }) => {
+								on:dateSelect={async ({ detail }) => {
 									const { date } = detail;
 									// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 									const selectedDate = new Date(date);
@@ -1081,6 +1092,10 @@
 										hasGeneratedTimes = false;
 										possibleStartTimes = [];
 										settingsLocked = false;
+
+										// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+										await tick();
+										await scrollToElement('equipment-section');
 									}
 								}}
 							/>
