@@ -89,15 +89,25 @@ export async function POST({ request }) {
 
 function parseBookingLength(bookingLength) {
 	console.log('Parsing booking length:', bookingLength);
+
+	// Handle "Hela dagen"
 	if (bookingLength === 'Hela dagen') {
 		return { durationHours: 7, numberOfNights: 0 };
 	}
-	// Hantera övernattningar
+
+	// Handle overnight bookings
 	if (bookingLength.includes('övernattning')) {
 		const nights = parseInt(bookingLength) || 1;
 		return { durationHours: 0, numberOfNights: nights };
 	}
-	// Add other parsing logic here
+
+	// Handle hour-based bookings (e.g., "4h")
+	if (bookingLength.includes('h')) {
+		const hours = parseInt(bookingLength);
+		return { durationHours: hours, numberOfNights: 0 };
+	}
+
+	// Default case
 	return { durationHours: 0, numberOfNights: 0 };
 }
 
@@ -311,20 +321,16 @@ async function checkAddonAvailability({
 	closeTime
 }) {
 	// hämtar information om tillägget
-	const { rows: [addon] } = await query(
-		'SELECT availability_table_name, name FROM addons WHERE id = $1', 
-		[addonId]
-	);
+	const {
+		rows: [addon]
+	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
 
 	if (!addon) {
 		throw new Error(`tillägg med id ${addonId} hittades inte`);
 	}
 
 	// skapar datumarray för perioden
-	const dates = Array.from(
-		{ length: numberOfNights + 1 }, 
-		(_, i) => getDateString(startDate, i)
-	);
+	const dates = Array.from({ length: numberOfNights + 1 }, (_, i) => getDateString(startDate, i));
 
 	// visa bokningsförfrågan
 	console.log('\n[Bokningsförfrågan]', {
@@ -338,16 +344,17 @@ async function checkAddonAvailability({
 	for (const [index, currentDate] of dates.entries()) {
 		const isFirstDay = index === 0;
 		const isLastDay = index === dates.length - 1;
-		
+
 		// beräkna dagens start- och sluttid
 		let dayStartMinutes = isFirstDay ? timeToMinutes(startTime) : timeToMinutes('00:00');
 		let dayEndMinutes = isLastDay ? timeToMinutes(closeTime) : timeToMinutes('23:59');
 
 		// hämta tillgänglighetsdata
-		const { rows: [availabilityData] } = await query(
-			`SELECT * FROM ${addon.availability_table_name} WHERE date = $1`,
-			[currentDate]
-		);
+		const {
+			rows: [availabilityData]
+		} = await query(`SELECT * FROM ${addon.availability_table_name} WHERE date = $1`, [
+			currentDate
+		]);
 
 		console.log(`\n[${currentDate}]`, {
 			typ: isFirstDay ? 'start' : isLastDay ? 'slut' : 'mellan',
@@ -362,7 +369,9 @@ async function checkAddonAvailability({
 				const availableSlots = maxQuantity + bookedAmount;
 
 				if (amount > availableSlots) {
-					console.log(`[Ej tillgänglig] ${formatMinutes(minutes)}: ${availableSlots}/${amount} platser`);
+					console.log(
+						`[Ej tillgänglig] ${formatMinutes(minutes)}: ${availableSlots}/${amount} platser`
+					);
 					return false;
 				}
 			}
