@@ -129,46 +129,41 @@ function getHoursInDay(openTime, closeTime) {
 }
 
 async function filterPastTimes(times, bookingDate, experienceId) {
-	// hämtar framförhållningskrav (booking_foresight_hours) från databasen
-	const {
-		rows: [experience]
-	} = await query('SELECT booking_foresight_hours FROM experiences WHERE id = $1', [experienceId]);
+	const { rows: [experience] } = await query(
+		'SELECT booking_foresight_hours FROM experiences WHERE id = $1',
+		[experienceId]
+	);
 
 	const foresightHours = experience?.booking_foresight_hours || 0;
 
-	console.log('\n🕒 Filtrerar tider baserat på framförhållning:');
-	console.log(`   Krav på framförhållning: ${foresightHours} timmar`);
+	// enkel logg för framförhållning
+	console.log('\n⏰ Kontroll av framförhållning:');
+	console.log(`   • Krav: ${foresightHours} timmar`);
 
-	// Calculate the earliest possible booking time
 	const currentDateTime = new Date();
 	const earliestPossibleTime = new Date(
 		currentDateTime.getTime() + foresightHours * 60 * 60 * 1000
 	);
-	const bookingDateTime = new Date(bookingDate);
 
-	// Convert times to minutes for precise comparison
-	const earliestMinutesSinceMidnight =
-		earliestPossibleTime.getHours() * 60 + earliestPossibleTime.getMinutes();
+	// enkel datumlogg
+	console.log('\n📅 Datumkontroll:');
+	console.log(`   • Nuvarande tid: ${currentDateTime.toLocaleString('sv-SE')}`);
+	console.log(`   • Tidigaste bokningstid: ${earliestPossibleTime.toLocaleString('sv-SE')}`);
+	console.log(`   • Önskat bokningsdatum: ${bookingDate}`);
+
+	const [year, month, day] = bookingDate.split('-').map(Number);
 
 	return times.filter((time) => {
 		const [hours, minutes] = time.split(':').map(Number);
-		const timeInMinutes = hours * 60 + minutes;
+		const bookingDateTime = new Date(year, month - 1, day, hours, minutes);
 
-		// Compare full dates (year, month, day)
-		const bookingTime = new Date(bookingDateTime);
-		bookingTime.setHours(hours, minutes, 0, 0);
-
-		// If booking time is after earliest possible time, include it
-		if (bookingTime > earliestPossibleTime) {
-			return true;
+		// enkel tidskontroll
+		const isValid = bookingDateTime > earliestPossibleTime;
+		if (!isValid) {
+			console.log(`   ❌ ${time} - för tidigt att boka`);
 		}
 
-		// For same day bookings, compare minutes
-		if (bookingTime.toDateString() === earliestPossibleTime.toDateString()) {
-			return timeInMinutes >= earliestMinutesSinceMidnight;
-		}
-
-		return false;
+		return isValid;
 	});
 }
 

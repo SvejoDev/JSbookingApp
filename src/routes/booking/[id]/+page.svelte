@@ -655,6 +655,12 @@
 
 		return total;
 	}
+
+	function getDateString(date, addDays = 0) {
+		const newDate = new Date(date);
+		newDate.setDate(newDate.getDate() + addDays);
+		return newDate.toISOString().split('T')[0];
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -707,8 +713,17 @@
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
-								const dateObj = new Date(date);
+								console.log('Raw date from calendar:', date); // Debug log
+
+								// Ensure we're working with a Date object
+								const dateObj = typeof date === 'string' ? new Date(date) : date;
+
+								// Add one day to account for timezone issues
+								dateObj.setDate(dateObj.getDate() + 1);
+
+								// Format the date correctly
 								startDate = dateObj.toISOString().split('T')[0];
+								console.log('Final startDate value:', startDate);
 
 								// Reset time-related states
 								startTime = null;
@@ -1007,8 +1022,17 @@
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
-									const dateObj = new Date(date);
+									console.log('Raw date from calendar:', date); // Debug log
+
+									// Ensure we're working with a Date object
+									const dateObj = typeof date === 'string' ? new Date(date) : date;
+
+									// Add one day to account for timezone issues
+									dateObj.setDate(dateObj.getDate() + 1);
+
+									// Format the date correctly
 									startDate = dateObj.toISOString().split('T')[0];
+									console.log('Final startDate value:', startDate);
 
 									// Reset time-related states
 									startTime = null;
