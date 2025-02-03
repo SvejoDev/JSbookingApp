@@ -81,23 +81,24 @@ export async function POST({ request }) {
 					session.metadata.start_time,
 					session.metadata.end_date,
 					session.metadata.end_time,
-					parseInt(session.metadata.start_slot),
-					parseInt(session.metadata.end_slot),
-					session.metadata.booking_type,
-					parseInt(session.metadata.total_slots),
-					parseInt(session.metadata.number_of_adults),
+					parseInt(session.metadata.start_slot || '0'),
+					parseInt(session.metadata.end_slot || '0'),
+					session.metadata.is_overnight === 'true' ? 'overnight' : 'custom',
+					parseInt(session.metadata.total_slots || '0'),
+					parseInt(session.metadata.number_of_adults || '0'),
 					parseInt(session.metadata.number_of_children || '0'),
-					session.metadata.booking_name,
-					session.metadata.booking_lastname,
+					session.metadata.booking_name || '',
+					session.metadata.booking_lastname || '',
 					session.metadata.customer_comment || ''
 				];
 
 				const addonValues = addons.map((addon) => {
-					const value = parseInt(session.metadata[addon.column_name] || '0');
+					const rawValue = session.metadata[addon.column_name];
+					const value = rawValue ? parseInt(rawValue) : 0;
 					console.log(
-						`Processing addon ${addon.name}: column=${addon.column_name}, value=${value}`
+						`Processing addon ${addon.name}: column=${addon.column_name}, raw=${rawValue}, parsed=${value}`
 					);
-					return value;
+					return isNaN(value) ? 0 : value;
 				});
 
 				const placeholders = Array(allColumns.length - 1)
@@ -118,12 +119,19 @@ export async function POST({ request }) {
 				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
 				const bookingData = {
 					start_date: session.metadata.start_date,
-					end_date: session.metadata.end_date,
+					end_date:
+						session.metadata.booking_length > 0
+							? calculateEndDate(
+									session.metadata.start_date,
+									parseInt(session.metadata.booking_length)
+								)
+							: session.metadata.end_date,
 					start_time: session.metadata.start_time,
 					end_time: session.metadata.end_time,
-					booking_type: session.metadata.booking_type,
+					booking_type: session.metadata.is_overnight === 'true' ? 'overnight' : 'custom',
+					booking_length: parseInt(session.metadata.booking_length) || 0,
 					...Object.fromEntries(
-						addons.map(addon => [
+						addons.map((addon) => [
 							addon.column_name,
 							parseInt(session.metadata[addon.column_name] || '0')
 						])
@@ -161,32 +169,43 @@ export async function POST({ request }) {
 async function updateAvailabilityForBooking(client, booking) {
 	console.log('Starting availability update with booking data:', booking);
 
-	// Hämta alla addons från databasen
 	const { rows: addons } = await client.query(
 		'SELECT id, name, column_name, availability_table_name FROM addons'
 	);
 	console.log('Found addons:', addons);
 
-	// Generera datumintervall
+	// generera alla datum mellan start och slut
 	const dates = generateDateRange(booking.start_date, booking.end_date);
 	console.log('Generated date range:', dates);
 
 	const isMultiDayBooking = booking.booking_type === 'overnight';
 
-	for (let i = 0; i < dates.length; i++) {
-		const currentDate = dates[i];
-		const isFirstDay = i === 0;
-		const isLastDay = i === dates.length - 1;
-		const isMiddleDay = !isFirstDay && !isLastDay;
+	for (const addon of addons) {
+		const amount = parseInt(booking[addon.column_name] || '0');
 
-		let startIndex = timeToIndex(isFirstDay ? booking.start_time : '00:00');
-		let endIndex = timeToIndex(isLastDay ? booking.end_time : '23:59');
+		if (amount > 0) {
+			for (let i = 0; i < dates.length; i++) {
+				const currentDate = dates[i];
+				const isFirstDay = i === 0;
+				const isLastDay = i === dates.length - 1;
 
-		// Uppdatera tillgänglighet för varje addon
-		for (const addon of addons) {
-			const amount = parseInt(booking[addon.column_name] || '0');
-			
-			if (amount > 0) {
+				// beräkna start- och slutindex för varje dag
+				let startIndex, endIndex;
+
+				if (isFirstDay) {
+					// första dagen: från starttid till midnatt
+					startIndex = timeToIndex(booking.start_time);
+					endIndex = 96; // 24:00
+				} else if (isLastDay) {
+					// sista dagen: från midnatt till sluttid
+					startIndex = 0; // 00:00
+					endIndex = timeToIndex(booking.end_time);
+				} else {
+					// mellandagar: hela dagen
+					startIndex = 0;
+					endIndex = 96;
+				}
+
 				console.log(`Updating availability for ${addon.name}:`, {
 					table: addon.availability_table_name,
 					date: currentDate,
@@ -204,13 +223,6 @@ async function updateAvailabilityForBooking(client, booking) {
 					amount,
 					isMultiDayBooking
 				);
-
-				console.log('📊 Availability Update:', {
-					table: addon.availability_table_name,
-					date: currentDate,
-					timeRange: `${startIndex * 15}-${endIndex * 15}`,
-					amount: amount
-				});
 			}
 		}
 	}
@@ -228,21 +240,8 @@ async function updateProductAvailability(
 	try {
 		const { rows } = await client.query(`SELECT * FROM ${tableName} WHERE date = $1`, [date]);
 
-		// Beräkna start- och slutindex för blockering
-		let startQuarter, endQuarter;
-
-		if (isMultiDayBooking) {
-			// Overnight booking logic
-			startQuarter = startIndex * 15;
-			endQuarter = endIndex * 15;
-		} else {
-			// Single day booking logic
-			startQuarter = startIndex * 15;
-			endQuarter = endIndex * 15;
-		}
-
 		if (rows.length === 0) {
-			// Om ingen rad finns för datumet, skapa en ny
+			// skapa ny rad med alla tidsluckor blockerade
 			const columns = ['date'];
 			const values = [date];
 			const placeholders = ['$1'];
@@ -250,7 +249,8 @@ async function updateProductAvailability(
 
 			for (let i = 0; i <= 1440; i += 15) {
 				columns.push(`"${i}"`);
-				values.push(i >= startQuarter && i <= endQuarter ? -amount : 0);
+				const shouldBlock = i >= startIndex * 15 && i <= endIndex * 15;
+				values.push(shouldBlock ? -amount : 0);
 				placeholders.push(`$${paramIndex}`);
 				paramIndex++;
 			}
@@ -262,17 +262,15 @@ async function updateProductAvailability(
 
 			await client.query(query, values);
 		} else {
-			// Uppdatera existerande rad
+			// uppdatera existerande rad
 			const updates = [];
 			const values = [date];
 			let paramIndex = 2;
 
-			for (let i = 0; i <= 1440; i += 15) {
-				if (i >= startQuarter && i <= endQuarter) {
-					updates.push(`"${i}" = COALESCE("${i}", 0) - $${paramIndex}`);
-					values.push(amount);
-					paramIndex++;
-				}
+			for (let i = startIndex * 15; i <= endIndex * 15; i += 15) {
+				updates.push(`"${i}" = COALESCE("${i}", 0) - $${paramIndex}`);
+				values.push(amount);
+				paramIndex++;
 			}
 
 			if (updates.length > 0) {
@@ -285,6 +283,13 @@ async function updateProductAvailability(
 				await client.query(query, values);
 			}
 		}
+
+		console.log('📊 Availability Update:', {
+			table: tableName,
+			date: date,
+			timeRange: `${startIndex * 15}-${endIndex * 15}`,
+			amount: amount
+		});
 	} catch (error) {
 		console.error(`Error updating ${tableName} for ${date}:`, error);
 		throw error;
@@ -299,17 +304,29 @@ function generateDateRange(startDate, endDate) {
 	let currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
 	const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
 
-	while (currentDate <= lastDate) {
+	// lägg till en extra dag för att inkludera slutdatumet
+	lastDate.setDate(lastDate.getDate() + 1);
+
+	while (currentDate < lastDate) {
 		dates.push(
 			`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
 		);
 		currentDate.setUTCDate(currentDate.getUTCDate() + 1);
 	}
 
+	console.log('Generated date range:', dates);
 	return dates;
 }
 
 function timeToIndex(time) {
 	const [hours, minutes] = time.split(':').map(Number);
 	return Math.floor((hours * 60 + minutes) / 15);
+}
+
+function calculateEndDate(startDate, nights) {
+	if (!nights || nights <= 0) return startDate;
+
+	const date = new Date(startDate);
+	date.setDate(date.getDate() + nights);
+	return date.toISOString().split('T')[0];
 }

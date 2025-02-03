@@ -456,7 +456,12 @@
 				userComment,
 				experienceId: selectedExperienceId,
 				amount: totalPrice,
-				name: data.experience.name
+				name: data.experience.name,
+				booking_length: selectedBookingLength.includes('övernattning')
+					? parseInt(selectedBookingLength)
+					: 0,
+				end_date: calculateEndDate(startDate, parseInt(selectedBookingLength)),
+				is_overnight: selectedBookingLength.includes('övernattning')
 			};
 
 			const response = await fetch('/api/create-checkout-session', {
@@ -663,6 +668,30 @@
 		newDate.setUTCDate(newDate.getUTCDate() + addDays);
 		// Return the date in YYYY-MM-DD format
 		return newDate.toISOString().split('T')[0];
+	}
+
+	function calculateEndDate(startDate, nights) {
+		const date = new Date(startDate);
+		date.setDate(date.getDate() + nights);
+		return date.toISOString().split('T')[0];
+	}
+
+	function generateDateRange(startDate, endDate) {
+		const dates = [];
+		const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+		const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
+		const currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+		const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+
+		while (currentDate <= lastDate) {
+			dates.push(
+				`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
+			);
+			currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+		}
+
+		return dates;
 	}
 </script>
 
