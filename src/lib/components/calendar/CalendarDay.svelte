@@ -29,11 +29,11 @@
 	$: currentDateStr = formatDate(date);
 	$: classes = [
 		'day',
-		isStartDay ? 'selected start-day' : '',
-		isEndDay ? 'selected end-day' : '',
+		isStartDay || isEndDay ? 'selected' : '',
+		isStartDay ? 'start-day' : '',
+		isEndDay ? 'end-day' : '',
 		isInBetweenDay ? 'in-between-day' : '',
-		(isStartDay || isEndDay) && bookingLength?.overnight ? 'show-line' : '',
-		isInBetweenDay && bookingLength?.overnight ? 'between-overnight' : ''
+		bookingLength?.overnight ? 'show-line' : ''
 	]
 		.filter(Boolean)
 		.join(' ');
@@ -96,9 +96,13 @@
 		z-index: 2;
 	}
 
-	.selected .day {
+	.selected.day {
 		background-color: hsl(220 13% 15%);
 		color: white;
+	}
+
+	.in-between-day .day {
+		background-color: transparent;
 	}
 
 	.start-day .day,
