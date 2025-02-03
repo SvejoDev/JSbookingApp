@@ -5,8 +5,6 @@
 		return_day_offset: 0
 	};
 	export let date;
-	export const selectedDate = null;
-	export const endDate = null;
 	export let isSelected = false;
 	export let isToday = false;
 	export let isOpen = false;

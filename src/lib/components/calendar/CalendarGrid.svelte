@@ -141,8 +141,6 @@
 			{@const range = isDateInRange(date)}
 			<CalendarDay
 				{date}
-				{selectedDate}
-				{endDate}
 				{bookingLength}
 				isSelected={isDateSelected(date)}
 				isToday={isToday(date)}
