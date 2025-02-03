@@ -392,18 +392,20 @@
 			const startDateTime = new Date(`${startDate}T${startTime}`);
 			let returnDateTime = new Date(startDateTime);
 
+			// för övernattningar
+			if (selectedBookingLength.includes('övernattning')) {
+				const nights = parseInt(selectedBookingLength);
+				returnDateTime.setDate(returnDateTime.getDate() + nights);
+				returnDateTime.setHours(12, 0, 0); // checkout tid 12:00
+			}
 			// för bokningar som är i timmar
-			if (selectedBookingLength.includes('h')) {
+			else if (selectedBookingLength.includes('h')) {
 				const hours = parseInt(selectedBookingLength);
 				returnDateTime.setHours(returnDateTime.getHours() + hours);
 			}
 			// för hela dagen bokningar
 			else if (selectedBookingLength === 'Hela dagen') {
-				returnDateTime.setHours(17, 0, 0); // sätt till 17:00
-			}
-			// för övriga bokningslängder (om det finns några)
-			else {
-				returnDateTime.setHours(17, 0, 0); // default till 17:00
+				returnDateTime.setHours(17, 0, 0);
 			}
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
@@ -441,7 +443,6 @@
 				selectedStartLocation,
 				numAdults,
 				numChildren,
-				// Konvertera addon-värdena till strings för metadata
 				...Object.entries(selectedAddons).reduce(
 					(acc, [key, value]) => ({
 						...acc,
@@ -460,7 +461,7 @@
 				booking_length: selectedBookingLength.includes('övernattning')
 					? parseInt(selectedBookingLength)
 					: 0,
-				end_date: calculateEndDate(startDate, parseInt(selectedBookingLength)),
+				end_date: returnDate,
 				is_overnight: selectedBookingLength.includes('övernattning')
 			};
 
