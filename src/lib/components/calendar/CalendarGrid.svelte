@@ -21,8 +21,10 @@
 	$: {
 		if (selectedDate && bookingLength?.overnight) {
 			const startDate = new Date(selectedDate);
+			startDate.setUTCHours(0, 0, 0, 0);
 			const tempEndDate = new Date(startDate);
-			tempEndDate.setDate(startDate.getDate() + (bookingLength.return_day_offset || 1));
+			tempEndDate.setUTCDate(startDate.getUTCDate() + bookingLength.return_day_offset);
+			tempEndDate.setUTCHours(0, 0, 0, 0);
 			endDate = formatDate(tempEndDate);
 		} else {
 			endDate = null;
@@ -89,21 +91,23 @@
 			};
 		}
 
+		// Create date objects and normalize them to noon local time
 		const startDateObj = new Date(selectedDate);
-		startDateObj.setHours(0, 0, 0, 0);
-		
+		startDateObj.setHours(12, 0, 0, 0);
+
 		const currentDateObj = new Date(date);
-		currentDateObj.setHours(0, 0, 0, 0);
-		
+		currentDateObj.setHours(12, 0, 0, 0);
+
 		let endDateObj;
 		if (bookingLength.overnight) {
 			endDateObj = new Date(startDateObj);
 			endDateObj.setDate(startDateObj.getDate() + bookingLength.return_day_offset);
-			endDateObj.setHours(0, 0, 0, 0);
+			endDateObj.setHours(12, 0, 0, 0);
 		} else {
 			endDateObj = startDateObj;
 		}
 
+		// Compare timestamps for exact matching
 		const currentTime = currentDateObj.getTime();
 		const startTime = startDateObj.getTime();
 		const endTime = endDateObj.getTime();
@@ -137,8 +141,6 @@
 			{@const range = isDateInRange(date)}
 			<CalendarDay
 				{date}
-				{selectedDate}
-				{endDate}
 				{bookingLength}
 				isSelected={isDateSelected(date)}
 				isToday={isToday(date)}

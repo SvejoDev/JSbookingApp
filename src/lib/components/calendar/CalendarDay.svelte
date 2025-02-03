@@ -5,8 +5,6 @@
 		return_day_offset: 0
 	};
 	export let date;
-	export let selectedDate;
-	export let endDate;
 	export let isSelected = false;
 	export let isToday = false;
 	export let isOpen = false;
@@ -21,17 +19,22 @@
 	const dispatch = createEventDispatcher();
 
 	function formatDate(date) {
-		return date.toISOString().split('T')[0];
+		const d = new Date(date);
+		d.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+		return d.toISOString().split('T')[0];
 	}
 
 	$: currentDateStr = formatDate(date);
 	$: classes = [
 		'day',
-		isStartDay ? 'selected start-day' : '',
-		isEndDay ? 'selected end-day' : '',
+		isStartDay || isEndDay ? 'selected' : '',
+		isStartDay ? 'start-day' : '',
+		isEndDay ? 'end-day' : '',
 		isInBetweenDay ? 'in-between-day' : '',
-		(isStartDay || isEndDay || isInBetweenDay) && bookingLength?.overnight ? 'show-line' : ''
-	].filter(Boolean).join(' ');
+		bookingLength?.overnight ? 'show-line' : ''
+	]
+		.filter(Boolean)
+		.join(' ');
 
 	function handleClick() {
 		if (!disabled && !isBlocked) {
@@ -91,9 +94,13 @@
 		z-index: 2;
 	}
 
-	.selected .day {
+	.selected.day {
 		background-color: hsl(220 13% 15%);
 		color: white;
+	}
+
+	.in-between-day .day {
+		background-color: transparent;
 	}
 
 	.start-day .day,

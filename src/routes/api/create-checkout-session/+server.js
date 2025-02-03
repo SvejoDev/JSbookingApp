@@ -9,53 +9,58 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST({ request }) {
 	try {
-		const requestData = await request.json();
-		console.log('Checkout Request Data:', requestData);
+		const data = await request.json();
+		console.log('Checkout Request Data:', data);
 
 		// Hämta addons från databasen
 		const { rows: addons } = await query('SELECT name, column_name FROM addons');
 
-		// Skapa baseMetadata först
-		const baseMetadata = {
-			experience_id: requestData.experienceId?.toString() || '0',
-			experience: requestData.name || '',
-			startLocation: requestData.selectedStartLocation?.toString() || '0',
-			start_date: requestData.startDate || '',
-			start_time: requestData.startTime || '',
-			end_date: requestData.returnDate || '',
-			end_time: requestData.returnTime || '',
-			start_slot: (requestData.start_slot || 0).toString(),
-			end_slot: (requestData.end_slot || 0).toString(),
-			booking_type: requestData.booking_type || 'custom',
-			total_slots: (requestData.total_slots || 0).toString(),
-			number_of_adults: (requestData.numAdults || 0).toString(),
-			number_of_children: (requestData.numChildren || 0).toString(),
-			booking_name: requestData.userName || '',
-			booking_lastname: requestData.userLastname || '',
-			customer_comment: requestData.userComment || '',
-			customer_email: requestData.userEmail || ''
+		// konvertera boolean till string för stripe metadata
+		const metadata = {
+			experience_id: data.experienceId,
+			experience: data.name,
+			startLocation: data.selectedStartLocation,
+			start_date: data.startDate,
+			end_date: data.end_date, // använd end_date direkt från data
+			start_time: data.startTime,
+			end_time: data.returnTime,
+			booking_type: data.is_overnight ? 'overnight' : 'custom',
+			booking_length: data.booking_length.toString(),
+			is_overnight: data.is_overnight.toString(),
+			total_slots: data.totalSlots?.toString() || '0',
+			number_of_adults: data.numAdults.toString(),
+			number_of_children: (data.numChildren || 0).toString(),
+			booking_name: data.userName,
+			booking_lastname: data.userLastname,
+			customer_email: data.userEmail,
+			customer_comment: data.userComment || '',
+			...Object.fromEntries(
+				Object.entries(data)
+					.filter(([key]) => key.startsWith('amount_'))
+					.map(([key, value]) => [key, value.toString()])
+			)
 		};
 
 		// Lägg till addon-metadata
 		const addonMetadata = Object.fromEntries(
-			addons.map((addon) => [addon.column_name, requestData[addon.column_name]?.toString() || '0'])
+			addons.map((addon) => [addon.column_name, data[addon.column_name]?.toString() || '0'])
 		);
 
 		// Konvertera priset till ören (cents)
-		const unitAmount = Math.round(requestData.amount * 100);
+		const unitAmount = Math.round(data.amount * 100);
 
 		// Försök upp till 3 gånger med en sekunds mellanrum
 		for (let attempt = 1; attempt <= 3; attempt++) {
 			try {
 				const session = await stripe.checkout.sessions.create({
 					payment_method_types: ['card'],
-					customer_email: requestData.userEmail,
+					customer_email: data.userEmail,
 					line_items: [
 						{
 							price_data: {
 								currency: 'sek',
 								product_data: {
-									name: requestData.name
+									name: data.name
 								},
 								unit_amount: unitAmount
 							},
@@ -66,7 +71,7 @@ export async function POST({ request }) {
 					success_url: `${request.headers.get('origin')}/success?session_id={CHECKOUT_SESSION_ID}`,
 					cancel_url: `${request.headers.get('origin')}/cancel`,
 					metadata: {
-						...baseMetadata,
+						...metadata,
 						...addonMetadata
 					}
 				});
@@ -76,14 +81,19 @@ export async function POST({ request }) {
 					throw error;
 				}
 				console.log(`Försök ${attempt} misslyckades, försöker igen...`);
-				await new Promise(resolve => setTimeout(resolve, 1000));
+				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
 		}
 	} catch (error) {
 		console.error('Stripe session creation error:', error);
-		return json(
-			{ error: 'Kunde inte skapa checkout-session' },
-			{ status: 500 }
-		);
+		return json({ error: 'Kunde inte skapa checkout-session' }, { status: 500 });
 	}
+}
+
+function calculateEndDate(startDate, nights) {
+	if (!nights || nights <= 0) return startDate;
+
+	const date = new Date(startDate);
+	date.setDate(date.getDate() + nights);
+	return date.toISOString().split('T')[0];
 }

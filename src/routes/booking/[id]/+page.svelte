@@ -392,18 +392,20 @@
 			const startDateTime = new Date(`${startDate}T${startTime}`);
 			let returnDateTime = new Date(startDateTime);
 
+			// för övernattningar
+			if (selectedBookingLength.includes('övernattning')) {
+				const nights = parseInt(selectedBookingLength);
+				returnDateTime.setDate(returnDateTime.getDate() + nights);
+				returnDateTime.setHours(12, 0, 0); // checkout tid 12:00
+			}
 			// för bokningar som är i timmar
-			if (selectedBookingLength.includes('h')) {
+			else if (selectedBookingLength.includes('h')) {
 				const hours = parseInt(selectedBookingLength);
 				returnDateTime.setHours(returnDateTime.getHours() + hours);
 			}
 			// för hela dagen bokningar
 			else if (selectedBookingLength === 'Hela dagen') {
-				returnDateTime.setHours(17, 0, 0); // sätt till 17:00
-			}
-			// för övriga bokningslängder (om det finns några)
-			else {
-				returnDateTime.setHours(17, 0, 0); // default till 17:00
+				returnDateTime.setHours(17, 0, 0);
 			}
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
@@ -441,11 +443,13 @@
 				selectedStartLocation,
 				numAdults,
 				numChildren,
-				// Konvertera addon-värdena till strings för metadata
-				...Object.entries(selectedAddons).reduce((acc, [key, value]) => ({
-					...acc,
-					[key]: value.toString()
-				}), {}),
+				...Object.entries(selectedAddons).reduce(
+					(acc, [key, value]) => ({
+						...acc,
+						[key]: value.toString()
+					}),
+					{}
+				),
 				userName,
 				userLastname,
 				userPhone,
@@ -453,7 +457,12 @@
 				userComment,
 				experienceId: selectedExperienceId,
 				amount: totalPrice,
-				name: data.experience.name
+				name: data.experience.name,
+				booking_length: selectedBookingLength.includes('övernattning')
+					? parseInt(selectedBookingLength)
+					: 0,
+				end_date: returnDate,
+				is_overnight: selectedBookingLength.includes('övernattning')
 			};
 
 			const response = await fetch('/api/create-checkout-session', {
@@ -652,6 +661,39 @@
 
 		return total;
 	}
+
+	function getDateString(date, addDays = 0) {
+		// Ensure we're working with a Date object
+		const newDate = new Date(date);
+		// Add the specified number of days without timezone adjustments
+		newDate.setUTCDate(newDate.getUTCDate() + addDays);
+		// Return the date in YYYY-MM-DD format
+		return newDate.toISOString().split('T')[0];
+	}
+
+	function calculateEndDate(startDate, nights) {
+		const date = new Date(startDate);
+		date.setDate(date.getDate() + nights);
+		return date.toISOString().split('T')[0];
+	}
+
+	function generateDateRange(startDate, endDate) {
+		const dates = [];
+		const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+		const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
+		const currentDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+		const lastDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+
+		while (currentDate <= lastDate) {
+			dates.push(
+				`${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, '0')}-${String(currentDate.getUTCDate()).padStart(2, '0')}`
+			);
+			currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+		}
+
+		return dates;
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -697,25 +739,37 @@
 							bookingLength={{
 								length: selectedBookingLength,
 								overnight: selectedBookingLength?.includes('övernattning'),
-								return_day_offset: selectedBookingLength?.includes('övernattning') 
-									? parseInt(selectedBookingLength) || 1 
+								return_day_offset: selectedBookingLength?.includes('övernattning')
+									? parseInt(selectedBookingLength)
 									: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={({ detail }) => {
 								const { date } = detail;
-								const dateObj = new Date(date);
-								startDate = dateObj.toISOString().split('T')[0];
-								
-								// Reset time-related states
-								startTime = null;
-								returnTime = null;
-								returnDate = null;
-								hasGeneratedTimes = false;
-								possibleStartTimes = [];
-								settingsLocked = false;
+								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
+								const selectedDate = new Date(date);
+								selectedDate.setHours(12, 0, 0, 0);
+								const newDateStr = selectedDate.toISOString().split('T')[0];
 
-								scrollToBottom();
+								console.log('📅 Date Selection:', {
+									rawDate: date,
+									selectedDate: selectedDate,
+									formattedDate: newDateStr,
+									currentDate: startDate,
+									isSameDate: startDate === newDateStr
+								});
+
+								// Only update if we don't have a date yet or if it's a different date
+								if (!startDate || startDate !== newDateStr) {
+									startDate = newDateStr;
+									// Reset time-related states
+									startTime = null;
+									returnTime = null;
+									returnDate = null;
+									hasGeneratedTimes = false;
+									possibleStartTimes = [];
+									settingsLocked = false;
+								}
 							}}
 						/>
 					</CardContent>
@@ -997,25 +1051,37 @@
 								bookingLength={{
 									length: selectedBookingLength,
 									overnight: selectedBookingLength?.includes('övernattning'),
-									return_day_offset: selectedBookingLength?.includes('övernattning') 
-										? parseInt(selectedBookingLength) || 1 
+									return_day_offset: selectedBookingLength?.includes('övernattning')
+										? parseInt(selectedBookingLength)
 										: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={({ detail }) => {
 									const { date } = detail;
-									const dateObj = new Date(date);
-									startDate = dateObj.toISOString().split('T')[0];
-									
-									// Reset time-related states
-									startTime = null;
-									returnTime = null;
-									returnDate = null;
-									hasGeneratedTimes = false;
-									possibleStartTimes = [];
-									settingsLocked = false;
+									// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
+									const selectedDate = new Date(date);
+									selectedDate.setHours(12, 0, 0, 0);
+									const newDateStr = selectedDate.toISOString().split('T')[0];
 
-									scrollToBottom();
+									console.log('📅 Date Selection:', {
+										rawDate: date,
+										selectedDate: selectedDate,
+										formattedDate: newDateStr,
+										currentDate: startDate,
+										isSameDate: startDate === newDateStr
+									});
+
+									// Only update if we don't have a date yet or if it's a different date
+									if (!startDate || startDate !== newDateStr) {
+										startDate = newDateStr;
+										// Reset time-related states
+										startTime = null;
+										returnTime = null;
+										returnDate = null;
+										hasGeneratedTimes = false;
+										possibleStartTimes = [];
+										settingsLocked = false;
+									}
 								}}
 							/>
 						</div>
