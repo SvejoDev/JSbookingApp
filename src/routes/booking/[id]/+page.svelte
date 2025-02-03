@@ -442,10 +442,13 @@
 				numAdults,
 				numChildren,
 				// Konvertera addon-värdena till strings för metadata
-				...Object.entries(selectedAddons).reduce((acc, [key, value]) => ({
-					...acc,
-					[key]: value.toString()
-				}), {}),
+				...Object.entries(selectedAddons).reduce(
+					(acc, [key, value]) => ({
+						...acc,
+						[key]: value.toString()
+					}),
+					{}
+				),
 				userName,
 				userLastname,
 				userPhone,
@@ -697,8 +700,8 @@
 							bookingLength={{
 								length: selectedBookingLength,
 								overnight: selectedBookingLength?.includes('övernattning'),
-								return_day_offset: selectedBookingLength?.includes('övernattning') 
-									? parseInt(selectedBookingLength) || 1 
+								return_day_offset: selectedBookingLength?.includes('övernattning')
+									? parseInt(selectedBookingLength)
 									: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
@@ -706,7 +709,7 @@
 								const { date } = detail;
 								const dateObj = new Date(date);
 								startDate = dateObj.toISOString().split('T')[0];
-								
+
 								// Reset time-related states
 								startTime = null;
 								returnTime = null;
@@ -997,8 +1000,8 @@
 								bookingLength={{
 									length: selectedBookingLength,
 									overnight: selectedBookingLength?.includes('övernattning'),
-									return_day_offset: selectedBookingLength?.includes('övernattning') 
-										? parseInt(selectedBookingLength) || 1 
+									return_day_offset: selectedBookingLength?.includes('övernattning')
+										? parseInt(selectedBookingLength)
 										: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
@@ -1006,7 +1009,7 @@
 									const { date } = detail;
 									const dateObj = new Date(date);
 									startDate = dateObj.toISOString().split('T')[0];
-									
+
 									// Reset time-related states
 									startTime = null;
 									returnTime = null;
