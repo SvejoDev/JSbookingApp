@@ -834,7 +834,7 @@
 									{#each possibleStartTimes as time}
 										<Button
 											variant={startTime === time ? 'default' : 'outline'}
-											on:click={() => {
+											on:click={async () => {
 												startTime = time;
 												const interval = findTimeInterval(time, data.openHours);
 												if (interval) {
@@ -849,8 +849,12 @@
 														returnTime,
 														interval
 													});
+
+													// vänta på att DOM:en uppdateras och scrolla sedan till booking-summary
+													await tick();
+													await new Promise((resolve) => setTimeout(resolve, 100)); // liten fördröjning för smidigare upplevelse
+													await scrollToElement('booking-summary');
 												}
-												scrollToElement('participants-section');
 											}}
 										>
 											{time}
@@ -864,7 +868,7 @@
 
 				{#if startDate && startTime}
 					<!-- Booking Summary -->
-					<Card class="mt-4">
+					<Card class="mt-4" id="booking-summary">
 						<CardHeader>
 							<CardTitle>Din bokning</CardTitle>
 						</CardHeader>
