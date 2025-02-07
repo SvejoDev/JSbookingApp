@@ -39,6 +39,7 @@
 	let selectedStartLocation = null;
 	let selectedStartLocationName = '';
 	let selectedExperienceId = data.experience?.id;
+	let endTime = null; // lägg till denna rad bland de andra variablerna
 
 	// ui-kontrollvariabler
 	let isLoadingTimes = false;
@@ -701,6 +702,65 @@
 
 		return dates;
 	}
+
+	function getAvailableTimeIntervals(date, openHours) {
+		// kontrollera först specifika datum
+		const specificDate = openHours.specificDates.find((d) => d.date === date);
+		if (specificDate) {
+			return specificDate.timeSlots.map((slot) => ({
+				startTime: slot.open_time,
+				endTime: slot.close_time
+			}));
+		}
+
+		// kontrollera perioder
+		const intervals = [];
+		for (const period of openHours.periods) {
+			const periodStart = new Date(period.start_date);
+			const periodEnd = new Date(period.end_date);
+			const checkDate = new Date(date);
+
+			if (checkDate >= periodStart && checkDate <= periodEnd) {
+				intervals.push({
+					startTime: period.open_time,
+					endTime: period.close_time
+				});
+			}
+		}
+
+		return intervals;
+	}
+
+	function findTimeInterval(selectedTime, openHours) {
+		const intervals = getAvailableTimeIntervals(startDate, openHours);
+		return intervals.find((interval) => interval.startTime === selectedTime);
+	}
+
+	function calculateGuidedReturnDate(startDate, startTime, endTime) {
+		const [startHour, startMinute] = startTime.split(':').map(Number);
+		const [endHour, endMinute] = endTime.split(':').map(Number);
+
+		// om sluttiden är före starttiden, lägg till en dag
+		if (endHour < startHour || (endHour === startHour && endMinute < startMinute)) {
+			const date = new Date(startDate);
+			date.setDate(date.getDate() + 1);
+			return date.toISOString().split('T')[0];
+		}
+
+		return startDate;
+	}
+
+	$: {
+		if (startTime && data.experience?.experience_type === 'guided') {
+			console.log('Bokningsuppdatering:', {
+				startDate,
+				startTime,
+				endTime,
+				returnDate,
+				returnTime
+			});
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -721,12 +781,13 @@
 		{#if data.experience.experience_type === 'guided'}
 			<!-- Guided Experience Flow -->
 			<div class="flex flex-col gap-6 max-w-3xl mx-auto">
-				<!-- Step 1: Date Selection -->
+				<!-- Step 1: Date and Time Selection -->
 				<Card id="calendar-section">
 					<CardHeader>
-						<CardTitle>Välj datum</CardTitle>
+						<CardTitle>Välj datum och tid</CardTitle>
 					</CardHeader>
 					<CardContent>
+						<!-- kalender-komponenten -->
 						<Calendar
 							{minDate}
 							{maxDate}
@@ -742,51 +803,66 @@
 							}}
 							{blockedDates}
 							selectedDate={startDate}
-							endDate={returnDate}
-							bookingLength={{
-								length: selectedBookingLength,
-								overnight: selectedBookingLength?.includes('övernattning'),
-								return_day_offset: selectedBookingLength?.includes('övernattning')
-									? parseInt(selectedBookingLength)
-									: 0
-							}}
-							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={async ({ detail }) => {
 								const { date } = detail;
-								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 								const selectedDate = new Date(date);
 								selectedDate.setHours(12, 0, 0, 0);
 								const newDateStr = selectedDate.toISOString().split('T')[0];
 
-								console.log('📅 Date Selection:', {
-									rawDate: date,
-									selectedDate: selectedDate,
-									formattedDate: newDateStr,
-									currentDate: startDate,
-									isSameDate: startDate === newDateStr
-								});
-
-								// Only update if we don't have a date yet or if it's a different date
 								if (!startDate || startDate !== newDateStr) {
 									startDate = newDateStr;
-									// Reset time-related states
 									startTime = null;
-									returnTime = null;
 									returnDate = null;
-									hasGeneratedTimes = false;
-									possibleStartTimes = [];
-									settingsLocked = false;
+									returnTime = null;
 
-									// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
+									// hämta tillgängliga tidsintervall för det valda datumet
+									const intervals = getAvailableTimeIntervals(newDateStr, data.openHours);
+									possibleStartTimes = intervals.map((interval) => interval.startTime);
+
 									await tick();
-									await scrollToElement('participants-section');
+									if (possibleStartTimes.length > 0) {
+										await scrollToElement('time-selection');
+									}
 								}
 							}}
 						/>
+
+						{#if startDate && possibleStartTimes.length > 0}
+							<div class="mt-6 space-y-4" id="time-selection">
+								<Label>Välj starttid:</Label>
+								<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+									{#each possibleStartTimes as time}
+										<Button
+											variant={startTime === time ? 'default' : 'outline'}
+											on:click={() => {
+												startTime = time;
+												const interval = findTimeInterval(time, data.openHours);
+												if (interval) {
+													endTime = interval.endTime;
+													returnDate = calculateGuidedReturnDate(startDate, startTime, endTime);
+													returnTime = endTime;
+
+													console.log('Tidsval:', {
+														startTime,
+														endTime,
+														returnDate,
+														returnTime,
+														interval
+													});
+												}
+												scrollToElement('participants-section');
+											}}
+										>
+											{time}
+										</Button>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					</CardContent>
 				</Card>
 
-				{#if startDate}
+				{#if startDate && startTime}
 					<!-- Booking Summary -->
 					<Card class="mt-4">
 						<CardHeader>
@@ -795,160 +871,11 @@
 						<CardContent>
 							<div class="space-y-2">
 								<p><strong>Datum:</strong> {startDate}</p>
-								<p>
-									<strong>Tid:</strong>
-									{data.openHours.defaultOpenTimes[0]} - {data.openHours.defaultCloseTimes[0]}
-								</p>
+								<p><strong>Tid:</strong> {startTime} - {endTime}</p>
 								<p><strong>Plats:</strong> {data.startLocations[0]?.location}</p>
 							</div>
 						</CardContent>
 					</Card>
-
-					<!-- Step 2: Participants -->
-					<Card bind:this={participantsSection} id="participants-section">
-						<CardHeader>
-							<CardTitle>Antal deltagare</CardTitle>
-						</CardHeader>
-						<CardContent class="space-y-4">
-							<div class="space-y-2">
-								<Label for="participants"
-									>Antal deltagare ({data.startLocations[0]?.price}kr/person)</Label
-								>
-								<div class="flex items-center space-x-2">
-									<Button
-										variant="outline"
-										class="px-3"
-										on:click={() => (numAdults = Math.max(0, numAdults - 1))}
-									>
-										-
-									</Button>
-									<div class="w-12 text-center">{numAdults}</div>
-									<Button
-										variant="outline"
-										class="px-3"
-										on:click={() => (numAdults = numAdults + 1)}
-									>
-										+
-									</Button>
-								</div>
-							</div>
-
-							<Alert>
-								<AlertTitle>Totalt pris</AlertTitle>
-								<AlertDescription>{totalPrice}kr</AlertDescription>
-							</Alert>
-
-							<Button
-								class="w-full mt-4"
-								disabled={numAdults === 0}
-								on:click={async () => {
-									showContactSection = true;
-									await tick();
-									scrollToBottom();
-								}}
-							>
-								{numAdults === 0 ? 'Välj antal deltagare' : 'Nästa steg'}
-							</Button>
-						</CardContent>
-					</Card>
-
-					<!-- Step 3: Contact Information -->
-					{#if showContactSection}
-						<Card bind:this={contactSection} id="contact-section">
-							<CardHeader>
-								<CardTitle>Kontaktuppgifter</CardTitle>
-							</CardHeader>
-							<CardContent class="space-y-4">
-								<div class="grid gap-4 sm:grid-cols-2">
-									<div class="space-y-2">
-										<Label for="firstName">Förnamn</Label>
-										<Input type="text" id="firstName" bind:value={userName} required />
-									</div>
-									<div class="space-y-2">
-										<Label for="lastName">Efternamn</Label>
-										<Input type="text" id="lastName" bind:value={userLastname} required />
-									</div>
-								</div>
-
-								<div class="space-y-2">
-									<Label for="phone">Telefonnummer</Label>
-									<Input
-										type="tel"
-										id="phone"
-										bind:value={userPhone}
-										pattern="^\+?[1-9]\d{14}$"
-										required
-									/>
-								</div>
-
-								<div class="space-y-2">
-									<Label for="email">E-postadress</Label>
-									<Input type="email" id="email" bind:value={userEmail} required />
-								</div>
-
-								<div class="space-y-2">
-									<Label for="comment">Kommentar (valfri)</Label>
-									<Textarea id="comment" bind:value={userComment} />
-								</div>
-
-								<div class="flex items-center space-x-2">
-									<Checkbox bind:checked={acceptTerms} id="terms" />
-									<Label for="terms">I accept the booking agreement and the terms of purchase</Label
-									>
-								</div>
-
-								<!-- Payment Section -->
-								{#if data.experience.experience_type === 'business_school'}
-									<div class="space-y-4">
-										<div class="flex gap-4">
-											<Button
-												variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
-												on:click={() => (selectedPaymentMethod = 'card')}
-												class="flex-1"
-											>
-												Betala med kort
-											</Button>
-											<Button
-												variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
-												on:click={() => (selectedPaymentMethod = 'invoice')}
-												class="flex-1"
-											>
-												Betala med faktura
-											</Button>
-										</div>
-
-										{#if selectedPaymentMethod === 'invoice'}
-											<Card class="mt-4">
-												<CardHeader>
-													<CardTitle>Fakturauppgifter</CardTitle>
-												</CardHeader>
-												<CardContent>
-													<InvoiceForm bind:invoiceData />
-
-													<Button
-														class="w-full mt-4"
-														disabled={!isFormValid}
-														on:click={handleInvoiceSubmission}
-													>
-														Skicka fakturabegäran ({totalPrice}kr)
-													</Button>
-												</CardContent>
-											</Card>
-										{:else if selectedPaymentMethod === 'card'}
-											<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
-												Gå till kortbetalning ({totalPrice}kr)
-											</Button>
-										{/if}
-									</div>
-								{:else}
-									<!-- Original payment button for public experiences -->
-									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
-										Gå till betalning ({totalPrice}kr)
-									</Button>
-								{/if}
-							</CardContent>
-						</Card>
-					{/if}
 				{/if}
 			</div>
 		{:else}
