@@ -566,8 +566,8 @@
 		const foresightBlocked = generateForesightBlockedDates(data.experience.booking_foresight_hours);
 		blockedDates = [
 			...foresightBlocked,
-			...(data.blocked_dates?.map((blocked) => new Date(blocked.blocked_date)) || [])
-		];
+			...(data.blocked_dates?.map((blocked) => new Date(blocked.blocked_date)) || []
+	)];
 
 		// Remove duplicates
 		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
@@ -761,6 +761,22 @@
 			});
 		}
 	}
+
+	// Lägg till bland variablerna
+	let availableSpots = null;
+
+	// Lägg till i click-hanteraren för tidsval
+	async function handleTimeSelection(time) {
+		const response = await fetch(
+			`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
+		);
+		const { availableCapacity } = await response.json();
+		availableSpots = availableCapacity;
+
+		// Uppdatera UI
+		startTime = time;
+		endTime = findTimeInterval(time, data.openHours).endTime;
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -835,26 +851,13 @@
 										<Button
 											variant={startTime === time ? 'default' : 'outline'}
 											on:click={async () => {
-												startTime = time;
-												const interval = findTimeInterval(time, data.openHours);
-												if (interval) {
-													endTime = interval.endTime;
-													returnDate = calculateGuidedReturnDate(startDate, startTime, endTime);
-													returnTime = endTime;
-
-													console.log('Tidsval:', {
-														startTime,
-														endTime,
-														returnDate,
-														returnTime,
-														interval
-													});
-
-													// vänta på att DOM:en uppdateras och scrolla sedan till booking-summary
-													await tick();
-													await new Promise((resolve) => setTimeout(resolve, 100)); // liten fördröjning för smidigare upplevelse
-													await scrollToElement('booking-summary');
-												}
+												await handleTimeSelection(time);
+												console.log('Vald tid:', {
+													time,
+													availableSpots,
+													startTime,
+													endTime
+												});
 											}}
 										>
 											{time}
@@ -878,6 +881,62 @@
 								<p><strong>Tid:</strong> {startTime} - {endTime}</p>
 								<p><strong>Plats:</strong> {data.startLocations[0]?.location}</p>
 							</div>
+						</CardContent>
+					</Card>
+
+					<!-- Participants Section -->
+					<Card class="mt-4" id="participants-section">
+						<CardHeader>
+							<CardTitle>Antal deltagare</CardTitle>
+						</CardHeader>
+						<CardContent class="space-y-4">
+							<div class="space-y-2">
+								<Label for="adults">
+									Antal personer
+									{#if availableSpots !== null}
+										({availableSpots} {availableSpots === 1 ? 'plats' : 'platser'} kvar)
+									{/if}
+								</Label>
+								<div class="flex items-center space-x-2">
+									<Button
+										variant="outline"
+										class="px-3"
+										on:click={() => {
+											numAdults = Math.max(0, numAdults - 1);
+											updatePrice();
+										}}
+									>
+										-
+									</Button>
+									<div class="w-12 text-center">{numAdults}</div>
+									<Button
+										variant="outline"
+										class="px-3"
+										disabled={numAdults >= availableSpots}
+										on:click={() => {
+											if (availableSpots !== null) {
+												numAdults = Math.min(availableSpots, numAdults + 1);
+												updatePrice();
+											}
+										}}
+									>
+										+
+									</Button>
+								</div>
+							</div>
+
+							<Alert>
+								<AlertTitle>Totalt pris</AlertTitle>
+								<AlertDescription>{totalPrice}kr</AlertDescription>
+							</Alert>
+
+							<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+								{#if numAdults === 0}
+									Välj antal deltagare
+								{:else}
+									Nästa steg
+								{/if}
+							</Button>
 						</CardContent>
 					</Card>
 				{/if}
