@@ -566,8 +566,8 @@
 		const foresightBlocked = generateForesightBlockedDates(data.experience.booking_foresight_hours);
 		blockedDates = [
 			...foresightBlocked,
-			...(data.blocked_dates?.map((blocked) => new Date(blocked.blocked_date)) || []
-	)];
+			...(data.blocked_dates?.map((blocked) => new Date(blocked.blocked_date)) || [])
+		];
 
 		// Remove duplicates
 		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
@@ -767,15 +767,36 @@
 
 	// Lägg till i click-hanteraren för tidsval
 	async function handleTimeSelection(time) {
-		const response = await fetch(
-			`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
-		);
-		const { availableCapacity } = await response.json();
-		availableSpots = availableCapacity;
+		try {
+			const response = await fetch(
+				`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
+			);
+			const result = await response.json();
 
-		// Uppdatera UI
-		startTime = time;
-		endTime = findTimeInterval(time, data.openHours).endTime;
+			console.log('Kapacitetsresultat:', {
+				maxKapacitet: data.openHours.maxParticipants,
+				valtDatum: startDate,
+				valdTid: time,
+				tillgängligaPlatser: result.availableCapacity,
+				felmeddelande: result.error
+			});
+
+			availableSpots = result.availableCapacity;
+			startTime = time;
+			const interval = findTimeInterval(time, data.openHours);
+			if (interval) {
+				endTime = interval.endTime;
+				returnDate = calculateGuidedReturnDate(startDate, startTime, endTime);
+				returnTime = endTime;
+
+				// vänta på att DOM:en uppdateras
+				await tick();
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				await scrollToElement('participants-section');
+			}
+		} catch (error) {
+			console.error('Fel vid tidval:', error);
+		}
 	}
 </script>
 
