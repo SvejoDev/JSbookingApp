@@ -146,6 +146,7 @@
 					<th class="border p-1 text-left">Startplats</th>
 					<th class="border p-1 text-left">Antal</th>
 					<th class="border p-1 text-left">Utrustning</th>
+					<th class="border p-1 text-left">Betalningsstatus</th>
 					<th class="border p-1 text-left">Status</th>
 					<th class="border p-1 text-left">Belopp</th>
 					<th class="border p-1 text-left">Kontakt</th>
@@ -196,13 +197,26 @@
 							<span
 								class="text-xs px-2 py-1 rounded {booking.status === 'betald'
 									? 'bg-green-100'
-									: booking.status === 'started'
-										? 'bg-blue-100'
-										: booking.status === 'completed'
-											? 'bg-gray-100'
-											: 'bg-yellow-100'}"
+									: 'bg-yellow-100'}"
 							>
-								{booking.status}
+								{booking.status === 'betald' ? 'Betald' : 'Ej betald'}
+							</span>
+						</td>
+						<td class="border p-1">
+							<span
+								class="text-xs px-2 py-1 rounded {booking.booking_status === 'started'
+									? 'bg-blue-100'
+									: booking.booking_status === 'completed'
+										? 'bg-gray-100'
+										: 'bg-yellow-100'}"
+							>
+								{#if booking.booking_status === 'started'}
+									Påbörjad
+								{:else if booking.booking_status === 'completed'}
+									Genomförd
+								{:else}
+									-
+								{/if}
 							</span>
 						</td>
 						<td class="border p-1">
@@ -216,19 +230,25 @@
 						</td>
 						<td class="border p-1">
 							{#if booking.status === 'betald'}
-								<Button variant="outline" size="sm" on:click={() => handleStartBooking(booking.id)}>
-									Start
-								</Button>
-							{:else if booking.status === 'started'}
-								<Button
-									variant="outline"
-									size="sm"
-									on:click={() => handleCompleteBooking(booking.id)}
-								>
-									Slut
-								</Button>
-							{:else if booking.status === 'completed'}
-								<span class="text-xs text-gray-500">Avslutad</span>
+								{#if booking.booking_status === 'pending'}
+									<Button
+										variant="outline"
+										size="sm"
+										on:click={() => handleStartBooking(booking.id)}
+									>
+										Start
+									</Button>
+								{:else if booking.booking_status === 'started'}
+									<Button
+										variant="outline"
+										size="sm"
+										on:click={() => handleCompleteBooking(booking.id)}
+									>
+										Slut
+									</Button>
+								{:else if booking.booking_status === 'completed'}
+									<span class="text-xs text-gray-500">Avslutad</span>
+								{/if}
 							{/if}
 						</td>
 					</tr>

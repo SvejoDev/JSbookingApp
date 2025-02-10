@@ -26,6 +26,15 @@ function timeToIndex(time) {
 
 async function restoreAvailabilityAfterBooking(client, bookingId) {
 	try {
+		// Kontrollera först om bokningen redan är genomförd
+		const {
+			rows: [currentStatus]
+		} = await client.query('SELECT booking_status FROM bookings WHERE id = $1', [bookingId]);
+
+		if (currentStatus.booking_status === 'completed') {
+			throw new Error('Bokningen är redan genomförd');
+		}
+
 		const {
 			rows: [booking]
 		} = await client.query(
@@ -118,7 +127,10 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 			}
 		}
 
-		await client.query('UPDATE bookings SET status = $1 WHERE id = $2', ['genomförd', bookingId]);
+		await client.query('UPDATE bookings SET booking_status = $1 WHERE id = $2', [
+			'completed',
+			bookingId
+		]);
 
 		return true;
 	} catch (error) {
