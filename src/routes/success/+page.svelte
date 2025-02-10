@@ -98,30 +98,17 @@
 							<td class="text-right">0 kr</td>
 							<td class="text-right">0 kr</td>
 						</tr>
-						{#if booking.amount_canoes > 0}
-							<tr class="border-b">
-								<td class="py-2">Kanot</td>
-								<td class="text-center">{booking.amount_canoes}</td>
-								<td class="text-right">0 kr</td>
-								<td class="text-right">0 kr</td>
-							</tr>
-						{/if}
-						{#if booking.amount_kayak > 0}
-							<tr class="border-b">
-								<td class="py-2">Kajak</td>
-								<td class="text-center">{booking.amount_kayak}</td>
-								<td class="text-right">0 kr</td>
-								<td class="text-right">0 kr</td>
-							</tr>
-						{/if}
-						{#if booking.amount_sup > 0}
-							<tr class="border-b">
-								<td class="py-2">SUP</td>
-								<td class="text-center">{booking.amount_sup}</td>
-								<td class="text-right">0 kr</td>
-								<td class="text-right">0 kr</td>
-							</tr>
-						{/if}
+
+						{#each booking.addons as addon}
+							{#if addon.amount > 0}
+								<tr class="border-b">
+									<td class="py-2">{addon.name}</td>
+									<td class="text-center">{addon.amount}</td>
+									<td class="text-right">0 kr</td>
+									<td class="text-right">0 kr</td>
+								</tr>
+							{/if}
+						{/each}
 
 						<tr class="border-b">
 							<td class="py-2">Antal vuxna</td>

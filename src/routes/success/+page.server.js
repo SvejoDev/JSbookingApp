@@ -41,6 +41,15 @@ export const load = async ({ url }) => {
 		const vat = subtotal * 0.25;
 		const total = subtotal + vat; // detta blir adultPrice * number_of_adults
 
+		// hämta addons för denna bokning
+		const { rows: bookingAddons } = await query(
+			`SELECT a.name, a.column_name, ba.amount 
+			 FROM booking_addons ba 
+			 JOIN addons a ON ba.addon_id = a.id 
+			 WHERE ba.booking_id = $1`,
+			[booking.id]
+		);
+
 		return {
 			booking: {
 				...booking,
@@ -51,7 +60,8 @@ export const load = async ({ url }) => {
 				totalChildren, // kommer vara 0
 				subtotal,
 				vat,
-				total
+				total,
+				addons: bookingAddons
 			}
 		};
 	} catch (error) {
