@@ -748,31 +748,44 @@
 	}
 
 	function getAvailableTimeIntervals(date, openHours) {
-		// kontrollera först specifika datum
-		const specificDate = openHours.specificDates.find((d) => d.date === date);
-		if (specificDate) {
-			return specificDate.timeSlots.map((slot) => ({
-				startTime: slot.open_time,
-				endTime: slot.close_time
-			}));
+		// kontrollera att openHours finns
+		if (!openHours) {
+			console.warn('openHours är undefined');
+			return [];
 		}
 
-		// kontrollera perioder
-		const intervals = [];
-		for (const period of openHours.periods) {
-			const periodStart = new Date(period.start_date);
-			const periodEnd = new Date(period.end_date);
-			const checkDate = new Date(date);
-
-			if (checkDate >= periodStart && checkDate <= periodEnd) {
-				intervals.push({
-					startTime: period.open_time,
-					endTime: period.close_time
-				});
+		// kontrollera att specificDates finns
+		if (openHours.specificDates) {
+			const specificDate = openHours.specificDates.find((d) => d.date === date);
+			if (specificDate) {
+				return specificDate.timeSlots.map((slot) => ({
+					startTime: slot.open_time,
+					endTime: slot.close_time
+				}));
 			}
 		}
 
-		return intervals;
+		// kontrollera att periods finns
+		if (openHours.periods) {
+			const intervals = [];
+			for (const period of openHours.periods) {
+				const periodStart = new Date(period.start_date);
+				const periodEnd = new Date(period.end_date);
+				const checkDate = new Date(date);
+
+				if (checkDate >= periodStart && checkDate <= periodEnd) {
+					intervals.push({
+						startTime: period.open_time,
+						endTime: period.close_time
+					});
+				}
+			}
+			return intervals;
+		}
+
+		// om varken specificDates eller periods finns
+		console.warn('Inga giltiga öppettider hittades');
+		return [];
 	}
 
 	function findTimeInterval(selectedTime, openHours) {
