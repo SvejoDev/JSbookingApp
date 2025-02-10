@@ -23,10 +23,10 @@ export async function POST({ request }) {
 			end_date: data.startDate, // för guidade upplevelser är start och slutdatum samma
 			start_time: data.startTime,
 			end_time: data.returnTime,
-			booking_type: 'guided', // sätt explicit till 'guided' för guidade upplevelser
+			booking_type: data.is_overnight ? 'overnight' : 'day',
 			booking_length: data.booking_length.toString(),
 			is_overnight: data.is_overnight.toString(),
-			total_slots: data.totalSlots?.toString() || '0',
+			total_slots: calculateTotalSlots(data.startTime, data.returnTime),
 			number_of_adults: data.numAdults.toString(),
 			number_of_children: (data.numChildren || 0).toString(),
 			booking_name: data.userName,
@@ -34,6 +34,9 @@ export async function POST({ request }) {
 			customer_email: data.userEmail,
 			customer_comment: data.userComment || '',
 			customer_phone: data.userPhone || '',
+			start_slot: calculateTimeSlot(data.startTime),
+			end_slot: calculateTimeSlot(data.returnTime),
+			selectedStartLocation: data.selectedStartLocation.toString(),
 			...Object.fromEntries(
 				Object.entries(data)
 					.filter(([key]) => key.startsWith('amount_'))
@@ -96,4 +99,15 @@ function calculateEndDate(startDate, nights) {
 	const date = new Date(startDate);
 	date.setDate(date.getDate() + nights);
 	return date.toISOString().split('T')[0];
+}
+
+function calculateTimeSlot(time) {
+	const [hours, minutes] = time.split(':').map(Number);
+	return (hours * 60 + minutes) / 15;
+}
+
+function calculateTotalSlots(startTime, endTime) {
+	const startSlot = calculateTimeSlot(startTime);
+	const endSlot = calculateTimeSlot(endTime);
+	return endSlot - startSlot;
 }
