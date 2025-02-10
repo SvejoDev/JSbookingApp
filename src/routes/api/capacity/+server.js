@@ -3,76 +3,79 @@ import { query } from '$lib/db';
 
 export async function GET({ url }) {
 	const experienceId = url.searchParams.get('experienceId');
-
-	// Hämta experience_type först
-	const {
-		rows: [experience]
-	} = await query('SELECT experience_type FROM experiences WHERE id = $1', [experienceId]);
-
-	// Returnera null om det inte är en guidad upplevelse
-	if (experience?.experience_type !== 'guided') {
-		return json({ availableCapacity: null });
-	}
-
 	const date = url.searchParams.get('date');
 	const time = url.searchParams.get('time');
-	const bookingType = url.searchParams.get('bookingType');
 
-	if (bookingType !== 'guided') {
-		return json({ availableCapacity: null }); // Returnera null för icke-guidade upplevelser
+	// kontrollera att alla nödvändiga parametrar finns
+	if (!experienceId || !date || !time) {
+		return json(
+			{
+				error: 'Saknade parametrar',
+				availableCapacity: null
+			},
+			{ status: 400 }
+		);
 	}
 
-	console.log('Kapacitetskontroll:', { experienceId, date, time });
-
 	try {
-		console.log('Kapacitetskontroll för:', {
-			upplevelse: experienceId,
-			datum: date,
-			tid: time
-		});
-
-		// Hämta max kapacitet
+		// hämta upplevelsens typ och kapacitet
 		const {
-			rows: [maxCapacity]
+			rows: [experience]
 		} = await query(
-			'SELECT max_participants FROM guided_experience_capacity WHERE experience_id = $1',
+			`
+			SELECT 
+				e.experience_type,
+				gec.max_participants
+			FROM experiences e
+			LEFT JOIN guided_experience_capacity gec ON e.id = gec.experience_id
+			WHERE e.id = $1
+		`,
 			[experienceId]
 		);
 
-		// Hämta antal bokade platser för specifikt datum och tid
+		// om det inte är en guidad upplevelse, returnera null
+		if (experience?.experience_type !== 'guided') {
+			return json({ availableCapacity: null });
+		}
+
+		// om ingen kapacitet är satt, returnera fel
+		if (!experience.max_participants) {
+			return json({
+				error: 'Ingen kapacitet satt för denna upplevelse',
+				availableCapacity: 0
+			});
+		}
+
+		// hämta antal bokade platser
 		const {
-			rows: [bookedSlot]
+			rows: [bookings]
 		} = await query(
 			`
-			SELECT COALESCE(SUM(number_of_adults), 0) as booked_count
+			SELECT COALESCE(SUM(number_of_adults + number_of_children), 0) as booked_count
 			FROM bookings 
 			WHERE experience_id = $1 
 			AND start_date = $2 
 			AND start_time = $3
-			AND status != 'cancelled'`,
+			AND status NOT IN ('cancelled', 'completed')
+		`,
 			[experienceId, date, time]
 		);
 
-		console.log('Kapacitetsresultat:', {
-			maxKapacitet: maxCapacity?.max_participants,
-			bokadePlatser: bookedSlot?.booked_count,
-			datum: date,
-			tid: time
+		const availableCapacity = experience.max_participants - (bookings?.booked_count || 0);
+
+		return json({
+			availableCapacity,
+			maxCapacity: experience.max_participants,
+			bookedCount: bookings?.booked_count || 0
 		});
-
-		const totalBooked = parseInt(bookedSlot?.booked_count || 0);
-		const maxAllowed = parseInt(maxCapacity?.max_participants || 0);
-		const availableCapacity = maxAllowed - totalBooked;
-
-		console.log('Kapacitetsberäkning:', {
-			maxAllowed,
-			totalBooked,
-			availableCapacity
-		});
-
-		return json({ availableCapacity });
 	} catch (error) {
 		console.error('Fel vid kapacitetskontroll:', error);
-		return json({ error: 'Kunde inte hämta kapacitet', availableCapacity: 0 });
+		return json(
+			{
+				error: 'Kunde inte kontrollera kapacitet',
+				availableCapacity: 0
+			},
+			{ status: 500 }
+		);
 	}
 }

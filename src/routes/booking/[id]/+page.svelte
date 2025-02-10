@@ -821,6 +821,8 @@
 
 	// Lägg till bland variablerna
 	let availableSpots = null;
+	let availableCapacity = null;
+	let maxCapacity = null;
 
 	// Lägg till i click-hanteraren för tidsval
 	async function handleTimeSelection(time) {
@@ -899,6 +901,38 @@
 				hasIntervals:
 					data.openHours && getAvailableTimeIntervals(startDate, data.openHours).length > 0
 			});
+		}
+	}
+
+	// funktion för att hämta kapacitet
+	async function checkCapacity() {
+		if (!data.experience?.experience_type === 'guided' || !startDate || !startTime) {
+			return;
+		}
+
+		try {
+			const response = await fetch(
+				`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${startTime}`
+			);
+			const result = await response.json();
+
+			if (result.error) {
+				console.error('Kapacitetsfel:', result.error);
+				availableCapacity = 0;
+			} else {
+				availableCapacity = result.availableCapacity;
+				maxCapacity = result.maxCapacity;
+			}
+		} catch (error) {
+			console.error('Fel vid kapacitetskontroll:', error);
+			availableCapacity = 0;
+		}
+	}
+
+	// lägg till i reaktiva uttryck
+	$: {
+		if (startDate && startTime && data.experience?.experience_type === 'guided') {
+			checkCapacity();
 		}
 	}
 </script>
@@ -1070,6 +1104,19 @@
 								<AlertTitle>Totalt pris</AlertTitle>
 								<AlertDescription>{totalPrice}kr</AlertDescription>
 							</Alert>
+
+							<div class="mb-4">
+								<Alert>
+									<AlertTitle>Tillgängliga platser</AlertTitle>
+									<AlertDescription>
+										{#if availableCapacity === null}
+											Kontrollerar tillgänglighet...
+										{:else}
+											{availableCapacity} av {maxCapacity} platser kvar
+										{/if}
+									</AlertDescription>
+								</Alert>
+							</div>
 
 							<Button
 								class="w-full mt-4"
