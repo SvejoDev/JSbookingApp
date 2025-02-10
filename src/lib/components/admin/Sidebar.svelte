@@ -37,6 +37,11 @@
 
 	const navItems = [
 		{
+			title: 'Manifest',
+			icon: Calendar,
+			href: '/admin/bookings'
+		},
+		{
 			title: 'Bokningar',
 			icon: Calendar,
 			subitems: [
