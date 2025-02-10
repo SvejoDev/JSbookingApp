@@ -166,6 +166,13 @@
 	// beräknar returdatum när nödvändig information finns
 	$: if (startDate && startTime && selectedBookingLength) {
 		calculateReturnDate();
+		console.log('Bokningsdetaljer uppdaterade:', {
+			startDate,
+			startTime,
+			returnDate,
+			returnTime,
+			selectedBookingLength
+		});
 	}
 
 	// Add this near the other reactive statements
@@ -392,8 +399,13 @@
 
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
-		if (!selectedBookingLength || !startTime || !startDate) {
-			console.log('Missing required values:', { selectedBookingLength, startTime, startDate });
+		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
+			console.log('Missing required values:', {
+				selectedBookingLength,
+				startTime,
+				startDate,
+				openHours: data.openHours
+			});
 			return;
 		}
 
@@ -401,11 +413,27 @@
 			const startDateTime = new Date(`${startDate}T${startTime}`);
 			let returnDateTime = new Date(startDateTime);
 
+			// hämta stängningstid från openHours
+			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
+			if (!intervals || intervals.length === 0) {
+				console.error('No available intervals found for return date');
+				return;
+			}
+
+			const closeTime = intervals[0].endTime;
+			if (!closeTime) {
+				console.error('No close time found in intervals');
+				return;
+			}
+
 			// för övernattningar
 			if (selectedBookingLength.includes('övernattning')) {
 				const nights = parseInt(selectedBookingLength);
 				returnDateTime.setDate(returnDateTime.getDate() + nights);
-				returnDateTime.setHours(12, 0, 0); // checkout tid 12:00
+
+				// använd stängningstid
+				const [hours, minutes] = closeTime.split(':').map(Number);
+				returnDateTime.setHours(hours, minutes, 0);
 			}
 			// för bokningar som är i timmar
 			else if (selectedBookingLength.includes('h')) {
@@ -414,13 +442,19 @@
 			}
 			// för hela dagen bokningar
 			else if (selectedBookingLength === 'Hela dagen') {
-				returnDateTime.setHours(17, 0, 0);
+				const [hours, minutes] = closeTime.split(':').map(Number);
+				returnDateTime.setHours(hours, minutes, 0);
 			}
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
 
-			console.log('Return date calculated:', { returnDate, returnTime });
+			console.log('Return date calculated:', {
+				returnDate,
+				returnTime,
+				closeTime,
+				intervals
+			});
 		} catch (error) {
 			console.error('Error calculating return date:', error);
 		}
@@ -810,6 +844,41 @@
 			});
 		}
 	}
+
+	// Lägg till denna variabel bland de andra tillståndsvariablerna
+	let closeTime = null;
+
+	// Uppdatera när openHours ändras
+	$: if (data.experience?.openHours) {
+		const intervals = getAvailableTimeIntervals(startDate, data.experience.openHours);
+		if (intervals.length > 0) {
+			closeTime = intervals[0].endTime;
+		}
+	}
+
+	// Uppdatera returnTime när bokningslängd ändras
+	$: if (selectedBookingLength && startDate) {
+		if (selectedBookingLength.includes('övernattning')) {
+			returnTime = closeTime; // Använd stängningstid för övernattningar
+		} else {
+			// Behåll existerande logik för dagsbokningar
+			const interval = findTimeInterval(startTime, data.experience.openHours);
+			if (interval) {
+				returnTime = interval.endTime;
+			}
+		}
+	}
+
+	$: {
+		if (data) {
+			console.log('Component data:', {
+				openHours: data.openHours,
+				experience: data.experience,
+				hasIntervals:
+					data.openHours && getAvailableTimeIntervals(startDate, data.openHours).length > 0
+			});
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -909,10 +978,31 @@
 							<CardTitle>Din bokning</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div class="space-y-2">
-								<p><strong>Datum:</strong> {startDate}</p>
-								<p><strong>Tid:</strong> {startTime} - {endTime}</p>
-								<p><strong>Plats:</strong> {data.startLocations[0]?.location}</p>
+							<div class="space-y-4">
+								<h2 class="text-xl font-semibold">Din bokning</h2>
+
+								<!-- startdatum och tid -->
+								{#if startDate}
+									<div>
+										<p class="font-medium">Startdatum: {startDate}</p>
+									</div>
+								{/if}
+
+								{#if startTime}
+									<div>
+										<p class="font-medium">Starttid: {startTime}</p>
+									</div>
+								{/if}
+
+								<!-- returdatum och tid -->
+								{#if returnDate && returnTime}
+									<div>
+										<p class="font-medium">Returdatum: {returnDate}</p>
+									</div>
+									<div>
+										<p class="font-medium">Returtid senast: {returnTime}</p>
+									</div>
+								{/if}
 							</div>
 						</CardContent>
 					</Card>
@@ -972,6 +1062,13 @@
 							</Button>
 						</CardContent>
 					</Card>
+
+					{#if returnDate && returnTime}
+						<div class="mt-4">
+							<h3 class="text-lg font-semibold">Returdatum: {returnDate}</h3>
+							<p class="text-gray-600">Returtid senast: {returnTime}</p>
+						</div>
+					{/if}
 
 					{#if showContactSection}
 						<Card id="contact-section-guided">

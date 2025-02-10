@@ -20,13 +20,13 @@ export async function POST({ request }) {
 			experience_id: data.experienceId,
 			experience: data.name,
 			start_date: data.startDate,
-			end_date: data.startDate, // för guidade upplevelser är start och slutdatum samma
+			end_date: data.endDate || data.startDate,
 			start_time: data.startTime,
-			end_time: data.returnTime,
+			end_time: data.is_overnight ? data.closeTime : data.returnTime,
 			booking_type: data.is_overnight ? 'overnight' : 'day',
 			booking_length: data.booking_length.toString(),
 			is_overnight: data.is_overnight.toString(),
-			total_slots: calculateTotalSlots(data.startTime, data.returnTime),
+			total_slots: calculateTotalSlots(data.startTime, data.closeTime),
 			number_of_adults: data.numAdults.toString(),
 			number_of_children: (data.numChildren || 0).toString(),
 			booking_name: data.userName,
@@ -35,7 +35,7 @@ export async function POST({ request }) {
 			customer_comment: data.userComment || '',
 			customer_phone: data.userPhone || '',
 			start_slot: calculateTimeSlot(data.startTime),
-			end_slot: calculateTimeSlot(data.returnTime),
+			end_slot: calculateTimeSlot(data.is_overnight ? data.closeTime : data.returnTime),
 			selectedStartLocation: data.selectedStartLocation.toString(),
 			...Object.fromEntries(
 				Object.entries(data)

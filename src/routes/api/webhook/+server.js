@@ -139,11 +139,15 @@ export async function POST({ request }) {
 						end_time: session.metadata.end_time,
 						booking_type: session.metadata.booking_type,
 						booking_length: parseInt(session.metadata.booking_length) || 0,
-						// lägg till alla addon-värden från metadata
+						// lägg till alla amount_* värden från metadata
 						...Object.fromEntries(
-							Object.entries(session.metadata).filter(([key]) => key.startsWith('amount_'))
+							Object.entries(session.metadata)
+								.filter(([key]) => key.startsWith('amount_'))
+								.map(([key, value]) => [key, parseInt(value) || 0])
 						)
 					};
+
+					console.log('Booking data for availability update:', bookingData);
 					await updateAvailabilityForBooking(client, bookingData);
 				}
 
@@ -165,20 +169,32 @@ async function updateAvailabilityForBooking(client, booking) {
 	const dates = generateDateRange(booking.start_date, booking.end_date);
 	const isMultiDayBooking = booking.booking_type === 'overnight';
 
+	// hämta stängningstid från databasen
+	const {
+		rows: [{ close_time }]
+	} = await client.query('SELECT close_time FROM opening_hours WHERE date = $1', [
+		booking.end_date
+	]);
+
+	if (!close_time) {
+		throw new Error(`Kunde inte hitta stängningstid för datum: ${booking.end_date}`);
+	}
+
+	console.log('Closing time for return date:', close_time);
+
+	// hämta alla addons och deras värden från bokningen
 	const { rows: addons } = await client.query(
 		'SELECT id, name, column_name, availability_table_name FROM addons'
 	);
 
-	const addonAmounts = {};
+	// loopa genom varje addon och kontrollera dess värde
 	for (const addon of addons) {
-		const amount = parseInt(booking[addon.column_name] || '0');
-		addonAmounts[addon.column_name] = amount;
-	}
-
-	for (const addon of addons) {
-		const amount = addonAmounts[addon.column_name];
+		const columnName = addon.column_name;
+		const amount = parseInt(booking[columnName] || '0');
 
 		if (amount > 0) {
+			console.log(`Processing ${addon.name} with amount ${amount}`);
+
 			for (let i = 0; i < dates.length; i++) {
 				const currentDate = dates[i];
 				const isFirstDay = i === 0;
@@ -187,31 +203,26 @@ async function updateAvailabilityForBooking(client, booking) {
 
 				let startIndex, endIndex;
 
-				if (!isMultiDayBooking) {
-					// För endagsbokningar använder vi exakt start- och sluttid
+				if (isFirstDay) {
 					startIndex = timeToIndex(booking.start_time);
+					endIndex = isMultiDayBooking ? 96 : timeToIndex(booking.end_time);
+				} else if (isMiddleDay) {
+					startIndex = 0;
+					endIndex = 96;
+				} else if (isLastDay && isMultiDayBooking) {
+					startIndex = 0;
+					endIndex = timeToIndex(close_time);
+				} else if (isLastDay) {
+					startIndex = 0;
 					endIndex = timeToIndex(booking.end_time);
-				} else {
-					// För övernattningsbokningar behåller vi den ursprungliga logiken
-					if (isFirstDay) {
-						startIndex = timeToIndex(booking.start_time);
-						endIndex = 96; // 24:00
-					} else if (isMiddleDay) {
-						startIndex = 0;
-						endIndex = 96;
-					} else if (isLastDay) {
-						startIndex = 0;
-						endIndex = timeToIndex(booking.end_time);
-					}
 				}
 
-				console.log(`Uppdaterar ${addon.name}:`, {
-					date: currentDate,
+				console.log(`Updating ${addon.name} for date ${currentDate}:`, {
+					isFirstDay,
+					isMiddleDay,
+					isLastDay,
 					startIndex,
-					endIndex,
-					amount: amount,
-					isMultiDayBooking,
-					bookingType: booking.booking_type
+					endIndex
 				});
 
 				// uppdatera varje tidslucka
