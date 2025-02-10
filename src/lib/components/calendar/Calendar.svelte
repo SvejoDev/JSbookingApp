@@ -20,6 +20,7 @@
 	export let selectedDate = null;
 	export let endDate = null;
 	export let disabled = false;
+	export let data = null;
 
 	const dispatch = createEventDispatcher();
 	let currentMonth = new Date(); // Set initial value
@@ -98,7 +99,25 @@
 	}
 
 	export function isDateBlocked(date) {
-		return blockedDates.some((blockedDate) => blockedDate.toDateString() === date.toDateString());
+		// kontrollera vanliga blockerade datum
+		const isNormallyBlocked = blockedDates.some(
+			(blockedDate) => blockedDate.toDateString() === date.toDateString()
+		);
+
+		if (isNormallyBlocked) return true;
+
+		// kontrollera framförhållning
+		const now = new Date();
+		const foresightHours = data?.experience?.booking_foresight_hours || 0;
+		const earliestPossibleTime = new Date(now.getTime() + foresightHours * 60 * 60 * 1000);
+
+		// om datumet är samma som earliestPossibleTime, tillåt bokning från den tiden
+		if (date.toDateString() === earliestPossibleTime.toDateString()) {
+			return false;
+		}
+
+		// blockera datum som är före earliestPossibleTime
+		return date < earliestPossibleTime;
 	}
 
 	// Generate key for forcing re-render
