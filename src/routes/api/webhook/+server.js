@@ -30,105 +30,86 @@ export async function POST({ request }) {
 		try {
 			await transaction(async (client) => {
 				// hämta alla addons från databasen för dynamisk hantering
-				const { rows: addons } = await client.query(
-					'SELECT id, name, column_name, availability_table_name FROM addons'
-				);
+				const { rows: addons } = await query('SELECT column_name FROM addons');
 
-				// hämta öppettider för korrekt hantering av tidsperioder
-				const {
-					rows: [openHours]
-				} = await client.query(
-					'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
-					[session.metadata.experience_id]
-				);
-
-				// skapa dynamiska kolumner och värden för INSERT-frågan
-				const baseColumns = [
-					'stripe_session_id',
-					'customer_email',
-					'amount_total',
-					'status',
-					'experience_id',
-					'experience',
-					'startlocation',
-					'start_date',
-					'start_time',
-					'end_date',
-					'end_time',
-					'start_slot',
-					'end_slot',
-					'booking_type',
-					'total_slots',
-					'number_of_adults',
-					'number_of_children',
-					'booking_name',
-					'booking_lastname',
-					'customer_comment'
-				];
-
-				const addonColumns = addons.map((addon) => addon.column_name);
-				const allColumns = [...baseColumns, ...addonColumns, 'date_time_created'];
-
-				const baseValues = [
-					session.id,
-					session.metadata.customer_email,
-					Math.round(session.amount_total / 100),
-					'betald',
-					session.metadata.experience_id,
-					session.metadata.experience,
-					session.metadata.startLocation,
-					session.metadata.start_date,
-					session.metadata.start_time,
-					session.metadata.end_date,
-					session.metadata.end_time,
-					parseInt(session.metadata.start_slot || '0'),
-					parseInt(session.metadata.end_slot || '0'),
-					session.metadata.is_overnight === 'true' ? 'overnight' : 'custom',
-					parseInt(session.metadata.total_slots || '0'),
-					parseInt(session.metadata.number_of_adults || '0'),
-					parseInt(session.metadata.number_of_children || '0'),
-					session.metadata.booking_name || '',
-					session.metadata.booking_lastname || '',
-					session.metadata.customer_comment || ''
-				];
-
-				const addonValues = addons.map((addon) => {
-					const rawValue = session.metadata[addon.column_name];
-					const value = rawValue ? parseInt(rawValue) : 0;
-					console.log(
-						`Processing addon ${addon.name}: column=${addon.column_name}, raw=${rawValue}, parsed=${value}`
-					);
-					return isNaN(value) ? 0 : value;
-				});
-
-				const placeholders = Array(allColumns.length - 1)
-					.fill(0)
-					.map((_, i) => `$${i + 1}`)
-					.concat('NOW()');
-
-				const insertQuery = `
-                    INSERT INTO bookings (${allColumns.filter((col) => col !== 'id').join(', ')})
-                    VALUES (${placeholders.join(', ')})
-                    RETURNING *
-                `;
-
+				// skapa bokningen i databasen
 				const {
 					rows: [booking]
-				} = await client.query(insertQuery, [...baseValues, ...addonValues]);
+				} = await client.query(
+					`
+					INSERT INTO bookings (
+						experience_id,
+						experience,
+						start_date,
+						end_date,
+						start_time,
+						end_time,
+						number_of_adults,
+						number_of_children,
+						booking_name,
+						booking_lastname,
+						customer_email,
+						customer_phone,
+						customer_comment,
+						amount_total,
+						stripe_session_id,
+						status,
+						booking_type
+					)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+					RETURNING *
+					`,
+					[
+						session.metadata.experience_id,
+						session.metadata.experience,
+						session.metadata.start_date,
+						session.metadata.end_date,
+						session.metadata.start_time,
+						session.metadata.end_time,
+						parseInt(session.metadata.number_of_adults),
+						parseInt(session.metadata.number_of_children),
+						session.metadata.booking_name,
+						session.metadata.booking_lastname,
+						session.metadata.customer_email,
+						session.metadata.customer_phone,
+						session.metadata.customer_comment,
+						Math.round(session.amount_total / 100),
+						session.id,
+						'betald',
+						'guided'
+					]
+				);
+
+				// Kontrollera att det fortfarande finns tillgängliga platser
+				const {
+					rows: [capacity]
+				} = await client.query(
+					`SELECT gec.max_participants, COALESCE(SUM(b.number_of_adults), 0) as current_bookings
+					 FROM guided_experience_capacity gec
+					 LEFT JOIN bookings b ON b.experience_id = gec.experience_id 
+					 AND b.start_date = $1 
+					 AND b.start_time = $2
+					 AND b.status != 'cancelled'
+					 WHERE gec.experience_id = $3
+					 GROUP BY gec.max_participants`,
+					[session.metadata.start_date, session.metadata.start_time, session.metadata.experience_id]
+				);
+
+				if (
+					!capacity ||
+					capacity.max_participants - capacity.current_bookings <
+						parseInt(session.metadata.number_of_adults)
+				) {
+					throw new Error('Inte tillräckligt med lediga platser');
+				}
 
 				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
 				const bookingData = {
 					start_date: session.metadata.start_date,
-					end_date:
-						session.metadata.booking_length > 0
-							? calculateEndDate(
-									session.metadata.start_date,
-									parseInt(session.metadata.booking_length)
-								)
-							: session.metadata.end_date,
+					end_date: session.metadata.end_date,
 					start_time: session.metadata.start_time,
 					end_time: session.metadata.end_time,
-					booking_type: session.metadata.is_overnight === 'true' ? 'overnight' : 'custom',
+					booking_type: session.metadata.booking_type,
 					booking_length: parseInt(session.metadata.booking_length) || 0,
 					...Object.fromEntries(
 						addons.map((addon) => [

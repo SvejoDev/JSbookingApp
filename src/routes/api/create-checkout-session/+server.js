@@ -19,12 +19,11 @@ export async function POST({ request }) {
 		const metadata = {
 			experience_id: data.experienceId,
 			experience: data.name,
-			startLocation: data.selectedStartLocation,
 			start_date: data.startDate,
-			end_date: data.end_date, // använd end_date direkt från data
+			end_date: data.startDate, // för guidade upplevelser är start och slutdatum samma
 			start_time: data.startTime,
 			end_time: data.returnTime,
-			booking_type: data.is_overnight ? 'overnight' : 'custom',
+			booking_type: 'guided', // sätt explicit till 'guided' för guidade upplevelser
 			booking_length: data.booking_length.toString(),
 			is_overnight: data.is_overnight.toString(),
 			total_slots: data.totalSlots?.toString() || '0',
@@ -34,6 +33,7 @@ export async function POST({ request }) {
 			booking_lastname: data.userLastname,
 			customer_email: data.userEmail,
 			customer_comment: data.userComment || '',
+			customer_phone: data.userPhone || '',
 			...Object.fromEntries(
 				Object.entries(data)
 					.filter(([key]) => key.startsWith('amount_'))
