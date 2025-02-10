@@ -63,7 +63,7 @@
 	<div class={classes}>
 		<span class="date">{date.getDate()}</span>
 		{#if isOpen}
-			<span class="indicator" class:blocked={isBlocked} />
+			<span class="indicator" class:blocked={isBlocked} class:selected={isSelected} />
 		{/if}
 	</div>
 </button>
@@ -167,7 +167,7 @@
 		background-color: rgb(239 68 68 / 0.8);
 	}
 
-	.selected .indicator {
+	.indicator.selected {
 		background-color: white;
 	}
 </style>

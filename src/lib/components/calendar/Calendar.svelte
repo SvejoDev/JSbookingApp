@@ -84,18 +84,36 @@
 	export function isDateOpen(date) {
 		const dateStr = formatDate(date);
 
-		// Check if there are any specific dates
-		if (openingPeriods.specificDates && openingPeriods.specificDates.length > 0) {
-			// If we have specific dates, only those dates are available
-			return openingPeriods.specificDates.some((specificDate) => specificDate.date === dateStr);
+		// spara nuvarande tillstånd
+		let isOpenDate = false;
+
+		// kontrollera specifika datum först
+		if (openingPeriods.specificDates?.length > 0) {
+			isOpenDate = openingPeriods.specificDates.some(
+				(specificDate) => specificDate.date === dateStr
+			);
+			if (isOpenDate) return true;
 		}
 
-		// If no specific dates, check period-based availability
-		return openingPeriods.periods.some((period) => {
-			const start = new Date(period.start_date);
-			const end = new Date(period.end_date);
-			return date >= start && date <= end;
-		});
+		// kontrollera perioder om inget specifikt datum hittades
+		if (!isOpenDate && openingPeriods.periods?.length > 0) {
+			const checkDate = new Date(date);
+			checkDate.setHours(12, 0, 0, 0);
+
+			isOpenDate = openingPeriods.periods.some((period) => {
+				const start = new Date(period.start_date);
+				const end = new Date(period.end_date);
+
+				// normalisera tiden för jämförelse
+				start.setHours(12, 0, 0, 0);
+				end.setHours(12, 0, 0, 0);
+
+				return checkDate >= start && checkDate <= end;
+			});
+		}
+
+		// behåll den gröna pricken även om datumet är valt
+		return isOpenDate;
 	}
 
 	export function isDateBlocked(date) {
