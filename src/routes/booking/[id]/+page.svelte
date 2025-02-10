@@ -47,6 +47,7 @@
 	let settingsLocked = false;
 	let hasCheckedTimes = false;
 	let showContactSection = false;
+	let showContactSectionGuided = false;
 
 	// deltagarvariabler
 	let numAdults = 0;
@@ -798,6 +799,17 @@
 			console.error('Fel vid tidval:', error);
 		}
 	}
+
+	// Lägg till denna funktion för guidade upplevelser
+	function handleNextStepGuided() {
+		if (numAdults > 0) {
+			showContactSection = true;
+			// vänta på att DOM:en uppdateras och scrolla sedan till kontaktsektionen
+			tick().then(() => {
+				scrollToElement('contact-section-guided');
+			});
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -951,7 +963,11 @@
 								<AlertDescription>{totalPrice}kr</AlertDescription>
 							</Alert>
 
-							<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+							<Button
+								class="w-full mt-4"
+								disabled={numAdults === 0}
+								on:click={handleNextStepGuided}
+							>
 								{#if numAdults === 0}
 									Välj antal deltagare
 								{:else}
@@ -960,6 +976,57 @@
 							</Button>
 						</CardContent>
 					</Card>
+
+					{#if showContactSection}
+						<Card id="contact-section-guided">
+							<CardHeader>
+								<CardTitle>Kontaktuppgifter</CardTitle>
+							</CardHeader>
+							<CardContent class="space-y-4">
+								<div class="grid gap-4 sm:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="firstName">Förnamn</Label>
+										<Input type="text" id="firstName" bind:value={userName} required />
+									</div>
+									<div class="space-y-2">
+										<Label for="lastName">Efternamn</Label>
+										<Input type="text" id="lastName" bind:value={userLastname} required />
+									</div>
+								</div>
+
+								<div class="space-y-2">
+									<Label for="phone">Telefonnummer</Label>
+									<Input
+										type="tel"
+										id="phone"
+										bind:value={userPhone}
+										pattern="^\+?[1-9]\d{14}$"
+										required
+									/>
+								</div>
+
+								<div class="space-y-2">
+									<Label for="email">E-postadress</Label>
+									<Input type="email" id="email" bind:value={userEmail} required />
+								</div>
+
+								<div class="space-y-2">
+									<Label for="comment">Kommentar (valfri)</Label>
+									<Textarea id="comment" bind:value={userComment} />
+								</div>
+
+								<div class="flex items-center space-x-2">
+									<Checkbox bind:checked={acceptTerms} id="terms" />
+									<Label for="terms">I accept the booking agreement and the terms of purchase</Label
+									>
+								</div>
+
+								<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
+									Gå till betalning ({totalPrice}kr)
+								</Button>
+							</CardContent>
+						</Card>
+					{/if}
 				{/if}
 			</div>
 		{:else}
