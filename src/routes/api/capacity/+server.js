@@ -3,8 +3,24 @@ import { query } from '$lib/db';
 
 export async function GET({ url }) {
 	const experienceId = url.searchParams.get('experienceId');
+
+	// Hämta experience_type först
+	const {
+		rows: [experience]
+	} = await query('SELECT experience_type FROM experiences WHERE id = $1', [experienceId]);
+
+	// Returnera null om det inte är en guidad upplevelse
+	if (experience?.experience_type !== 'guided') {
+		return json({ availableCapacity: null });
+	}
+
 	const date = url.searchParams.get('date');
 	const time = url.searchParams.get('time');
+	const bookingType = url.searchParams.get('bookingType');
+
+	if (bookingType !== 'guided') {
+		return json({ availableCapacity: null }); // Returnera null för icke-guidade upplevelser
+	}
 
 	console.log('Kapacitetskontroll:', { experienceId, date, time });
 

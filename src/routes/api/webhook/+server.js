@@ -29,8 +29,15 @@ export async function POST({ request }) {
 
 		try {
 			await transaction(async (client) => {
-				if (session.metadata.booking_type === 'guided') {
-					// Kapacitetskontroll först
+				// Hämta experience_type först
+				const {
+					rows: [experience]
+				} = await client.query('SELECT experience_type FROM experiences WHERE id = $1', [
+					session.metadata.experience_id
+				]);
+
+				// Kontrollera kapacitet endast för guidade upplevelser
+				if (experience?.experience_type === 'guided') {
 					const {
 						rows: [capacity]
 					} = await client.query(
@@ -51,6 +58,10 @@ export async function POST({ request }) {
 						]
 					);
 
+					if (!capacity) {
+						throw new Error('Kunde inte hitta kapacitetsinformation för denna guidade upplevelse');
+					}
+
 					const requestedSpots = parseInt(session.metadata.number_of_adults);
 					const availableSpots = capacity.max_participants - capacity.current_bookings;
 
@@ -59,61 +70,58 @@ export async function POST({ request }) {
 							`Inte tillräckligt med lediga platser. Tillgängligt: ${availableSpots}, Efterfrågat: ${requestedSpots}`
 						);
 					}
+				}
 
-					// Skapa bokningen
-					const {
-						rows: [booking]
-					} = await client.query(
-						`
-						INSERT INTO bookings (
-							experience_id,
-							experience,
-							start_date,
-							end_date,
-							start_time,
-							end_time,
-							number_of_adults,
-							number_of_children,
-							booking_name,
-							booking_lastname,
-							customer_email,
-							customer_phone,
-							customer_comment,
-							amount_total,
-							stripe_session_id,
-							status,
-							booking_type
-						)
-						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-						RETURNING *
-						`,
-						[
-							session.metadata.experience_id,
-							session.metadata.experience,
-							session.metadata.start_date,
-							session.metadata.end_date,
-							session.metadata.start_time,
-							session.metadata.end_time,
-							parseInt(session.metadata.number_of_adults),
-							parseInt(session.metadata.number_of_children),
-							session.metadata.booking_name,
-							session.metadata.booking_lastname,
-							session.metadata.customer_email,
-							session.metadata.customer_phone,
-							session.metadata.customer_comment,
-							Math.round(session.amount_total / 100),
-							session.id,
-							'betald',
-							'guided'
-						]
-					);
+				// Skapa bokningen
+				const {
+					rows: [booking]
+				} = await client.query(
+					`
+					INSERT INTO bookings (
+						experience_id,
+						experience,
+						start_date,
+						end_date,
+						start_time,
+						end_time,
+						number_of_adults,
+						number_of_children,
+						booking_name,
+						booking_lastname,
+						customer_email,
+						customer_phone,
+						customer_comment,
+						amount_total,
+						stripe_session_id,
+						status,
+						booking_type
+					)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+					RETURNING *
+					`,
+					[
+						session.metadata.experience_id,
+						session.metadata.experience,
+						session.metadata.start_date,
+						session.metadata.end_date,
+						session.metadata.start_time,
+						session.metadata.end_time,
+						parseInt(session.metadata.number_of_adults),
+						parseInt(session.metadata.number_of_children),
+						session.metadata.booking_name,
+						session.metadata.booking_lastname,
+						session.metadata.customer_email,
+						session.metadata.customer_phone,
+						session.metadata.customer_comment,
+						Math.round(session.amount_total / 100),
+						session.id,
+						'betald',
+						'guided'
+					]
+				);
 
-					// För guidade upplevelser, hoppa över addons-hantering
-					if (session.metadata.booking_type === 'guided') {
-						return booking;
-					}
-
-					// Resten av koden för icke-guidade upplevelser
+				// Hantera addons endast för icke-guidade upplevelser
+				if (session.metadata.booking_type !== 'guided') {
 					const bookingData = {
 						start_date: session.metadata.start_date,
 						end_date: session.metadata.end_date,
@@ -122,10 +130,10 @@ export async function POST({ request }) {
 						booking_type: session.metadata.booking_type,
 						booking_length: parseInt(session.metadata.booking_length) || 0
 					};
-
 					await updateAvailabilityForBooking(client, bookingData);
-					return booking;
 				}
+
+				return booking;
 			});
 
 			console.log('✅ Booking Complete');
