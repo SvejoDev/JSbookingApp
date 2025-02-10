@@ -179,8 +179,9 @@ function generateTimeSlots(openTime, closeTime, durationHours = 0) {
 	// För övernattningsbokningar eller hela dagen, använd bara starttider fram till 13:00
 	const lastPossibleStart = new Date(endTime);
 	if (durationHours === 0) {
-		// Övernattningsbokning
-		lastPossibleStart.setHours(13, 0, 0);
+		// Övernattningsbokning - använd stängningstiden som sista möjliga starttid
+		const [closeHour, closeMinute] = closeTime.split(':').map(Number);
+		lastPossibleStart.setHours(closeHour, closeMinute, 0);
 	} else {
 		lastPossibleStart.setHours(lastPossibleStart.getHours() - Math.floor(durationHours));
 		lastPossibleStart.setMinutes(lastPossibleStart.getMinutes() - (durationHours % 1) * 60);

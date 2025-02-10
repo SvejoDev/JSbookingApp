@@ -249,60 +249,81 @@ function formatMinutes(minutes) {
 }
 
 async function createBooking(client, metadata, sessionData) {
+	// hämta alla addons för att bygga dynamiska kolumner
+	const { rows: addons } = await client.query('SELECT column_name FROM addons');
+
+	// skapa bas-kolumner
+	const baseColumns = [
+		'experience_id',
+		'experience',
+		'start_date',
+		'end_date',
+		'start_time',
+		'end_time',
+		'number_of_adults',
+		'number_of_children',
+		'booking_name',
+		'booking_lastname',
+		'customer_email',
+		'customer_phone',
+		'customer_comment',
+		'amount_total',
+		'stripe_session_id',
+		'status',
+		'booking_type',
+		'startlocation',
+		'start_slot',
+		'end_slot',
+		'total_slots'
+	];
+
+	// lägg till addon-kolumner dynamiskt
+	const addonColumns = addons.map((addon) => addon.column_name);
+	const allColumns = [...baseColumns, ...addonColumns];
+
+	// skapa placeholder string för värden ($1, $2, etc)
+	const placeholders = allColumns.map((_, index) => `$${index + 1}`).join(', ');
+
+	// skapa bas-värden array
+	const baseValues = [
+		metadata.experience_id,
+		metadata.experience,
+		metadata.start_date,
+		metadata.end_date,
+		metadata.start_time,
+		metadata.end_time,
+		parseInt(metadata.number_of_adults),
+		parseInt(metadata.number_of_children),
+		metadata.booking_name,
+		metadata.booking_lastname,
+		metadata.customer_email,
+		metadata.customer_phone,
+		metadata.customer_comment,
+		Math.round(sessionData.amount_total / 100),
+		sessionData.id,
+		'betald',
+		metadata.booking_type,
+		parseInt(metadata.selectedStartLocation),
+		parseInt(metadata.start_slot),
+		parseInt(metadata.end_slot),
+		parseInt(metadata.total_slots)
+	];
+
+	// lägg till addon-värden dynamiskt
+	const addonValues = addonColumns.map((column) => parseInt(metadata[column]) || 0);
+	const allValues = [...baseValues, ...addonValues];
+
 	const {
 		rows: [booking]
 	} = await client.query(
 		`
-		INSERT INTO bookings (
-			experience_id,
-			experience,
-			start_date,
-			end_date,
-			start_time,
-			end_time,
-			number_of_adults,
-			number_of_children,
-			booking_name,
-			booking_lastname,
-			customer_email,
-			customer_phone,
-			customer_comment,
-			amount_total,
-			stripe_session_id,
-			status,
-			booking_type,
-			startlocation,
-			start_slot,
-			end_slot,
-			total_slots
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+		INSERT INTO bookings (${allColumns.join(', ')})
+		VALUES (${placeholders})
 		RETURNING *
 		`,
-		[
-			metadata.experience_id,
-			metadata.experience,
-			metadata.start_date,
-			metadata.end_date,
-			metadata.start_time,
-			metadata.end_time,
-			parseInt(metadata.number_of_adults),
-			parseInt(metadata.number_of_children),
-			metadata.booking_name,
-			metadata.booking_lastname,
-			metadata.customer_email,
-			metadata.customer_phone,
-			metadata.customer_comment,
-			Math.round(sessionData.amount_total / 100),
-			sessionData.id,
-			'betald',
-			metadata.booking_type,
-			parseInt(metadata.selectedStartLocation),
-			parseInt(metadata.start_slot),
-			parseInt(metadata.end_slot),
-			parseInt(metadata.total_slots)
-		]
+		allValues
 	);
+
 	return booking;
 }
 
