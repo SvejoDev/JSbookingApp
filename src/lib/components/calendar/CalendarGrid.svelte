@@ -121,7 +121,12 @@
 
 	function isDateSelected(date) {
 		if (!selectedDate) return false;
-		return formatDate(date) === selectedDate;
+		const dateStr = formatDate(date);
+		const selectedDateObj = new Date(selectedDate);
+		selectedDateObj.setHours(12, 0, 0, 0);
+		const dateObj = new Date(date);
+		dateObj.setHours(12, 0, 0, 0);
+		return dateObj.getTime() === selectedDateObj.getTime();
 	}
 </script>
 

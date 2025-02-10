@@ -965,38 +965,53 @@
 						<Calendar
 							{minDate}
 							{maxDate}
+							{data}
 							openingPeriods={{
 								periods: data.openHours.periods || [],
-								specificDates:
-									data.openHours.specificDates.map((date) => ({
-										...date,
-										date: new Date(date.date).toISOString().split('T')[0]
-									})) || [],
+								specificDates: data.openHours.specificDates || [],
 								defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
 								defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
 							}}
 							{blockedDates}
 							selectedDate={startDate}
+							endDate={returnDate}
+							bookingLength={{
+								length: selectedBookingLength,
+								overnight: selectedBookingLength?.includes('övernattning'),
+								return_day_offset: selectedBookingLength?.includes('övernattning')
+									? parseInt(selectedBookingLength)
+									: 0
+							}}
+							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={async ({ detail }) => {
 								const { date } = detail;
+								// Ensure we're using the correct date by setting hours to noon to avoid timezone issues
 								const selectedDate = new Date(date);
 								selectedDate.setHours(12, 0, 0, 0);
 								const newDateStr = selectedDate.toISOString().split('T')[0];
 
+								console.log('📅 Date Selection:', {
+									rawDate: date,
+									selectedDate: selectedDate,
+									formattedDate: newDateStr,
+									currentDate: startDate,
+									isSameDate: startDate === newDateStr
+								});
+
+								// Only update if we don't have a date yet or if it's a different date
 								if (!startDate || startDate !== newDateStr) {
 									startDate = newDateStr;
+									// Reset time-related states
 									startTime = null;
-									returnDate = null;
 									returnTime = null;
+									returnDate = null;
+									hasGeneratedTimes = false;
+									possibleStartTimes = [];
+									settingsLocked = false;
 
-									// hämta tillgängliga tidsintervall för det valda datumet
-									const intervals = getAvailableTimeIntervals(newDateStr, data.openHours);
-									possibleStartTimes = intervals.map((interval) => interval.startTime);
-
+									// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
 									await tick();
-									if (possibleStartTimes.length > 0) {
-										await scrollToElement('time-selection');
-									}
+									await scrollToElement('equipment-section');
 								}
 							}}
 						/>
@@ -1277,13 +1292,10 @@
 							<Calendar
 								{minDate}
 								{maxDate}
+								{data}
 								openingPeriods={{
 									periods: data.openHours.periods || [],
-									specificDates:
-										data.openHours.specificDates.map((date) => ({
-											...date,
-											date: new Date(date.date).toISOString().split('T')[0]
-										})) || [],
+									specificDates: data.openHours.specificDates || [],
 									defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
 									defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
 								}}
