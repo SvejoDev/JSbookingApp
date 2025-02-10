@@ -1,9 +1,15 @@
 <script>
 	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/admin/Sidebar.svelte';
+	import { browser } from '$app/environment';
 
-	// Check if we're on the login page
+	// kontrollera om vi är på login-sidan
 	$: isLoginPage = $page.url.pathname === '/admin/auth/login';
+
+	// omdirigera till bokningar om vi är på /admin
+	$: if (browser && $page.url.pathname === '/admin' && !isLoginPage) {
+		window.location.href = '/admin/bookings';
+	}
 </script>
 
 <div class="flex h-screen bg-gray-100">
