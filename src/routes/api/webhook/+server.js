@@ -18,8 +18,8 @@ export async function POST({ request }) {
 		console.group('💫 Stripe Webhook Event');
 		console.log('🎫 Event Type:', event.type);
 	} catch (err) {
-		console.error(`webhook fel: ${err.message}`);
-		return json({ error: `webhook fel: ${err.message}` }, { status: 400 });
+		console.error('Webhook Error:', err.message);
+		return new Response(JSON.stringify({ error: err.message }), { status: 400 });
 	}
 
 	if (event.type === 'checkout.session.completed') {
@@ -73,96 +73,24 @@ export async function POST({ request }) {
 				}
 
 				// Skapa bokningen
-				const {
-					rows: [booking]
-				} = await client.query(
-					`
-					INSERT INTO bookings (
-					experience_id,
-					experience,
-					start_date,
-					end_date,
-					start_time,
-					end_time,
-					number_of_adults,
-					number_of_children,
-					booking_name,
-					booking_lastname,
-					customer_email,
-					customer_phone,
-					customer_comment,
-					amount_total,
-					stripe_session_id,
-					status,
-					booking_type,
-					startLocation,
-					amount_canoes,
-					start_slot,
-					end_slot,
-					total_slots
-				)
-					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-					RETURNING *
-					`,
-					[
-						session.metadata.experience_id,
-						session.metadata.experience,
-						session.metadata.start_date,
-						session.metadata.end_date,
-						session.metadata.start_time,
-						session.metadata.end_time,
-						parseInt(session.metadata.number_of_adults),
-						parseInt(session.metadata.number_of_children),
-						session.metadata.booking_name,
-						session.metadata.booking_lastname,
-						session.metadata.customer_email,
-						session.metadata.customer_phone,
-						session.metadata.customer_comment,
-						Math.round(session.amount_total / 100),
-						session.id,
-						'betald',
-						session.metadata.booking_type,
-						parseInt(session.metadata.selectedStartLocation),
-						parseInt(session.metadata.amount_canoes),
-						parseInt(session.metadata.start_slot),
-						parseInt(session.metadata.end_slot),
-						parseInt(session.metadata.total_slots)
-					]
-				);
-
-				// Hantera addons endast för icke-guidade upplevelser
-				if (session.metadata.booking_type !== 'guided') {
-					const bookingData = {
-						start_date: session.metadata.start_date,
-						end_date: session.metadata.end_date,
-						start_time: session.metadata.start_time,
-						end_time: session.metadata.end_time,
-						booking_type: session.metadata.booking_type,
-						booking_length: parseInt(session.metadata.booking_length) || 0,
-						// lägg till alla amount_* värden från metadata
-						...Object.fromEntries(
-							Object.entries(session.metadata)
-								.filter(([key]) => key.startsWith('amount_'))
-								.map(([key, value]) => [key, parseInt(value) || 0])
-						)
-					};
-
-					console.log('Booking data for availability update:', bookingData);
-					await updateAvailabilityForBooking(client, bookingData);
-				}
+				const booking = await createBooking(client, session.metadata, event.data.object);
+				await createBookingAddons(client, booking.id, session.metadata);
+				await updateAvailabilityForBooking(client, session.metadata);
 
 				return booking;
 			});
 
 			console.log('✅ Booking Complete');
-			return json({ received: true, message: 'bokning genomförd' });
+			return new Response(JSON.stringify({ received: true, message: 'bokning genomförd' }), {
+				status: 200
+			});
 		} catch (error) {
 			console.error('fel vid bokning:', error);
-			return json({ error: 'fel vid bokning', details: error.message }, { status: 500 });
+			throw error;
 		}
 	}
 
-	return json({ received: true });
+	return new Response(JSON.stringify({ received: true }));
 }
 
 async function updateAvailabilityForBooking(client, bookingData) {
@@ -318,4 +246,79 @@ function formatMinutes(minutes) {
 	const hours = Math.floor(minutes / 60);
 	const mins = minutes % 60;
 	return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
+async function createBooking(client, metadata, sessionData) {
+	const {
+		rows: [booking]
+	} = await client.query(
+		`
+		INSERT INTO bookings (
+			experience_id,
+			experience,
+			start_date,
+			end_date,
+			start_time,
+			end_time,
+			number_of_adults,
+			number_of_children,
+			booking_name,
+			booking_lastname,
+			customer_email,
+			customer_phone,
+			customer_comment,
+			amount_total,
+			stripe_session_id,
+			status,
+			booking_type,
+			startlocation,
+			start_slot,
+			end_slot,
+			total_slots
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+		RETURNING *
+		`,
+		[
+			metadata.experience_id,
+			metadata.experience,
+			metadata.start_date,
+			metadata.end_date,
+			metadata.start_time,
+			metadata.end_time,
+			parseInt(metadata.number_of_adults),
+			parseInt(metadata.number_of_children),
+			metadata.booking_name,
+			metadata.booking_lastname,
+			metadata.customer_email,
+			metadata.customer_phone,
+			metadata.customer_comment,
+			Math.round(sessionData.amount_total / 100),
+			sessionData.id,
+			'betald',
+			metadata.booking_type,
+			parseInt(metadata.selectedStartLocation),
+			parseInt(metadata.start_slot),
+			parseInt(metadata.end_slot),
+			parseInt(metadata.total_slots)
+		]
+	);
+	return booking;
+}
+
+async function createBookingAddons(client, bookingId, metadata) {
+	// hämta alla addons för denna experience
+	const { rows: addons } = await client.query('SELECT id, column_name FROM addons');
+
+	// skapa booking_addons poster
+	for (const addon of addons) {
+		const amount = parseInt(metadata[addon.column_name]) || 0;
+		if (amount > 0) {
+			await client.query(
+				`INSERT INTO booking_addons (booking_id, addon_id, amount)
+				 VALUES ($1, $2, $3)`,
+				[bookingId, addon.id, amount]
+			);
+		}
+	}
 }
