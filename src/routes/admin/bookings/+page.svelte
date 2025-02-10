@@ -184,7 +184,7 @@
 							{/each}
 						</td>
 						<td class="border p-1">
-							{booking.startlocation}
+							{booking.startlocation_name || '-'}
 						</td>
 						<td class="border p-1 text-xs">
 							Vuxna: {booking.number_of_adults}<br />

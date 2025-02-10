@@ -7,11 +7,13 @@ export async function load({ url }) {
 		`SELECT 
       b.*,
       array_agg(DISTINCT a.name) as addon_names,
-      array_agg(DISTINCT a.column_name) as addon_columns
+      array_agg(DISTINCT a.column_name) as addon_columns,
+      sl.location as startlocation_name
     FROM bookings b
     LEFT JOIN addons a ON true
+    LEFT JOIN start_locations sl ON b.startlocation = sl.id
     WHERE b.start_date <= $1 AND b.end_date >= $1
-    GROUP BY b.id
+    GROUP BY b.id, sl.location
     ORDER BY b.start_time ASC`,
 		[selectedDate]
 	);
