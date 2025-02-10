@@ -43,7 +43,8 @@ export async function load({ params }) {
 			periodOpenDates,
 			specificDates,
 			blockedDates,
-			blockedStartTimes
+			blockedStartTimes,
+			capacity
 		] = await Promise.all([
 			query('SELECT id, location, price FROM start_locations WHERE experience_id = $1', [
 				params.id
@@ -59,6 +60,9 @@ export async function load({ params }) {
 			),
 			query('SELECT blocked_date FROM blocked_dates WHERE experience_id = $1', [params.id]),
 			query('SELECT blocked_date, blocked_time FROM blocked_start_times WHERE experience_id = $1', [
+				params.id
+			]),
+			query('SELECT max_participants FROM guided_experience_capacity WHERE experience_id = $1', [
 				params.id
 			])
 		]);
@@ -84,9 +88,16 @@ export async function load({ params }) {
 		const openHours = {
 			periods: periodOpenDates.rows,
 			specificDates: Object.values(groupedSpecificDates),
-			defaultOpenTimes: specificDates.rows.map(row => row.open_time) || [periodOpenDates.rows[0]?.open_time] || [''],
-			defaultCloseTimes: specificDates.rows.map(row => row.close_time) || [periodOpenDates.rows[0]?.close_time] || ['']
+			defaultOpenTimes: specificDates.rows.map((row) => row.open_time) || [
+					periodOpenDates.rows[0]?.open_time
+				] || [''],
+			defaultCloseTimes: specificDates.rows.map((row) => row.close_time) || [
+					periodOpenDates.rows[0]?.close_time
+				] || ['']
 		};
+
+		// Lägg till i openHours-objektet
+		openHours.maxParticipants = capacity.rows[0]?.max_participants || null;
 
 		// Logga relevant data innan vi returnerar
 		console.log('📅 Öppettider:', {
@@ -118,4 +129,27 @@ export async function load({ params }) {
 		console.error('❌ Fel vid laddning av bokningssida:', error);
 		throw error;
 	}
+}
+
+async function getAvailableCapacity(experienceId, date, startTime) {
+	const [bookedSlot] = await query(
+		`
+		SELECT COALESCE(SUM(number_of_adults + number_of_children), 0) as booked_count
+		FROM bookings 
+		WHERE experience_id = $1 
+		AND start_date = $2 
+		AND start_time = $3
+		AND booking_status != 'cancelled'`,
+		[experienceId, date, startTime]
+	);
+
+	const [maxCapacity] = await query(
+		'SELECT max_participants FROM guided_experience_capacity WHERE experience_id = $1',
+		[experienceId]
+	);
+
+	const totalBooked = parseInt(bookedSlot.rows[0]?.booked_count || 0);
+	const maxAllowed = parseInt(maxCapacity.rows[0]?.max_participants || 0);
+
+	return maxAllowed - totalBooked;
 }

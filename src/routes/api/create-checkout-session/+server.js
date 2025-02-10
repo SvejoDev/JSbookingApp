@@ -19,21 +19,24 @@ export async function POST({ request }) {
 		const metadata = {
 			experience_id: data.experienceId,
 			experience: data.name,
-			startLocation: data.selectedStartLocation,
 			start_date: data.startDate,
-			end_date: data.end_date, // använd end_date direkt från data
+			end_date: data.endDate || data.startDate,
 			start_time: data.startTime,
-			end_time: data.returnTime,
-			booking_type: data.is_overnight ? 'overnight' : 'custom',
+			end_time: data.is_overnight ? data.closeTime : data.returnTime,
+			booking_type: data.is_overnight ? 'overnight' : 'day',
 			booking_length: data.booking_length.toString(),
 			is_overnight: data.is_overnight.toString(),
-			total_slots: data.totalSlots?.toString() || '0',
+			total_slots: calculateTotalSlots(data.startTime, data.closeTime),
 			number_of_adults: data.numAdults.toString(),
 			number_of_children: (data.numChildren || 0).toString(),
 			booking_name: data.userName,
 			booking_lastname: data.userLastname,
 			customer_email: data.userEmail,
 			customer_comment: data.userComment || '',
+			customer_phone: data.userPhone || '',
+			start_slot: calculateTimeSlot(data.startTime),
+			end_slot: calculateTimeSlot(data.is_overnight ? data.closeTime : data.returnTime),
+			selectedStartLocation: data.selectedStartLocation.toString(),
 			...Object.fromEntries(
 				Object.entries(data)
 					.filter(([key]) => key.startsWith('amount_'))
@@ -75,7 +78,7 @@ export async function POST({ request }) {
 						...addonMetadata
 					}
 				});
-				return json({ sessionId: session.id });
+				return json({ url: session.url });
 			} catch (error) {
 				if (attempt === 3 || error.type !== 'StripeConnectionError') {
 					throw error;
@@ -96,4 +99,15 @@ function calculateEndDate(startDate, nights) {
 	const date = new Date(startDate);
 	date.setDate(date.getDate() + nights);
 	return date.toISOString().split('T')[0];
+}
+
+function calculateTimeSlot(time) {
+	const [hours, minutes] = time.split(':').map(Number);
+	return (hours * 60 + minutes) / 15;
+}
+
+function calculateTotalSlots(startTime, endTime) {
+	const startSlot = calculateTimeSlot(startTime);
+	const endSlot = calculateTimeSlot(endTime);
+	return endSlot - startSlot;
 }
