@@ -1031,12 +1031,10 @@
 					<!-- Booking Summary -->
 					<Card class="mt-4" id="booking-summary">
 						<CardHeader>
-							<CardTitle>Din bokning</CardTitle>
+							<CardTitle class="text-2xl font-semibold">Din bokning</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<div class="space-y-4">
-								<h2 class="text-xl font-semibold">Din bokning</h2>
-
 								<!-- startdatum och tid -->
 								{#if startDate}
 									<div>
@@ -1131,13 +1129,6 @@
 							</Button>
 						</CardContent>
 					</Card>
-
-					{#if returnDate && returnTime}
-						<div class="mt-4">
-							<h3 class="text-lg font-semibold">Returdatum: {returnDate}</h3>
-							<p class="text-gray-600">Returtid senast: {returnTime}</p>
-						</div>
-					{/if}
 
 					{#if showContactSection}
 						<Card id="contact-section-guided">
