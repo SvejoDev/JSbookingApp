@@ -78,7 +78,7 @@ export async function POST({ request }) {
 						...addonMetadata
 					}
 				});
-				return json({ sessionId: session.id });
+				return json({ url: session.url });
 			} catch (error) {
 				if (attempt === 3 || error.type !== 'StripeConnectionError') {
 					throw error;

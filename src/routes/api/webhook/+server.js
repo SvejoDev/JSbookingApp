@@ -165,99 +165,96 @@ export async function POST({ request }) {
 	return json({ received: true });
 }
 
-async function updateAvailabilityForBooking(client, booking) {
-	const dates = generateDateRange(booking.start_date, booking.end_date);
-	const isMultiDayBooking = booking.booking_type === 'overnight';
+async function updateAvailabilityForBooking(client, bookingData) {
+	try {
+		const { rows: addons } = await client.query(
+			'SELECT name, availability_table_name, column_name FROM addons WHERE column_name = ANY($1)',
+			[Object.keys(bookingData).filter((key) => key.startsWith('amount_'))]
+		);
 
-	// hämta stängningstid från databasen
-	const {
-		rows: [{ close_time }]
-	} = await client.query('SELECT close_time FROM opening_hours WHERE date = $1', [
-		booking.end_date
-	]);
+		for (const addon of addons) {
+			const amount = bookingData[addon.column_name] || 0;
+			if (amount > 0) {
+				const startDate = new Date(bookingData.start_date);
+				const endDate = new Date(bookingData.end_date);
+				const isOvernight = bookingData.booking_type === 'overnight';
 
-	if (!close_time) {
-		throw new Error(`Kunde inte hitta stängningstid för datum: ${booking.end_date}`);
-	}
+				for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+					const dateStr = date.toISOString().split('T')[0];
+					const isFirstDay = date.getTime() === startDate.getTime();
+					const isLastDay = date.getTime() === endDate.getTime();
+					const isMiddleDay = !isFirstDay && !isLastDay;
 
-	console.log('Closing time for return date:', close_time);
+					// Skapa rad om den inte finns
+					const { rows } = await client.query(
+						`SELECT date FROM ${addon.availability_table_name} WHERE date = $1`,
+						[dateStr]
+					);
 
-	// hämta alla addons och deras värden från bokningen
-	const { rows: addons } = await client.query(
-		'SELECT id, name, column_name, availability_table_name FROM addons'
-	);
+					if (rows.length === 0) {
+						await client.query(`INSERT INTO ${addon.availability_table_name} (date) VALUES ($1)`, [
+							dateStr
+						]);
+					}
 
-	// loopa genom varje addon och kontrollera dess värde
-	for (const addon of addons) {
-		const columnName = addon.column_name;
-		const amount = parseInt(booking[columnName] || '0');
+					let startMinutes, endMinutes;
 
-		if (amount > 0) {
-			console.log(`Processing ${addon.name} with amount ${amount}`);
+					if (isFirstDay && isOvernight) {
+						startMinutes = timeToMinutes(bookingData.start_time);
+						endMinutes = 1440;
+						console.log(`\n=== Första dagen (${dateStr}) ===`);
+						console.log(`Blockerar från ${formatMinutes(startMinutes)} till 00:00`);
+					} else if (isMiddleDay && isOvernight) {
+						startMinutes = 0;
+						endMinutes = 1440;
+						console.log(`\n=== Mellandag (${dateStr}) ===`);
+						console.log(`Blockerar hela dagen (00:00-00:00)`);
+					} else if (isLastDay && isOvernight) {
+						startMinutes = 0;
+						endMinutes = timeToMinutes(bookingData.end_time);
+						console.log(`\n=== Sista dagen (${dateStr}) ===`);
+						console.log(`Blockerar från 00:00 till ${formatMinutes(endMinutes)}`);
+					}
 
-			for (let i = 0; i < dates.length; i++) {
-				const currentDate = dates[i];
-				const isFirstDay = i === 0;
-				const isLastDay = i === dates.length - 1;
-				const isMiddleDay = !isFirstDay && !isLastDay;
+					console.log('Debug:', {
+						date: dateStr,
+						isFirstDay,
+						isMiddleDay,
+						isLastDay,
+						isOvernight,
+						startMinutes,
+						endMinutes,
+						startTime: formatMinutes(startMinutes),
+						endTime: formatMinutes(endMinutes)
+					});
 
-				let startIndex, endIndex;
+					const slots = [];
+					for (let minutes = startMinutes; minutes <= endMinutes; minutes += 15) {
+						const slotMinutes = Math.floor(minutes / 15) * 15;
+						slots.push(`"${slotMinutes}" = COALESCE("${slotMinutes}", 0) - ${amount}`);
+					}
 
-				if (isFirstDay) {
-					startIndex = timeToIndex(booking.start_time);
-					endIndex = isMultiDayBooking ? 96 : timeToIndex(booking.end_time);
-				} else if (isMiddleDay) {
-					startIndex = 0;
-					endIndex = 96;
-				} else if (isLastDay && isMultiDayBooking) {
-					startIndex = 0;
-					endIndex = timeToIndex(close_time);
-				} else if (isLastDay) {
-					startIndex = 0;
-					endIndex = timeToIndex(booking.end_time);
-				}
-
-				console.log(`Updating ${addon.name} for date ${currentDate}:`, {
-					isFirstDay,
-					isMiddleDay,
-					isLastDay,
-					startIndex,
-					endIndex
-				});
-
-				// uppdatera varje tidslucka
-				for (let slot = startIndex; slot <= endIndex; slot++) {
-					const minutes = (slot * 15).toString();
-					const updateQuery = `
-						INSERT INTO ${addon.availability_table_name} (date, "${minutes}")
-						VALUES ($1, $2)
-						ON CONFLICT (date) DO UPDATE
-						SET "${minutes}" = COALESCE(${addon.availability_table_name}."${minutes}", 0) - $3;
-					`;
-
-					await client.query(updateQuery, [currentDate, -amount, amount]);
+					if (slots.length > 0) {
+						await client.query(
+							`UPDATE ${addon.availability_table_name}
+							 SET ${slots.join(', ')}
+							 WHERE date = $1`,
+							[dateStr]
+						);
+					}
 				}
 			}
 		}
+	} catch (error) {
+		console.error('Fel vid uppdatering av tillgänglighet:', error);
+		throw error;
 	}
+}
 
-	// uppdatera bokningen med slot-information
-	await client.query(
-		`
-		UPDATE bookings 
-		SET 
-			start_slot = $1,
-			end_slot = $2,
-			total_slots = $3
-		WHERE stripe_session_id = $4
-	`,
-		[
-			timeToIndex(booking.start_time),
-			timeToIndex(booking.end_time),
-			calculateTotalSlots(booking.start_time, booking.end_time),
-			booking.stripe_session_id
-		]
-	);
+// Hjälpfunktion för att konvertera tid till minuter
+function timeToMinutes(timeStr) {
+	const [hours, minutes] = timeStr.split(':').map(Number);
+	return hours * 60 + minutes;
 }
 
 function calculateTimeSlot(time) {
@@ -304,4 +301,11 @@ function calculateEndDate(startDate, nights) {
 	const date = new Date(startDate);
 	date.setDate(date.getDate() + nights);
 	return date.toISOString().split('T')[0];
+}
+
+// Hjälpfunktion för att formatera minuter till tid
+function formatMinutes(minutes) {
+	const hours = Math.floor(minutes / 60);
+	const mins = minutes % 60;
+	return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
