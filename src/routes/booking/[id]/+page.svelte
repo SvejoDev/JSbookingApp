@@ -925,10 +925,8 @@
 						<CardContent class="space-y-4">
 							<div class="space-y-2">
 								<Label for="adults">
-									Antal personer
-									{#if availableSpots !== null}
-										({availableSpots} {availableSpots === 1 ? 'plats' : 'platser'} kvar)
-									{/if}
+									Antal personer ({availableSpots}
+									{availableSpots === 1 ? 'plats' : 'platser'} kvar)
 								</Label>
 								<div class="flex items-center space-x-2">
 									<Button
@@ -947,10 +945,8 @@
 										class="px-3"
 										disabled={numAdults >= availableSpots}
 										on:click={() => {
-											if (availableSpots !== null) {
-												numAdults = Math.min(availableSpots, numAdults + 1);
-												updatePrice();
-											}
+											numAdults = Math.min(availableSpots, numAdults + 1);
+											updatePrice();
 										}}
 									>
 										+

@@ -29,111 +29,103 @@ export async function POST({ request }) {
 
 		try {
 			await transaction(async (client) => {
-				// hämta alla addons från databasen för dynamisk hantering
-				const { rows: addons } = await query('SELECT column_name FROM addons');
+				if (session.metadata.booking_type === 'guided') {
+					// Kapacitetskontroll först
+					const {
+						rows: [capacity]
+					} = await client.query(
+						`SELECT 
+							gec.max_participants, 
+							COALESCE(SUM(b.number_of_adults), 0) as current_bookings
+						 FROM guided_experience_capacity gec
+						 LEFT JOIN bookings b ON b.experience_id = gec.experience_id 
+						 AND b.start_date = $1 
+						 AND b.start_time = $2
+						 AND b.status != 'cancelled'
+						 WHERE gec.experience_id = $3
+						 GROUP BY gec.max_participants`,
+						[
+							session.metadata.start_date,
+							session.metadata.start_time,
+							session.metadata.experience_id
+						]
+					);
 
-				// skapa bokningen i databasen
-				const {
-					rows: [booking]
-				} = await client.query(
-					`
-					INSERT INTO bookings (
-						experience_id,
-						experience,
-						start_date,
-						end_date,
-						start_time,
-						end_time,
-						number_of_adults,
-						number_of_children,
-						booking_name,
-						booking_lastname,
-						customer_email,
-						customer_phone,
-						customer_comment,
-						amount_total,
-						stripe_session_id,
-						status,
-						booking_type
-					)
-					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-					RETURNING *
-					`,
-					[
-						session.metadata.experience_id,
-						session.metadata.experience,
-						session.metadata.start_date,
-						session.metadata.end_date,
-						session.metadata.start_time,
-						session.metadata.end_time,
-						parseInt(session.metadata.number_of_adults),
-						parseInt(session.metadata.number_of_children),
-						session.metadata.booking_name,
-						session.metadata.booking_lastname,
-						session.metadata.customer_email,
-						session.metadata.customer_phone,
-						session.metadata.customer_comment,
-						Math.round(session.amount_total / 100),
-						session.id,
-						'betald',
-						'guided'
-					]
-				);
+					const requestedSpots = parseInt(session.metadata.number_of_adults);
+					const availableSpots = capacity.max_participants - capacity.current_bookings;
 
-				// Kontrollera att det fortfarande finns tillgängliga platser
-				const {
-					rows: [capacity]
-				} = await client.query(
-					`SELECT gec.max_participants, COALESCE(SUM(b.number_of_adults), 0) as current_bookings
-					 FROM guided_experience_capacity gec
-					 LEFT JOIN bookings b ON b.experience_id = gec.experience_id 
-					 AND b.start_date = $1 
-					 AND b.start_time = $2
-					 AND b.status != 'cancelled'
-					 WHERE gec.experience_id = $3
-					 GROUP BY gec.max_participants`,
-					[session.metadata.start_date, session.metadata.start_time, session.metadata.experience_id]
-				);
+					if (availableSpots < requestedSpots) {
+						throw new Error(
+							`Inte tillräckligt med lediga platser. Tillgängligt: ${availableSpots}, Efterfrågat: ${requestedSpots}`
+						);
+					}
 
-				if (
-					!capacity ||
-					capacity.max_participants - capacity.current_bookings <
-						parseInt(session.metadata.number_of_adults)
-				) {
-					throw new Error('Inte tillräckligt med lediga platser');
+					// Skapa bokningen
+					const {
+						rows: [booking]
+					} = await client.query(
+						`
+						INSERT INTO bookings (
+							experience_id,
+							experience,
+							start_date,
+							end_date,
+							start_time,
+							end_time,
+							number_of_adults,
+							number_of_children,
+							booking_name,
+							booking_lastname,
+							customer_email,
+							customer_phone,
+							customer_comment,
+							amount_total,
+							stripe_session_id,
+							status,
+							booking_type
+						)
+						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+						RETURNING *
+						`,
+						[
+							session.metadata.experience_id,
+							session.metadata.experience,
+							session.metadata.start_date,
+							session.metadata.end_date,
+							session.metadata.start_time,
+							session.metadata.end_time,
+							parseInt(session.metadata.number_of_adults),
+							parseInt(session.metadata.number_of_children),
+							session.metadata.booking_name,
+							session.metadata.booking_lastname,
+							session.metadata.customer_email,
+							session.metadata.customer_phone,
+							session.metadata.customer_comment,
+							Math.round(session.amount_total / 100),
+							session.id,
+							'betald',
+							'guided'
+						]
+					);
+
+					// För guidade upplevelser, hoppa över addons-hantering
+					if (session.metadata.booking_type === 'guided') {
+						return booking;
+					}
+
+					// Resten av koden för icke-guidade upplevelser
+					const bookingData = {
+						start_date: session.metadata.start_date,
+						end_date: session.metadata.end_date,
+						start_time: session.metadata.start_time,
+						end_time: session.metadata.end_time,
+						booking_type: session.metadata.booking_type,
+						booking_length: parseInt(session.metadata.booking_length) || 0
+					};
+
+					await updateAvailabilityForBooking(client, bookingData);
+					return booking;
 				}
-
-				// skapa dynamiskt bokningsobjekt för tillgänglighetsuppdatering
-				const bookingData = {
-					start_date: session.metadata.start_date,
-					end_date: session.metadata.end_date,
-					start_time: session.metadata.start_time,
-					end_time: session.metadata.end_time,
-					booking_type: session.metadata.booking_type,
-					booking_length: parseInt(session.metadata.booking_length) || 0,
-					...Object.fromEntries(
-						addons.map((addon) => [
-							addon.column_name,
-							parseInt(session.metadata[addon.column_name] || '0')
-						])
-					)
-				};
-
-				await updateAvailabilityForBooking(client, bookingData);
-
-				console.log('📝 Booking Data:', {
-					sessionId: session.id,
-					experience: session.metadata.experience,
-					startDate: session.metadata.start_date,
-					startTime: session.metadata.start_time,
-					participants: {
-						adults: session.metadata.number_of_adults,
-						children: session.metadata.number_of_children
-					},
-					amount: Math.round(session.amount_total / 100)
-				});
-
-				return booking;
 			});
 
 			console.log('✅ Booking Complete');

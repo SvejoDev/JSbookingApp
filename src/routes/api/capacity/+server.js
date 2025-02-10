@@ -9,6 +9,12 @@ export async function GET({ url }) {
 	console.log('Kapacitetskontroll:', { experienceId, date, time });
 
 	try {
+		console.log('Kapacitetskontroll för:', {
+			upplevelse: experienceId,
+			datum: date,
+			tid: time
+		});
+
 		// Hämta max kapacitet
 		const {
 			rows: [maxCapacity]
@@ -17,7 +23,7 @@ export async function GET({ url }) {
 			[experienceId]
 		);
 
-		// Hämta antal bokade platser
+		// Hämta antal bokade platser för specifikt datum och tid
 		const {
 			rows: [bookedSlot]
 		} = await query(
@@ -30,6 +36,13 @@ export async function GET({ url }) {
 			AND status != 'cancelled'`,
 			[experienceId, date, time]
 		);
+
+		console.log('Kapacitetsresultat:', {
+			maxKapacitet: maxCapacity?.max_participants,
+			bokadePlatser: bookedSlot?.booked_count,
+			datum: date,
+			tid: time
+		});
 
 		const totalBooked = parseInt(bookedSlot?.booked_count || 0);
 		const maxAllowed = parseInt(maxCapacity?.max_participants || 0);
