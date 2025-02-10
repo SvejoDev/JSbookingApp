@@ -199,21 +199,31 @@ async function updateAvailabilityForBooking(client, bookingData) {
 
 					let startMinutes, endMinutes;
 
-					if (isFirstDay && isOvernight) {
+					if (isOvernight) {
+						if (isFirstDay) {
+							startMinutes = timeToMinutes(bookingData.start_time);
+							endMinutes = 1440;
+							console.log(`\n=== Första dagen (${dateStr}) ===`);
+							console.log(`Blockerar från ${formatMinutes(startMinutes)} till 00:00`);
+						} else if (isMiddleDay) {
+							startMinutes = 0;
+							endMinutes = 1440;
+							console.log(`\n=== Mellandag (${dateStr}) ===`);
+							console.log(`Blockerar hela dagen (00:00-00:00)`);
+						} else if (isLastDay) {
+							startMinutes = 0;
+							endMinutes = timeToMinutes(bookingData.end_time);
+							console.log(`\n=== Sista dagen (${dateStr}) ===`);
+							console.log(`Blockerar från 00:00 till ${formatMinutes(endMinutes)}`);
+						}
+					} else {
+						// Dagsbokning eller hela dagen
 						startMinutes = timeToMinutes(bookingData.start_time);
-						endMinutes = 1440;
-						console.log(`\n=== Första dagen (${dateStr}) ===`);
-						console.log(`Blockerar från ${formatMinutes(startMinutes)} till 00:00`);
-					} else if (isMiddleDay && isOvernight) {
-						startMinutes = 0;
-						endMinutes = 1440;
-						console.log(`\n=== Mellandag (${dateStr}) ===`);
-						console.log(`Blockerar hela dagen (00:00-00:00)`);
-					} else if (isLastDay && isOvernight) {
-						startMinutes = 0;
 						endMinutes = timeToMinutes(bookingData.end_time);
-						console.log(`\n=== Sista dagen (${dateStr}) ===`);
-						console.log(`Blockerar från 00:00 till ${formatMinutes(endMinutes)}`);
+						console.log(`\n=== Dagsbokning (${dateStr}) ===`);
+						console.log(
+							`Blockerar från ${formatMinutes(startMinutes)} till ${formatMinutes(endMinutes)}`
+						);
 					}
 
 					console.log('Debug:', {
