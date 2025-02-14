@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { query } from '$lib/db.js';
+import { sendBookingConfirmation } from '$lib/email.js';
 
 export const load = async ({ url }) => {
 	const sessionId = url.searchParams.get('session_id');
@@ -50,14 +51,28 @@ export const load = async ({ url }) => {
 			[booking.id]
 		);
 
+		// skicka bokningsbekräftelse via e-post
+		await sendBookingConfirmation({
+			...booking,
+			adultPrice,
+			adultPriceExclVat,
+			childPrice: 0,
+			totalAdultsExclVat,
+			totalChildren,
+			subtotal,
+			vat,
+			total,
+			addons: bookingAddons
+		});
+
 		return {
 			booking: {
 				...booking,
 				adultPrice,
 				adultPriceExclVat,
-				childPrice: 0, // barn är gratis
+				childPrice: 0,
 				totalAdultsExclVat,
-				totalChildren, // kommer vara 0
+				totalChildren,
 				subtotal,
 				vat,
 				total,
