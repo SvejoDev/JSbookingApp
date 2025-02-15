@@ -8,5 +8,8 @@ export default defineConfig({
 	},
 	ssr: {
 		noExternal: ['lucia', '@lucia-auth/adapter-postgresql']
+	},
+	server: {
+		port: 3001
 	}
 });
