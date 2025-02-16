@@ -10,6 +10,11 @@ export default defineConfig({
 		noExternal: ['lucia', '@lucia-auth/adapter-postgresql']
 	},
 	server: {
-		port: 3001
+		port: 3001,
+		hmr: {
+			protocol: 'ws',
+			host: 'book.stisses.se',
+			clientPort: 443
+		}
 	}
 });
