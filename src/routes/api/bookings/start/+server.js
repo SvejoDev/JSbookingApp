@@ -7,7 +7,7 @@ export async function POST({ request }) {
 	try {
 		await query('BEGIN');
 
-		await query('UPDATE bookings SET status = $1 WHERE id = $2', ['started', bookingId]);
+		await query('UPDATE bookings SET booking_status = $1 WHERE id = $2', ['started', bookingId]);
 
 		await query('COMMIT');
 		return json({ success: true });
