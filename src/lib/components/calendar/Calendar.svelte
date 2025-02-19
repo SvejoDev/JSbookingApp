@@ -29,52 +29,60 @@
 	// Initialize calendar based on experience type and availability
 	$: {
 		if (minDate) {
-			// kontrollera om det är öppna datum och perioder
-			const hasOpenPeriods = openingPeriods.periods?.some((period) => {
-				const endDate = new Date(period.end_date);
-				return endDate >= new Date();
+			console.log('Initializing calendar with:', {
+				periods: openingPeriods.periods,
+				specificDates: openingPeriods.specificDates,
+				minDate
 			});
 
-			if (hasOpenPeriods) {
-				// hitta första tillgängliga datum från perioderna
-				const firstAvailablePeriod = openingPeriods.periods
+			let targetDate = null;
+
+			// kontrollera specifika datum först (högst prioritet)
+			if (openingPeriods.specificDates?.length > 0) {
+				const firstSpecificDate = openingPeriods.specificDates
+					.map((d) => new Date(d.date))
+					.sort((a, b) => a - b)
+					.find((date) => !isDateBlocked(date) && date >= new Date());
+
+				if (firstSpecificDate) {
+					console.log('Found specific date:', firstSpecificDate);
+					targetDate = firstSpecificDate;
+				}
+			}
+
+			// kontrollera perioder om inget specifikt datum hittades
+			if (!targetDate && openingPeriods.periods?.length > 0) {
+				const firstValidPeriod = openingPeriods.periods
 					.sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
-					.find((period) => new Date(period.end_date) >= new Date());
+					.find((period) => {
+						const startDate = new Date(period.start_date);
+						const endDate = new Date(period.end_date);
+						return endDate >= new Date();
+					});
 
-				if (firstAvailablePeriod) {
-					// sätt kalendern till den första tillgängliga månadens start
-					const firstDate = new Date(firstAvailablePeriod.start_date);
-					currentMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-				} else {
-					currentMonth = new Date();
+				if (firstValidPeriod) {
+					console.log('Found valid period:', firstValidPeriod);
+					const periodStart = new Date(firstValidPeriod.start_date);
+					const now = new Date();
+
+					// använd dagens datum om det är inom perioden, annars använd periodens startdatum
+					targetDate = now > periodStart ? now : periodStart;
 				}
+			}
+
+			// om varken specifika datum eller perioder hittades, använd minDate
+			if (!targetDate && minDate) {
+				console.log('Using minDate as fallback:', minDate);
+				targetDate = new Date(minDate);
+			}
+
+			// sätt kalendern till rätt månad
+			if (targetDate) {
+				console.log('Setting calendar to:', targetDate);
+				currentMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
 			} else {
-				// för specifika datum, hitta första tillgängliga datum
-				let targetDate;
-
-				if (openingPeriods.specificDates?.length > 0) {
-					targetDate = openingPeriods.specificDates
-						.map((d) => new Date(d.date))
-						.sort((a, b) => a - b)
-						.find((date) => !isDateBlocked(date) && date >= new Date());
-				}
-
-				if (!targetDate && openingPeriods.periods?.length > 0) {
-					const validPeriod = openingPeriods.periods
-						.sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
-						.find((period) => {
-							const endDate = new Date(period.end_date);
-							return endDate >= new Date();
-						});
-
-					if (validPeriod) {
-						targetDate = new Date(validPeriod.start_date);
-					}
-				}
-
-				if (targetDate) {
-					currentMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-				}
+				console.log('No valid date found, using current date');
+				currentMonth = new Date();
 			}
 		}
 	}
