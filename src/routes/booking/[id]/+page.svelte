@@ -838,7 +838,7 @@
 	}
 
 	// Lägg till bland variablerna
-	let availableSpots = null;
+	let availableSpots = 0;
 	let availableCapacity = null;
 	let maxCapacity = null;
 
@@ -923,10 +923,6 @@
 
 	// funktion för att hämta kapacitet
 	async function checkCapacity() {
-		if (!data.experience?.experience_type === 'guided' || !startDate || !startTime) {
-			return;
-		}
-
 		try {
 			const response = await fetch(
 				`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${startTime}`
@@ -934,21 +930,23 @@
 			const result = await response.json();
 
 			if (result.error) {
-				console.error('Kapacitetsfel:', result.error);
-				availableCapacity = 0;
-			} else {
-				availableCapacity = result.availableCapacity;
-				maxCapacity = result.maxCapacity;
+				throw new Error(result.error);
 			}
+
+			availableCapacity = result.availableCapacity;
+			maxCapacity = result.maxCapacity;
+			availableSpots = availableCapacity;
 		} catch (error) {
-			console.error('Fel vid kapacitetskontroll:', error);
+			console.error('Kapacitetsfel:', error);
 			availableCapacity = 0;
+			maxCapacity = 0;
+			availableSpots = 0;
 		}
 	}
 
 	// lägg till i reaktiva uttryck
 	$: {
-		if (startDate && startTime && data.experience?.experience_type === 'guided') {
+		if (data.experience?.experience_type === 'guided' && startDate && startTime) {
 			checkCapacity();
 		}
 	}
