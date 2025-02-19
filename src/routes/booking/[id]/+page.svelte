@@ -356,42 +356,45 @@
 		settingsLocked = true;
 
 		try {
-			const addonsForRequest = {};
-			Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
-				if (quantity > 0) {
-					addonsForRequest[columnName] = quantity;
+			if (data.experience?.experience_type === 'public') {
+				// För vanliga upplevelser, använd tillgängliga tidsintervall
+				const intervals = getAvailableTimeIntervals(startDate, data.openHours);
+				possibleStartTimes = intervals.map((interval) => interval.startTime);
+				console.log('Generated times for public experience:', possibleStartTimes);
+			} else {
+				// För andra typer, använd API:et
+				const addonsForRequest = {};
+				Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
+					if (quantity > 0) {
+						addonsForRequest[columnName] = quantity;
+					}
+				});
+
+				const response = await fetch('/api/check-availability', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						date: startDate,
+						bookingLength: selectedBookingLength,
+						addons: addonsForRequest,
+						experienceId: data.experience.id
+					})
+				});
+
+				const { availableStartTimes, error } = await response.json();
+
+				if (error) {
+					possibleStartTimes = [];
+					console.error('Error getting available times:', error);
+				} else {
+					possibleStartTimes = availableStartTimes;
 				}
-			});
-
-			const response = await fetch('/api/check-availability', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					date: startDate,
-					bookingLength: selectedBookingLength,
-					addons: addonsForRequest,
-					experienceId: selectedExperienceId
-				})
-			});
-
-			const { availableStartTimes, error } = await response.json();
-
-			if (error) {
-				possibleStartTimes = [];
-				settingsLocked = false;
-				return;
-			}
-
-			possibleStartTimes = availableStartTimes;
-			if (possibleStartTimes.length > 0) {
-				await tick();
-				scrollToBottom();
 			}
 		} catch (error) {
+			console.error('Error generating start times:', error);
 			possibleStartTimes = [];
-			settingsLocked = false;
 		} finally {
 			isLoadingTimes = false;
 		}
@@ -900,7 +903,7 @@
 			returnTime = closeTime; // Använd stängningstid för övernattningar
 		} else {
 			// Behåll existerande logik för dagsbokningar
-			const interval = findTimeInterval(startTime, data.experience.openHours);
+			const interval = findTimeInterval(startTime, data.openHours);
 			if (interval) {
 				returnTime = interval.endTime;
 			}
@@ -1025,25 +1028,22 @@
 							{maxDate}
 							{data}
 							openingPeriods={{
-								periods: data.openHours.periods || [],
-								specificDates: data.openHours.specificDates || [],
-								defaultOpenTimes:
-									data.experience.experience_type === 'guided'
-										? [data.openHours?.guidedHours?.openTime]
-										: data.openHours?.defaultOpenTimes || [],
-								defaultCloseTimes:
-									data.experience.experience_type === 'guided'
-										? [data.openHours?.guidedHours?.closeTime]
-										: data.openHours?.defaultCloseTimes || [],
-								isGuided: data.experience.experience_type === 'guided'
+								periods: data.openHours?.periods || [],
+								specificDates: data.openHours?.specificDates || [],
+								defaultOpenTimes: data.openHours?.defaultOpenTimes || [],
+								defaultCloseTimes: data.openHours?.defaultCloseTimes || [],
+								isGuided: data.experience?.experience_type === 'guided'
 							}}
 							{blockedDates}
 							selectedDate={startDate}
 							endDate={returnDate}
 							bookingLength={{
-								length: 'guided',
-								overnight: false,
-								return_day_offset: 0
+								length:
+									data.experience?.experience_type === 'guided' ? 'guided' : selectedBookingLength,
+								overnight: selectedBookingLength?.includes('övernattning'),
+								return_day_offset: selectedBookingLength?.includes('övernattning')
+									? parseInt(selectedBookingLength)
+									: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={async ({ detail }) => {
@@ -1357,25 +1357,24 @@
 								{maxDate}
 								{data}
 								openingPeriods={{
-									periods: data.openHours.periods || [],
-									specificDates: data.openHours.specificDates || [],
-									defaultOpenTimes:
-										data.experience.experience_type === 'guided'
-											? [data.openHours?.guidedHours?.openTime]
-											: data.openHours?.defaultOpenTimes || [],
-									defaultCloseTimes:
-										data.experience.experience_type === 'guided'
-											? [data.openHours?.guidedHours?.closeTime]
-											: data.openHours?.defaultCloseTimes || [],
-									isGuided: data.experience.experience_type === 'guided'
+									periods: data.openHours?.periods || [],
+									specificDates: data.openHours?.specificDates || [],
+									defaultOpenTimes: data.openHours?.defaultOpenTimes || [],
+									defaultCloseTimes: data.openHours?.defaultCloseTimes || [],
+									isGuided: data.experience?.experience_type === 'guided'
 								}}
 								{blockedDates}
 								selectedDate={startDate}
 								endDate={returnDate}
 								bookingLength={{
-									length: 'guided',
-									overnight: false,
-									return_day_offset: 0
+									length:
+										data.experience?.experience_type === 'guided'
+											? 'guided'
+											: selectedBookingLength,
+									overnight: selectedBookingLength?.includes('övernattning'),
+									return_day_offset: selectedBookingLength?.includes('övernattning')
+										? parseInt(selectedBookingLength)
+										: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={async ({ detail }) => {
