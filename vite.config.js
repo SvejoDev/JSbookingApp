@@ -11,11 +11,13 @@ export default defineConfig({
 	},
 	server: {
 		port: 3001,
-		hmr: {
-			protocol: 'wss',
-			host: 'book.stisses.se',
-			clientPort: 443,
-			path: '/ws'
-		}
+		host: true,
+		strictPort: true,
+		allowedHosts: ['stisses.se', 'localhost']
+	},
+	preview: {
+		port: 3001,
+		host: true,
+		strictPort: true
 	}
 });
