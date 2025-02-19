@@ -13,7 +13,8 @@ export default defineConfig({
 		port: 3001,
 		host: true,
 		strictPort: true,
-		allowedHosts: ['stisses.se', 'localhost']
+		allowedHosts: ['svejo.se', 'stisses.se', 'localhost', 'book.stisses.dev.svejo.se'],
+		hmr: false
 	},
 	preview: {
 		port: 3001,
