@@ -88,13 +88,28 @@ export async function load({ params }) {
 		const openHours = {
 			periods: periodOpenDates.rows,
 			specificDates: Object.values(groupedSpecificDates),
-			defaultOpenTimes: specificDates.rows.map((row) => row.open_time) || [
-					periodOpenDates.rows[0]?.open_time
-				] || [''],
-			defaultCloseTimes: specificDates.rows.map((row) => row.close_time) || [
-					periodOpenDates.rows[0]?.close_time
-				] || ['']
+			defaultOpenTimes: [],
+			defaultCloseTimes: [],
+			isGuided: experience.experience_type === 'guided'
 		};
+
+		// För guidade upplevelser, använd första periodens tider
+		if (experience.experience_type === 'guided') {
+			// Använd specifika datum om det finns, annars använd periodtider
+			if (specificDates.rows.length > 0) {
+				openHours.guidedHours = {
+					openTime: specificDates.rows[0].open_time,
+					closeTime: specificDates.rows[0].close_time
+				};
+			} else if (periodOpenDates.rows.length > 0) {
+				openHours.guidedHours = {
+					openTime: periodOpenDates.rows[0].open_time,
+					closeTime: periodOpenDates.rows[0].close_time
+				};
+			}
+
+			console.log('Guided hours configured:', openHours.guidedHours);
+		}
 
 		// Lägg till i openHours-objektet
 		openHours.maxParticipants = capacity.rows[0]?.max_participants || null;

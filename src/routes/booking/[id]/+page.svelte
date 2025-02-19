@@ -748,10 +748,26 @@
 	}
 
 	function getAvailableTimeIntervals(date, openHours) {
-		// kontrollera att openHours finns
+		console.log('getAvailableTimeIntervals called with:', { date, openHours });
+
 		if (!openHours) {
 			console.warn('openHours är undefined');
 			return [];
+		}
+
+		// specialhantering för guidade upplevelser
+		if (openHours.isGuided && openHours.guidedHours) {
+			console.log('Hanterar guidad upplevelse:', {
+				date,
+				guidedHours: openHours.guidedHours
+			});
+
+			return [
+				{
+					startTime: openHours.guidedHours.openTime,
+					endTime: openHours.guidedHours.closeTime
+				}
+			];
 		}
 
 		// kontrollera att specificDates finns
@@ -783,7 +799,6 @@
 			return intervals;
 		}
 
-		// om varken specificDates eller periods finns
 		console.warn('Inga giltiga öppettider hittades');
 		return [];
 	}
@@ -827,34 +842,33 @@
 	// Lägg till i click-hanteraren för tidsval
 	async function handleTimeSelection(time) {
 		try {
+			if (!data.openHours?.guidedHours) {
+				console.error('Missing guided hours configuration');
+				return;
+			}
+
 			const response = await fetch(
 				`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
 			);
 			const result = await response.json();
 
-			console.log('Kapacitetsresultat:', {
-				maxKapacitet: data.openHours.maxParticipants,
-				valtDatum: startDate,
-				valdTid: time,
-				tillgängligaPlatser: result.availableCapacity,
-				felmeddelande: result.error
+			console.log('Guided booking setup:', {
+				startDate,
+				openTime: data.openHours.guidedHours.openTime,
+				closeTime: data.openHours.guidedHours.closeTime,
+				availableSpots: result.availableCapacity
 			});
 
 			availableSpots = result.availableCapacity;
-			startTime = time;
-			const interval = findTimeInterval(time, data.openHours);
-			if (interval) {
-				endTime = interval.endTime;
-				returnDate = calculateGuidedReturnDate(startDate, startTime, endTime);
-				returnTime = endTime;
+			startTime = data.openHours.guidedHours.openTime;
+			endTime = data.openHours.guidedHours.closeTime;
+			returnDate = startDate;
+			returnTime = endTime;
 
-				// vänta på att DOM:en uppdateras
-				await tick();
-				await new Promise((resolve) => setTimeout(resolve, 100));
-				await scrollToElement('participants-section');
-			}
+			await tick();
+			await scrollToElement('participants-section');
 		} catch (error) {
-			console.error('Fel vid tidval:', error);
+			console.error('Error in guided time selection:', error);
 		}
 	}
 
@@ -935,6 +949,50 @@
 			checkCapacity();
 		}
 	}
+
+	// Add this function after the existing functions
+	function generateGuidedTimes(openTime, closeTime) {
+		try {
+			console.log('Generating guided times:', { openTime, closeTime });
+
+			if (!openTime || !closeTime) {
+				console.error('Missing open or close time');
+				return [];
+			}
+
+			const [openHour, openMinute] = openTime.split(':').map(Number);
+			const [closeHour, closeMinute] = closeTime.split(':').map(Number);
+
+			// Beräkna bokningstid i timmar
+			let hours = closeHour - openHour;
+			if (closeMinute < openMinute) {
+				hours--;
+			}
+
+			console.log('Calculated guided duration:', { hours });
+
+			// Returnera endast starttiden för guidade upplevelser
+			return [openTime];
+		} catch (error) {
+			console.error('Error generating guided times:', error);
+			return [];
+		}
+	}
+
+	// Add this reactive statement
+	$: {
+		if (startDate && data.experience?.experience_type === 'guided') {
+			const guidedHours = data.openHours?.guidedHours;
+			if (guidedHours) {
+				console.log('Generating guided times for date:', startDate);
+				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
+				console.log('Generated guided times:', possibleStartTimes);
+			} else {
+				console.error('Missing guided hours configuration in data.openHours');
+				console.log('Current openHours:', data.openHours);
+			}
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -969,18 +1027,23 @@
 							openingPeriods={{
 								periods: data.openHours.periods || [],
 								specificDates: data.openHours.specificDates || [],
-								defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
-								defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
+								defaultOpenTimes:
+									data.experience.experience_type === 'guided'
+										? [data.openHours?.guidedHours?.openTime]
+										: data.openHours?.defaultOpenTimes || [],
+								defaultCloseTimes:
+									data.experience.experience_type === 'guided'
+										? [data.openHours?.guidedHours?.closeTime]
+										: data.openHours?.defaultCloseTimes || [],
+								isGuided: data.experience.experience_type === 'guided'
 							}}
 							{blockedDates}
 							selectedDate={startDate}
 							endDate={returnDate}
 							bookingLength={{
-								length: selectedBookingLength,
-								overnight: selectedBookingLength?.includes('övernattning'),
-								return_day_offset: selectedBookingLength?.includes('övernattning')
-									? parseInt(selectedBookingLength)
-									: 0
+								length: 'guided',
+								overnight: false,
+								return_day_offset: 0
 							}}
 							disabled={settingsLocked || startTime !== null}
 							on:dateSelect={async ({ detail }) => {
@@ -1296,18 +1359,23 @@
 								openingPeriods={{
 									periods: data.openHours.periods || [],
 									specificDates: data.openHours.specificDates || [],
-									defaultOpenTimes: data.openHours.defaultOpenTimes || [''],
-									defaultCloseTimes: data.openHours.defaultCloseTimes || ['']
+									defaultOpenTimes:
+										data.experience.experience_type === 'guided'
+											? [data.openHours?.guidedHours?.openTime]
+											: data.openHours?.defaultOpenTimes || [],
+									defaultCloseTimes:
+										data.experience.experience_type === 'guided'
+											? [data.openHours?.guidedHours?.closeTime]
+											: data.openHours?.defaultCloseTimes || [],
+									isGuided: data.experience.experience_type === 'guided'
 								}}
 								{blockedDates}
 								selectedDate={startDate}
 								endDate={returnDate}
 								bookingLength={{
-									length: selectedBookingLength,
-									overnight: selectedBookingLength?.includes('övernattning'),
-									return_day_offset: selectedBookingLength?.includes('övernattning')
-										? parseInt(selectedBookingLength)
-										: 0
+									length: 'guided',
+									overnight: false,
+									return_day_offset: 0
 								}}
 								disabled={settingsLocked || startTime !== null}
 								on:dateSelect={async ({ detail }) => {
