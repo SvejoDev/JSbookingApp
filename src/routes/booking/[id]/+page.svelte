@@ -165,48 +165,50 @@
 
 	// hantera guidade upplevelser
 	$: {
-		if (data.experience?.experience_type === 'guided' && data.startLocations?.length > 0) {
-			// Only log errors for invalid values in guided experiences
-			if (!selectedStartLocation || numAdults < 0 || !data.openHours?.guidedHours) {
-				console.error('Guided Experience Error:', {
-					missingStartLocation: !selectedStartLocation,
-					missingOpenHours: !data.openHours?.guidedHours,
-					invalidAdults: numAdults < 0,
-					currentState: {
-						startLocation: selectedStartLocation,
-						openHours: data.openHours?.guidedHours,
-						numAdults
-					}
-				});
-			}
+		if (data.experience?.experience_type === 'guided') {
+			if (data.startLocations?.length > 0) {
+				// Only log errors for invalid values in guided experiences
+				if (!selectedStartLocation || numAdults < 0 || !data.openHours?.guidedHours) {
+					console.error('Guided Experience Error:', {
+						missingStartLocation: !selectedStartLocation,
+						missingOpenHours: !data.openHours?.guidedHours,
+						invalidAdults: numAdults < 0,
+						currentState: {
+							startLocation: selectedStartLocation,
+							openHours: data.openHours?.guidedHours,
+							numAdults
+						}
+					});
+				}
 
-			// sätt bara värden om de inte redan är satta
-			if (!selectedStartLocation) {
-				selectedStartLocation = data.startLocations[0]?.id;
-			}
+				// sätt bara värden om de inte redan är satta
+				if (!selectedStartLocation) {
+					selectedStartLocation = data.startLocations[0]?.id;
+				}
 
-			if (!selectedBookingLength && data.bookingLengths?.length > 0) {
-				const guidedBookingLength = data.bookingLengths.find(
-					(bl) => Number(bl.location_id) === Number(data.startLocations[0]?.id)
-				);
-				selectedBookingLength = guidedBookingLength?.length;
-			}
+				if (!selectedBookingLength && data.bookingLengths?.length > 0) {
+					const guidedBookingLength = data.bookingLengths.find(
+						(bl) => Number(bl.location_id) === Number(data.startLocations[0]?.id)
+					);
+					selectedBookingLength = guidedBookingLength?.length;
+				}
 
-			// uppdatera pris endast om vi har alla nödvändiga värden
-			if (selectedStartLocation && numAdults >= 0) {
-				const location = data.startLocations.find((loc) => loc.id === selectedStartLocation);
-				totalPrice = location ? numAdults * location.price : 0;
-			}
+				// uppdatera pris endast om vi har alla nödvändiga värden
+				if (selectedStartLocation && numAdults >= 0) {
+					const location = data.startLocations.find((loc) => loc.id === selectedStartLocation);
+					totalPrice = location ? numAdults * location.price : 0;
+				}
 
-			// vänta på att DOM:en uppdateras innan scroll
-			if (selectedStartLocation && selectedBookingLength) {
-				tick().then(async () => {
-					await new Promise((resolve) => setTimeout(resolve, 100));
-					await scrollToElement('equipment-section');
-				});
+				// vänta på att DOM:en uppdateras innan scroll
+				if (selectedStartLocation && selectedBookingLength) {
+					tick().then(async () => {
+						await new Promise((resolve) => setTimeout(resolve, 100));
+						await scrollToElement('equipment-section');
+					});
+				}
+			} else {
+				console.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
-		} else {
-			console.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 		}
 	}
 
@@ -925,8 +927,13 @@
 
 	// lägg till i reaktiva uttryck
 	$: {
-		if (data.experience?.experience_type === 'guided' && startDate && startTime) {
-			checkCapacity();
+		if (startDate && data.experience?.experience_type === 'guided') {
+			const guidedHours = data.openHours?.guidedHours;
+			if (!guidedHours) {
+				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
+			} else {
+				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
+			}
 		}
 	}
 
@@ -952,18 +959,6 @@
 		} catch (error) {
 			console.error('Error generating guided times:', error);
 			return [];
-		}
-	}
-
-	// Add this reactive statement
-	$: {
-		if (startDate && data.experience?.experience_type === 'guided') {
-			const guidedHours = data.openHours?.guidedHours;
-			if (guidedHours) {
-				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
-			} else {
-				console.error('Missing guided hours configuration in data.openHours');
-			}
 		}
 	}
 </script>
