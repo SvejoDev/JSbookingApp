@@ -5,10 +5,19 @@ export async function POST({ request }) {
 	try {
 		const { date, bookingLength, addons, experienceId } = await request.json();
 
+		console.log('Inkommande förfrågan:', {
+			date,
+			bookingLength,
+			addons,
+			experienceId
+		});
+
 		// hämta upplevelsens data
 		const {
 			rows: [experience]
 		} = await query('SELECT * FROM experiences WHERE id = $1', [experienceId]);
+
+		console.log('Hämtad upplevelse:', experience);
 
 		// hämta addons data
 		const { rows: addonsList } = await query(
@@ -20,8 +29,13 @@ export async function POST({ request }) {
 			[experienceId]
 		);
 
-		// hantera business_school på samma sätt som public
-		if (experience.experience_type === 'business_school') {
+		console.log('Hämtade addons:', addonsList);
+
+		// hantera både public och business_school på samma sätt
+		if (
+			experience.experience_type === 'public' ||
+			experience.experience_type === 'business_school'
+		) {
 			// parsa bokningslängd
 			const { durationHours, numberOfNights } = parseBookingLength(bookingLength);
 
@@ -70,7 +84,6 @@ export async function POST({ request }) {
 			return json({ availableStartTimes: availableTimes });
 		}
 
-		// fortsätt med existerande logik för andra upplevelser
 		return json({ availableStartTimes: [] });
 	} catch (error) {
 		console.error('Fel vid kontroll av tillgänglighet:', error);
@@ -79,17 +92,24 @@ export async function POST({ request }) {
 }
 
 function parseBookingLength(bookingLength) {
-	if (bookingLength === 'Hela dagen') {
-		return { durationHours: 7, numberOfNights: 0 };
-	}
+	// hantera övernattningar
 	if (bookingLength.includes('övernattning')) {
 		const nights = parseInt(bookingLength) || 1;
 		return { durationHours: 0, numberOfNights: nights };
 	}
+
+	// hantera timmar
 	if (bookingLength.includes('h')) {
 		const hours = parseInt(bookingLength);
 		return { durationHours: hours, numberOfNights: 0 };
 	}
+
+	// hantera hela dagen
+	if (bookingLength === 'Hela dagen') {
+		return { durationHours: 7, numberOfNights: 0 };
+	}
+
+	// standardvärde
 	return { durationHours: 0, numberOfNights: 0 };
 }
 
@@ -120,30 +140,41 @@ async function filterPastTimes(times, bookingDate, experienceId) {
 }
 
 function generateTimeSlots(openTime, closeTime, durationHours = 0) {
+	console.log('Generating time slots:', {
+		openTime,
+		closeTime,
+		durationHours
+	});
+
 	const times = [];
 	let currentTime = new Date(`1970-01-01T${openTime}`);
 	const endTime = new Date(`1970-01-01T${closeTime}`);
 
-	const lastPossibleStart = new Date(endTime);
+	// För övernattningar, använd hela dagen
 	if (durationHours === 0) {
-		const [closeHour, closeMinute] = closeTime.split(':').map(Number);
-		lastPossibleStart.setHours(closeHour, closeMinute, 0);
+		console.log('Overnight booking - using full day slots');
+		while (currentTime <= endTime) {
+			times.push(currentTime.toTimeString().slice(0, 5));
+			currentTime.setMinutes(currentTime.getMinutes() + 30);
+		}
 	} else {
+		// För dagsbokningar, ta hänsyn till bokningslängden
+		const lastPossibleStart = new Date(endTime);
 		lastPossibleStart.setHours(lastPossibleStart.getHours() - Math.floor(durationHours));
 		lastPossibleStart.setMinutes(lastPossibleStart.getMinutes() - (durationHours % 1) * 60);
-	}
-	endTime.setTime(lastPossibleStart.getTime());
 
-	while (currentTime <= endTime) {
-		times.push(currentTime.toTimeString().slice(0, 5));
-		currentTime.setMinutes(currentTime.getMinutes() + 30);
+		while (currentTime <= lastPossibleStart) {
+			times.push(currentTime.toTimeString().slice(0, 5));
+			currentTime.setMinutes(currentTime.getMinutes() + 30);
+		}
 	}
 
+	console.log('Generated time slots:', times);
 	return times;
 }
 
-function timeToMinutes(timeStr) {
-	const [hours, minutes] = timeStr.split(':').map(Number);
+function timeToMinutes(time) {
+	const [hours, minutes] = time.split(':').map(Number);
 	return hours * 60 + minutes;
 }
 
@@ -164,16 +195,31 @@ async function checkAvailability({
 	closeTime,
 	experienceId
 }) {
-	const requestedAddons = addonsList.filter((addon) => addons[addon.column_name] > 0);
+	console.log('checkAvailability params:', {
+		date,
+		durationHours,
+		numberOfNights,
+		addons,
+		addonsList,
+		openTime,
+		closeTime,
+		experienceId
+	});
 
+	// generera möjliga tider
 	const possibleTimes = generateTimeSlots(
 		openTime,
 		closeTime,
 		numberOfNights === 0 ? durationHours : 0
 	);
+	console.log('Genererade tidsslots:', possibleTimes);
+
+	// filtrera tider som är i det förflutna
 	const validStartTimes = await filterPastTimes(possibleTimes, date, experienceId);
+	console.log('Filtrerade tidsslots:', validStartTimes);
 
 	if (validStartTimes.length === 0) {
+		console.log('Inga giltiga starttider hittades');
 		return [];
 	}
 
@@ -181,8 +227,9 @@ async function checkAvailability({
 
 	for (const startTime of validStartTimes) {
 		let allAddonsAvailable = true;
+		console.log(`Kontrollerar tillgänglighet för tid: ${startTime}`);
 
-		for (const addon of requestedAddons) {
+		for (const addon of addonsList) {
 			const isAvailable = await checkAddonAvailability({
 				addonId: addon.id,
 				amount: addons[addon.column_name],
@@ -190,10 +237,11 @@ async function checkAvailability({
 				startDate: date,
 				startTime,
 				numberOfNights,
-				durationHours,
 				openTime,
 				closeTime
 			});
+
+			console.log(`Addon ${addon.name} tillgänglighet:`, isAvailable);
 
 			if (!isAvailable) {
 				allAddonsAvailable = false;
@@ -206,6 +254,7 @@ async function checkAvailability({
 		}
 	}
 
+	console.log('Slutgiltiga tillgängliga tider:', Array.from(availableTimes));
 	return Array.from(availableTimes);
 }
 
@@ -216,11 +265,12 @@ async function checkAddonAvailability({
 	startDate,
 	startTime,
 	numberOfNights,
-	durationHours,
 	openTime,
 	closeTime
 }) {
-	// hämtar information om tillägget
+	if (!amount || amount <= 0) return true;
+
+	// hämta addon-information
 	const {
 		rows: [addon]
 	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
@@ -231,7 +281,11 @@ async function checkAddonAvailability({
 
 	// beräkna antalet dagar inklusive start- och slutdatum
 	const totalDays = numberOfNights + 1;
-	const dates = Array.from({ length: totalDays }, (_, i) => getDateString(startDate, i));
+	const dates = Array.from({ length: totalDays }, (_, i) => {
+		const date = new Date(startDate);
+		date.setDate(date.getDate() + i);
+		return date.toISOString().split('T')[0];
+	});
 
 	// kontrollera varje datum i perioden
 	for (const [index, currentDate] of dates.entries()) {
@@ -253,14 +307,16 @@ async function checkAddonAvailability({
 			// kontrollera varje kvart
 			for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
 				const columnName = (Math.floor(minutes / 15) * 15).toString();
-				const bookedAmount = parseInt(availabilityData[columnName] || '0');
-				const availableSlots = maxQuantity + bookedAmount;
+				const bookedAmount = Math.abs(parseInt(availabilityData[columnName] || '0'));
+				const availableSlots = maxQuantity - bookedAmount;
 
 				if (amount > availableSlots) {
+					console.log(
+						`Otillräcklig tillgänglighet för ${addon.name} på ${currentDate} kl ${minutes / 60}:${minutes % 60}`
+					);
 					return false;
 				}
 			}
-		} else {
 		}
 	}
 
