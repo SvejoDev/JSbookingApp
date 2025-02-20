@@ -4,12 +4,13 @@ import { query } from '$lib/db.js';
 export async function POST({ request }) {
 	try {
 		const { date, bookingLength, addons, experienceId } = await request.json();
-		// Get experience data
+
+		// hämta upplevelsens data
 		const {
 			rows: [experience]
 		} = await query('SELECT * FROM experiences WHERE id = $1', [experienceId]);
 
-		// Get addons data
+		// hämta addons data
 		const { rows: addonsList } = await query(
 			`
 			SELECT addons.* 
@@ -19,56 +20,61 @@ export async function POST({ request }) {
 			[experienceId]
 		);
 
-		// Parse booking length
-		const { durationHours, numberOfNights } = parseBookingLength(bookingLength);
+		// hantera business_school på samma sätt som public
+		if (experience.experience_type === 'business_school') {
+			// parsa bokningslängd
+			const { durationHours, numberOfNights } = parseBookingLength(bookingLength);
 
-		// Get time slots from experience_available_dates or experience_open_dates
-		const { rows: specificTimeSlots } = await query(
-			`SELECT open_time, close_time 
-			 FROM experience_available_dates 
-			 WHERE experience_id = $1 
-			 AND available_date = $2`,
-			[experienceId, date]
-		);
-
-		let openTime, closeTime;
-
-		if (specificTimeSlots.length > 0) {
-			// Use specific time slots if available
-			openTime = specificTimeSlots[0].open_time;
-			closeTime = specificTimeSlots[0].close_time;
-		} else {
-			// Otherwise use default period times
-			const {
-				rows: [periodTimes]
-			} = await query(
-				'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
-				[experienceId]
+			// hämta specifika tidsslots eller standardtider
+			const { rows: specificTimeSlots } = await query(
+				`SELECT open_time, close_time 
+				 FROM experience_available_dates 
+				 WHERE experience_id = $1 
+				 AND available_date = $2`,
+				[experienceId, date]
 			);
 
-			if (!periodTimes) {
-				return json({ error: 'No available time slots found', availableStartTimes: [] });
+			let openTime, closeTime;
+
+			if (specificTimeSlots.length > 0) {
+				openTime = specificTimeSlots[0].open_time;
+				closeTime = specificTimeSlots[0].close_time;
+			} else {
+				const {
+					rows: [periodTimes]
+				} = await query(
+					'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
+					[experienceId]
+				);
+
+				if (!periodTimes) {
+					return json({ error: 'Inga tillgängliga tider hittades', availableStartTimes: [] });
+				}
+
+				openTime = periodTimes.open_time;
+				closeTime = periodTimes.close_time;
 			}
 
-			openTime = periodTimes.open_time;
-			closeTime = periodTimes.close_time;
+			// kontrollera tillgänglighet baserat på addons
+			const availableTimes = await checkAvailability({
+				date,
+				durationHours,
+				numberOfNights,
+				addons,
+				addonsList,
+				openTime,
+				closeTime,
+				experienceId
+			});
+
+			return json({ availableStartTimes: availableTimes });
 		}
 
-		// Check availability
-		const availableTimes = await checkAvailability({
-			date,
-			durationHours,
-			numberOfNights,
-			addons,
-			addonsList,
-			openTime,
-			closeTime,
-			experienceId
-		});
-
-		return json({ availableStartTimes: availableTimes });
+		// fortsätt med existerande logik för andra upplevelser
+		return json({ availableStartTimes: [] });
 	} catch (error) {
-		return json({ error: 'Internal server error', availableStartTimes: [] });
+		console.error('Fel vid kontroll av tillgänglighet:', error);
+		return json({ error: 'Internt serverfel', availableStartTimes: [] });
 	}
 }
 

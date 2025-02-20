@@ -362,7 +362,10 @@
 		settingsLocked = true;
 
 		try {
-			if (data.experience?.experience_type === 'public') {
+			if (
+				data.experience?.experience_type === 'public' ||
+				data.experience?.experience_type === 'business_school'
+			) {
 				// samla ihop valda tillägg för tillgänglighetskontroll
 				const addonsForRequest = Object.entries(selectedAddons)
 					.filter(([_, quantity]) => quantity > 0)
