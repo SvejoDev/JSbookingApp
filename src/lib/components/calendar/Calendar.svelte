@@ -104,32 +104,36 @@
 		// spara nuvarande tillstånd
 		let isOpenDate = false;
 
-		// kontrollera specifika datum först
-		if (openingPeriods.specificDates?.length > 0) {
-			isOpenDate = openingPeriods.specificDates.some(
-				(specificDate) => specificDate.date === dateStr
-			);
-			if (isOpenDate) return true;
+		// hantera business_school på samma sätt som public
+		if (
+			data?.experience?.experience_type === 'business_school' ||
+			data?.experience?.experience_type === 'public'
+		) {
+			// kontrollera specifika datum först
+			if (openingPeriods.specificDates?.length > 0) {
+				isOpenDate = openingPeriods.specificDates.some(
+					(specificDate) => specificDate.date === dateStr
+				);
+				if (isOpenDate) return true;
+			}
+
+			// kontrollera perioder om inget specifikt datum hittades
+			if (!isOpenDate && openingPeriods.periods?.length > 0) {
+				const checkDate = new Date(date);
+				checkDate.setHours(12, 0, 0, 0);
+
+				isOpenDate = openingPeriods.periods.some((period) => {
+					const start = new Date(period.start_date);
+					const end = new Date(period.end_date);
+
+					start.setHours(12, 0, 0, 0);
+					end.setHours(12, 0, 0, 0);
+
+					return checkDate >= start && checkDate <= end;
+				});
+			}
 		}
 
-		// kontrollera perioder om inget specifikt datum hittades
-		if (!isOpenDate && openingPeriods.periods?.length > 0) {
-			const checkDate = new Date(date);
-			checkDate.setHours(12, 0, 0, 0);
-
-			isOpenDate = openingPeriods.periods.some((period) => {
-				const start = new Date(period.start_date);
-				const end = new Date(period.end_date);
-
-				// normalisera tiden för jämförelse
-				start.setHours(12, 0, 0, 0);
-				end.setHours(12, 0, 0, 0);
-
-				return checkDate >= start && checkDate <= end;
-			});
-		}
-
-		// behåll den gröna pricken även om datumet är valt
 		return isOpenDate;
 	}
 
