@@ -115,18 +115,17 @@ export async function load({ params }) {
 		openHours.maxParticipants = capacity.rows[0]?.max_participants || null;
 
 		// Logga relevant data innan vi returnerar
-		console.log('📅 Öppettider:', {
-			periodDates: periodOpenDates.rows.length,
-			specificDates: specificDates.rows.length,
-			blockedDates: blockedDates.rows.length
+		console.group('📋 Bokningsupplägg');
+		console.log('🎯 Upplevelse:', {
+			namn: experience.name,
+			typ: experience.experience_type,
+			tillägg: experience.addons.map((a) => a.name)
 		});
-
-		console.log('🎯 Experience Data:', {
-			name: experience.name,
-			type: experience.experience_type,
-			addons: experience.addons.length
+		console.log('⏰ Tider:', {
+			periodTider: periodOpenDates.rows.length > 0,
+			specifikaDatum: specificDates.rows.length > 0,
+			blockeradeDatum: blockedDates.rows.length > 0
 		});
-
 		console.groupEnd();
 
 		return {
