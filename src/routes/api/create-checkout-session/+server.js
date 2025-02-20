@@ -15,33 +15,25 @@ export async function POST({ request }) {
 		// Hämta addons från databasen
 		const { rows: addons } = await query('SELECT name, column_name FROM addons');
 
-		// konvertera boolean till string för stripe metadata
+		// sätt standardvärden för saknade fält
 		const metadata = {
-			experience_id: data.experienceId,
-			experience: data.name,
-			start_date: data.startDate,
-			end_date: data.endDate || data.startDate,
-			start_time: data.startTime,
-			end_time: data.is_overnight ? data.closeTime : data.returnTime,
+			experience_id: data.experienceId?.toString() || '',
+			experience: data.name || '',
+			start_date: data.startDate || '',
+			end_date: data.endDate || data.startDate || '',
+			start_time: data.startTime || '',
+			end_time: data.returnTime || '',
 			booking_type: data.is_overnight ? 'overnight' : 'day',
-			booking_length: data.booking_length.toString(),
-			is_overnight: data.is_overnight.toString(),
-			total_slots: calculateTotalSlots(data.startTime, data.closeTime),
-			number_of_adults: data.numAdults.toString(),
+			booking_length: (data.booking_length || '3h').toString(),
+			is_overnight: (data.is_overnight || false).toString(),
+			number_of_adults: (data.numAdults || 0).toString(),
 			number_of_children: (data.numChildren || 0).toString(),
-			booking_name: data.userName,
-			booking_lastname: data.userLastname,
-			customer_email: data.userEmail,
-			customer_comment: data.userComment || '',
+			booking_name: data.userName || '',
+			booking_lastname: data.userLastname || '',
+			customer_email: data.userEmail || '',
 			customer_phone: data.userPhone || '',
-			start_slot: calculateTimeSlot(data.startTime),
-			end_slot: calculateTimeSlot(data.is_overnight ? data.closeTime : data.returnTime),
-			selectedStartLocation: data.selectedStartLocation.toString(),
-			...Object.fromEntries(
-				Object.entries(data)
-					.filter(([key]) => key.startsWith('amount_'))
-					.map(([key, value]) => [key, value.toString()])
-			)
+			customer_comment: data.userComment || '',
+			selectedStartLocation: data.selectedStartLocation?.toString() || ''
 		};
 
 		// Lägg till addon-metadata
@@ -88,8 +80,16 @@ export async function POST({ request }) {
 			}
 		}
 	} catch (error) {
-		console.error('Stripe session creation error:', error);
-		return json({ error: 'Kunde inte skapa checkout-session' }, { status: 500 });
+		console.error('Detaljerat checkout fel:', error);
+		return json(
+			{
+				error: 'Kunde inte skapa checkout-session',
+				details: error.message
+			},
+			{
+				status: 500
+			}
+		);
 	}
 }
 

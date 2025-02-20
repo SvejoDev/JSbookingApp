@@ -458,60 +458,22 @@
 
 	// hanterar stripe-betalning
 	async function handleCheckout() {
-		console.error('Checkout Data Check:', {
-			isFormValid,
-			experienceId: data.experience?.id,
-			experienceName: data.experience?.name,
-			startDate,
-			returnDate,
-			startTime,
-			returnTime,
-			bookingLength: selectedBookingLength,
-			isOvernight: selectedBookingLength?.includes('övernattning'),
-			participants: {
-				adults: numAdults,
-				children: numChildren
-			},
-			userDetails: {
-				name: userName,
-				lastname: userLastname,
-				email: userEmail,
-				phone: userPhone,
-				hasComment: !!userComment
-			},
-			location: {
-				id: selectedStartLocation,
-				name: selectedStartLocationName
-			},
-			pricing: {
-				total: calculateTotalPrice(),
-				basePrice: totalPrice
-			},
-			addons: selectedAddons
-		});
-
-		if (!isFormValid) {
-			console.error('Form validation failed');
-			return;
-		}
-
 		try {
-			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
-			if (!intervals || intervals.length === 0) {
-				throw new Error('Kunde inte hitta öppettider för returdatum');
+			// validera nödvändig data
+			if (!startDate || !startTime || !selectedStartLocation) {
+				throw new Error('Vänligen fyll i alla bokningsdetaljer');
 			}
 
-			const closeTime = intervals[0].endTime;
 			const checkoutData = {
 				experienceId: data.experience.id,
 				name: data.experience.name,
 				startDate,
-				endDate: returnDate,
+				endDate: returnDate || startDate,
 				startTime,
 				returnTime,
-				closeTime,
-				is_overnight: selectedBookingLength?.includes('övernattning'),
-				booking_length: selectedBookingLength,
+				closeTime: data.openHours?.defaultCloseTimes?.[0] || '17:00:00',
+				is_overnight: false, // sätt ett standardvärde
+				booking_length: selectedBookingLength || '3h', // sätt ett standardvärde
 				numAdults,
 				numChildren: 0,
 				userName,
@@ -532,25 +494,20 @@
 				body: JSON.stringify(checkoutData)
 			});
 
-			// Vänta med att parsa JSON tills vi vet att responsen är ok
 			if (!response.ok) {
 				const errorData = await response.json();
-				throw new Error(errorData.error || `Server svarade med status: ${response.status}`);
+				throw new Error(errorData.error || 'Kunde inte skapa checkout-session');
 			}
 
 			const result = await response.json();
 
-			if (!result || !result.url) {
-				throw new Error('Servern returnerade inget giltigt checkout-URL');
+			if (!result.url) {
+				throw new Error('Ingen checkout-URL returnerades');
 			}
 
-			// Redirect till Stripe
 			window.location.href = result.url;
 		} catch (error) {
-			console.error('Detaljerat checkout fel:', {
-				message: error.message,
-				stack: error.stack
-			});
+			console.error('Checkout error:', error);
 			alert(`Ett fel uppstod vid checkout: ${error.message}`);
 		}
 	}

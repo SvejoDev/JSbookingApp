@@ -148,10 +148,11 @@ async function updateAvailabilityForBooking(client, bookingData) {
 						// Dagsbokning eller hela dagen
 						startMinutes = timeToMinutes(bookingData.start_time);
 						endMinutes = timeToMinutes(bookingData.end_time);
-						console.log(`\n=== Dagsbokning (${dateStr}) ===`);
-						console.log(
-							`Blockerar från ${formatMinutes(startMinutes)} till ${formatMinutes(endMinutes)}`
-						);
+
+						if (process.env.NODE_ENV === 'development') {
+							console.log(`=== Bokning (${dateStr}) ===`);
+							console.log(`Tid: ${formatMinutes(startMinutes)} till ${formatMinutes(endMinutes)}`);
+						}
 					}
 
 					console.log('Debug:', {
