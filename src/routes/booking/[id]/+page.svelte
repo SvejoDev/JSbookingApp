@@ -400,13 +400,8 @@
 
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
+		// kontrollera att vi har all nödvändig data
 		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
-			console.error('Return Date Calculation Error:', {
-				missingBookingLength: !selectedBookingLength,
-				missingStartTime: !startTime,
-				missingStartDate: !startDate,
-				missingOpenHours: !data.openHours
-			});
 			return;
 		}
 
@@ -415,32 +410,20 @@
 			let returnDateTime = new Date(startDateTime);
 
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
-			console.error('Available intervals:', intervals);
 
 			if (!intervals || intervals.length === 0) {
-				console.error('No intervals found for return date calculation');
 				return;
 			}
 
 			const closeTime = intervals[0].endTime;
 			if (!closeTime) {
-				console.error('No close time found');
 				return;
 			}
-
-			console.error('Processing booking type:', {
-				bookingLength: selectedBookingLength,
-				isOvernight: selectedBookingLength.includes('övernattning'),
-				isHourly: selectedBookingLength.includes('h'),
-				isFullDay: selectedBookingLength === 'Hela dagen'
-			});
 
 			// för övernattningar
 			if (selectedBookingLength.includes('övernattning')) {
 				const nights = parseInt(selectedBookingLength);
 				returnDateTime.setDate(returnDateTime.getDate() + nights);
-
-				// använd stängningstid
 				const [hours, minutes] = closeTime.split(':').map(Number);
 				returnDateTime.setHours(hours, minutes, 0);
 			}
@@ -457,13 +440,8 @@
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
-
-			console.error('Final return date calculation:', {
-				returnDate,
-				returnTime,
-				calculatedDateTime: returnDateTime
-			});
 		} catch (error) {
+			// hantera fel tyst men logga för felsökning i produktion
 			console.error('Error calculating return date:', error);
 		}
 	}
@@ -1058,7 +1036,18 @@
 										<Button
 											disabled={isLoadingTimes ||
 												Object.values(selectedAddons).every((v) => v === 0)}
-											on:click={generateStartTimes}
+											on:click={async () => {
+												await generateStartTimes();
+												// vänta på att dom:en uppdateras
+												await tick();
+												// vänta lite extra för att säkerställa att allt har renderats
+												await new Promise((resolve) => setTimeout(resolve, 100));
+												// skrolla till tidsväljaren
+												const timeSelection = document.getElementById('time-selection');
+												if (timeSelection) {
+													timeSelection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+												}
+											}}
 										>
 											{#if isLoadingTimes}
 												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
@@ -1453,7 +1442,18 @@
 										Object.values(selectedAddons).every((v) => v === 0)}
 									variant={isLoadingTimes ? 'outline' : 'default'}
 									class="sm:w-auto"
-									on:click={generateStartTimes}
+									on:click={async () => {
+										await generateStartTimes();
+										// vänta på att dom:en uppdateras
+										await tick();
+										// vänta lite extra för att säkerställa att allt har renderats
+										await new Promise((resolve) => setTimeout(resolve, 100));
+										// skrolla till tidsväljaren
+										const timeSelection = document.getElementById('time-selection');
+										if (timeSelection) {
+											timeSelection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+										}
+									}}
 								>
 									{#if isLoadingTimes}
 										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
