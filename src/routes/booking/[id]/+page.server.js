@@ -2,10 +2,6 @@ import { query } from '$lib/db.js';
 
 export async function load({ params }) {
 	try {
-		// Lägg till console.group i början av funktionen
-		console.group('📋 Laddar bokningssida');
-		console.log('Experience ID:', params.id);
-
 		// Hämta upplevelsen med alla dess addons i en enda query
 		const experienceResult = await query(
 			`
@@ -32,7 +28,6 @@ export async function load({ params }) {
 		const experience = experienceResult.rows[0];
 
 		if (!experience) {
-			console.error('Upplevelsen hittades inte');
 			return { error: 'Upplevelsen hittades inte' };
 		}
 
@@ -93,9 +88,9 @@ export async function load({ params }) {
 			isGuided: experience.experience_type === 'guided'
 		};
 
-		// För guidade upplevelser, använd första periodens tider
+		// För guidade upplevelser, validera och sätt upp öppettider
 		if (experience.experience_type === 'guided') {
-			// Använd specifika datum om det finns, annars använd periodtider
+			// Kontrollera och sätt öppettider i prioritetsordning
 			if (specificDates.rows.length > 0) {
 				openHours.guidedHours = {
 					openTime: specificDates.rows[0].open_time,
@@ -106,28 +101,14 @@ export async function load({ params }) {
 					openTime: periodOpenDates.rows[0].open_time,
 					closeTime: periodOpenDates.rows[0].close_time
 				};
+			} else {
+				// Logga bara om det är en guidad upplevelse och saknar öppettider
+				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
-
-			console.log('Guided hours configured:', openHours.guidedHours);
 		}
 
 		// Lägg till i openHours-objektet
 		openHours.maxParticipants = capacity.rows[0]?.max_participants || null;
-
-		// Logga relevant data innan vi returnerar
-		console.log('📅 Öppettider:', {
-			periodDates: periodOpenDates.rows.length,
-			specificDates: specificDates.rows.length,
-			blockedDates: blockedDates.rows.length
-		});
-
-		console.log('🎯 Experience Data:', {
-			name: experience.name,
-			type: experience.experience_type,
-			addons: experience.addons.length
-		});
-
-		console.groupEnd();
 
 		return {
 			experience: {
@@ -141,7 +122,6 @@ export async function load({ params }) {
 			blocked_start_times: blockedStartTimes.rows
 		};
 	} catch (error) {
-		console.error('❌ Fel vid laddning av bokningssida:', error);
 		throw error;
 	}
 }

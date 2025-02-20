@@ -163,36 +163,52 @@
 		}
 	}
 
-	// beräknar returdatum när nödvändig information finns
-	$: if (startDate && startTime && selectedBookingLength) {
-		calculateReturnDate();
-		console.log('Bokningsdetaljer uppdaterade:', {
-			startDate,
-			startTime,
-			returnDate,
-			returnTime,
-			selectedBookingLength
-		});
-	}
-
-	// Add this near the other reactive statements
+	// hantera guidade upplevelser
 	$: {
 		if (data.experience?.experience_type === 'guided') {
-			// For guided experiences, automatically set the first available location and booking length
-			selectedStartLocation = data.startLocations[0]?.id;
-			selectedBookingLength = data.bookingLengths[0]?.length;
+			if (data.startLocations?.length > 0) {
+				// Only log errors for invalid values in guided experiences
+				if (!selectedStartLocation || numAdults < 0 || !data.openHours?.guidedHours) {
+					console.error('Guided Experience Error:', {
+						missingStartLocation: !selectedStartLocation,
+						missingOpenHours: !data.openHours?.guidedHours,
+						invalidAdults: numAdults < 0,
+						currentState: {
+							startLocation: selectedStartLocation,
+							openHours: data.openHours?.guidedHours,
+							numAdults
+						}
+					});
+				}
 
-			// Update price when number of adults changes
-			if (numAdults >= 0) {
-				totalPrice = numAdults * data.startLocations[0]?.price;
+				// sätt bara värden om de inte redan är satta
+				if (!selectedStartLocation) {
+					selectedStartLocation = data.startLocations[0]?.id;
+				}
+
+				if (!selectedBookingLength && data.bookingLengths?.length > 0) {
+					const guidedBookingLength = data.bookingLengths.find(
+						(bl) => Number(bl.location_id) === Number(data.startLocations[0]?.id)
+					);
+					selectedBookingLength = guidedBookingLength?.length;
+				}
+
+				// uppdatera pris endast om vi har alla nödvändiga värden
+				if (selectedStartLocation && numAdults >= 0) {
+					const location = data.startLocations.find((loc) => loc.id === selectedStartLocation);
+					totalPrice = location ? numAdults * location.price : 0;
+				}
+
+				// vänta på att DOM:en uppdateras innan scroll
+				if (selectedStartLocation && selectedBookingLength) {
+					tick().then(async () => {
+						await new Promise((resolve) => setTimeout(resolve, 100));
+						await scrollToElement('equipment-section');
+					});
+				}
+			} else {
+				console.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
-
-			// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
-			tick().then(async () => {
-				// Vänta 100ms för att ge en mer naturlig känsla
-				await new Promise((resolve) => setTimeout(resolve, 100));
-				await scrollToElement('equipment-section');
-			});
 		}
 	}
 
@@ -210,7 +226,6 @@
 
 		const element = document.getElementById(elementId);
 		if (!element) {
-			console.warn(`Element med id '${elementId}' hittades inte`);
 			return;
 		}
 
@@ -290,21 +305,13 @@
 
 	// uppdaterar antalet av ett specifikt tillval
 	function updateAddonQuantity(addonId, increment) {
-		console.log('Updating addon quantity:', { addonId, increment });
 		const addon = data.experience.addons.find((a) => a.id === addonId);
-		console.log('Found addon:', addon);
 
 		if (addon) {
 			const currentValue = selectedAddons[addon.column_name] || 0;
 			const newValue = increment
 				? Math.min(currentValue + 1, addon.max_quantity)
 				: Math.max(0, currentValue - 1);
-
-			console.log('Updating values:', {
-				columnName: addon.column_name,
-				currentValue,
-				newValue
-			});
 
 			selectedAddons = {
 				...selectedAddons,
@@ -348,7 +355,6 @@
 			return;
 		}
 
-		// Lock settings immediately when button is clicked
 		isLoadingTimes = true;
 		startTime = null;
 		hasCheckedTimes = true;
@@ -357,18 +363,13 @@
 
 		try {
 			if (data.experience?.experience_type === 'public') {
-				// För vanliga upplevelser, använd tillgängliga tidsintervall
-				const intervals = getAvailableTimeIntervals(startDate, data.openHours);
-				possibleStartTimes = intervals.map((interval) => interval.startTime);
-				console.log('Generated times for public experience:', possibleStartTimes);
-			} else {
-				// För andra typer, använd API:et
-				const addonsForRequest = {};
-				Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
-					if (quantity > 0) {
-						addonsForRequest[columnName] = quantity;
-					}
-				});
+				// samla ihop valda tillägg för tillgänglighetskontroll
+				const addonsForRequest = Object.entries(selectedAddons)
+					.filter(([_, quantity]) => quantity > 0)
+					.reduce((acc, [columnName, quantity]) => {
+						acc[columnName] = quantity;
+						return acc;
+					}, {});
 
 				const response = await fetch('/api/check-availability', {
 					method: 'POST',
@@ -384,16 +385,13 @@
 				});
 
 				const { availableStartTimes, error } = await response.json();
-
-				if (error) {
-					possibleStartTimes = [];
-					console.error('Error getting available times:', error);
-				} else {
-					possibleStartTimes = availableStartTimes;
-				}
+				possibleStartTimes = error ? [] : availableStartTimes;
+			} else {
+				// för guidade upplevelser, använd enkla tidsintervall
+				const intervals = getAvailableTimeIntervals(startDate, data.openHours);
+				possibleStartTimes = intervals.map((interval) => interval.startTime);
 			}
 		} catch (error) {
-			console.error('Error generating start times:', error);
 			possibleStartTimes = [];
 		} finally {
 			isLoadingTimes = false;
@@ -402,13 +400,8 @@
 
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
+		// kontrollera att vi har all nödvändig data
 		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
-			console.log('Missing required values:', {
-				selectedBookingLength,
-				startTime,
-				startDate,
-				openHours: data.openHours
-			});
 			return;
 		}
 
@@ -416,16 +409,14 @@
 			const startDateTime = new Date(`${startDate}T${startTime}`);
 			let returnDateTime = new Date(startDateTime);
 
-			// hämta stängningstid från openHours
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
+
 			if (!intervals || intervals.length === 0) {
-				console.error('No available intervals found for return date');
 				return;
 			}
 
 			const closeTime = intervals[0].endTime;
 			if (!closeTime) {
-				console.error('No close time found in intervals');
 				return;
 			}
 
@@ -433,8 +424,6 @@
 			if (selectedBookingLength.includes('övernattning')) {
 				const nights = parseInt(selectedBookingLength);
 				returnDateTime.setDate(returnDateTime.getDate() + nights);
-
-				// använd stängningstid
 				const [hours, minutes] = closeTime.split(':').map(Number);
 				returnDateTime.setHours(hours, minutes, 0);
 			}
@@ -451,14 +440,8 @@
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
-
-			console.log('Return date calculated:', {
-				returnDate,
-				returnTime,
-				closeTime,
-				intervals
-			});
 		} catch (error) {
+			// hantera fel tyst men logga för felsökning i produktion
 			console.error('Error calculating return date:', error);
 		}
 	}
@@ -475,7 +458,42 @@
 
 	// hanterar stripe-betalning
 	async function handleCheckout() {
-		if (!isFormValid) return;
+		console.error('Checkout Data Check:', {
+			isFormValid,
+			experienceId: data.experience?.id,
+			experienceName: data.experience?.name,
+			startDate,
+			returnDate,
+			startTime,
+			returnTime,
+			bookingLength: selectedBookingLength,
+			isOvernight: selectedBookingLength?.includes('övernattning'),
+			participants: {
+				adults: numAdults,
+				children: numChildren
+			},
+			userDetails: {
+				name: userName,
+				lastname: userLastname,
+				email: userEmail,
+				phone: userPhone,
+				hasComment: !!userComment
+			},
+			location: {
+				id: selectedStartLocation,
+				name: selectedStartLocationName
+			},
+			pricing: {
+				total: calculateTotalPrice(),
+				basePrice: totalPrice
+			},
+			addons: selectedAddons
+		});
+
+		if (!isFormValid) {
+			console.error('Form validation failed');
+			return;
+		}
 
 		try {
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
@@ -506,8 +524,6 @@
 				...selectedAddons
 			};
 
-			console.log('Sending checkout data:', checkoutData);
-
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
@@ -516,9 +532,6 @@
 				body: JSON.stringify(checkoutData)
 			});
 
-			// Logga raw response för felsökning
-			console.log('Raw response:', response);
-
 			// Vänta med att parsa JSON tills vi vet att responsen är ok
 			if (!response.ok) {
 				const errorData = await response.json();
@@ -526,7 +539,6 @@
 			}
 
 			const result = await response.json();
-			console.log('Parsed response:', result);
 
 			if (!result || !result.url) {
 				throw new Error('Servern returnerade inget giltigt checkout-URL');
@@ -620,36 +632,6 @@
 		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
 			(date) => new Date(date)
 		);
-
-		// Add near the start of your handleBooking function
-		console.group('🎫 New Booking Request');
-		console.log('📅 Booking Details:', {
-			experience: data.experience.name,
-			experienceId: selectedExperienceId,
-			startDate,
-			startTime,
-			returnDate,
-			returnTime,
-			bookingType: selectedBookingLength
-		});
-
-		console.log('👥 Participants:', {
-			adults: numAdults,
-			children: numChildren,
-			totalParticipants: numAdults + numChildren
-		});
-
-		console.log('💰 Pricing:', {
-			basePrice: totalPrice,
-			addons: selectedAddons,
-			finalTotal: calculateTotalPrice()
-		});
-
-		console.log('📍 Location:', {
-			name: selectedStartLocationName,
-			id: selectedStartLocation
-		});
-		console.groupEnd();
 	});
 
 	function generateForesightBlockedDates(foresightHours) {
@@ -751,58 +733,57 @@
 	}
 
 	function getAvailableTimeIntervals(date, openHours) {
-		console.log('getAvailableTimeIntervals called with:', { date, openHours });
-
-		if (!openHours) {
-			console.warn('openHours är undefined');
+		// only log if there's an issue with the time intervals
+		if (!date || !openHours || (!openHours.specificDates.length && !openHours.periods.length)) {
+			console.error('Time Intervals Error:', {
+				missingDate: !date,
+				missingOpenHours: !openHours,
+				noAvailableDates: !openHours?.specificDates.length && !openHours?.periods.length,
+				currentState: {
+					date,
+					hasSpecificDates: openHours?.specificDates.length > 0,
+					hasPeriods: openHours?.periods.length > 0
+				}
+			});
 			return [];
 		}
 
-		// specialhantering för guidade upplevelser
-		if (openHours.isGuided && openHours.guidedHours) {
-			console.log('Hanterar guidad upplevelse:', {
-				date,
-				guidedHours: openHours.guidedHours
-			});
-
+		// Check for specific date first
+		const specificDate = openHours.specificDates?.find((d) => d.date === date);
+		if (specificDate) {
 			return [
 				{
-					startTime: openHours.guidedHours.openTime,
-					endTime: openHours.guidedHours.closeTime
+					startTime: specificDate.open_time,
+					endTime: specificDate.close_time
 				}
 			];
 		}
 
-		// kontrollera att specificDates finns
-		if (openHours.specificDates) {
-			const specificDate = openHours.specificDates.find((d) => d.date === date);
-			if (specificDate) {
-				return specificDate.timeSlots.map((slot) => ({
-					startTime: slot.open_time,
-					endTime: slot.close_time
-				}));
+		// Check periods
+		const matchingPeriod = openHours.periods?.find((period) => {
+			const startDate = new Date(period.start_date);
+			const endDate = new Date(period.end_date);
+			const checkDate = new Date(date);
+			return checkDate >= startDate && checkDate <= endDate;
+		});
+
+		if (matchingPeriod) {
+			// Generate time slots every 30 minutes
+			const slots = [];
+			const startTime = new Date(`1970-01-01T${matchingPeriod.open_time}`);
+			const endTime = new Date(`1970-01-01T${matchingPeriod.close_time}`);
+
+			while (startTime < endTime) {
+				slots.push({
+					startTime: startTime.toTimeString().slice(0, 8),
+					endTime: matchingPeriod.close_time
+				});
+				startTime.setMinutes(startTime.getMinutes() + 30);
 			}
+
+			return slots;
 		}
 
-		// kontrollera att periods finns
-		if (openHours.periods) {
-			const intervals = [];
-			for (const period of openHours.periods) {
-				const periodStart = new Date(period.start_date);
-				const periodEnd = new Date(period.end_date);
-				const checkDate = new Date(date);
-
-				if (checkDate >= periodStart && checkDate <= periodEnd) {
-					intervals.push({
-						startTime: period.open_time,
-						endTime: period.close_time
-					});
-				}
-			}
-			return intervals;
-		}
-
-		console.warn('Inga giltiga öppettider hittades');
 		return [];
 	}
 
@@ -824,19 +805,6 @@
 
 		return startDate;
 	}
-
-	$: {
-		if (startTime && data.experience?.experience_type === 'guided') {
-			console.log('Bokningsuppdatering:', {
-				startDate,
-				startTime,
-				endTime,
-				returnDate,
-				returnTime
-			});
-		}
-	}
-
 	// Lägg till bland variablerna
 	let availableSpots = 0;
 	let availableCapacity = null;
@@ -844,34 +812,36 @@
 
 	// Lägg till i click-hanteraren för tidsval
 	async function handleTimeSelection(time) {
-		try {
-			if (!data.openHours?.guidedHours) {
-				console.error('Missing guided hours configuration');
-				return;
+		if (data.experience?.experience_type === 'guided') {
+			try {
+				const response = await fetch(
+					`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
+				);
+				const result = await response.json();
+
+				if (result.error) {
+					console.error('kapacitetsfel:', result.error);
+					return;
+				}
+
+				availableCapacity = result.availableCapacity;
+				maxCapacity = result.maxCapacity;
+				availableSpots = result.availableCapacity;
+
+				startTime = time;
+				endTime = data.openHours.guidedHours.closeTime;
+				returnDate = startDate;
+				returnTime = endTime;
+
+				await tick();
+				await scrollToElement('participants-section');
+			} catch (error) {
+				console.error('fel vid kapacitetskontroll:', error);
 			}
-
-			const response = await fetch(
-				`/api/capacity?experienceId=${data.experience.id}&date=${startDate}&time=${time}`
-			);
-			const result = await response.json();
-
-			console.log('Guided booking setup:', {
-				startDate,
-				openTime: data.openHours.guidedHours.openTime,
-				closeTime: data.openHours.guidedHours.closeTime,
-				availableSpots: result.availableCapacity
-			});
-
-			availableSpots = result.availableCapacity;
-			startTime = data.openHours.guidedHours.openTime;
-			endTime = data.openHours.guidedHours.closeTime;
-			returnDate = startDate;
-			returnTime = endTime;
-
-			await tick();
+		} else {
+			startTime = time;
+			calculateReturnDate();
 			await scrollToElement('participants-section');
-		} catch (error) {
-			console.error('Error in guided time selection:', error);
 		}
 	}
 
@@ -910,17 +880,6 @@
 		}
 	}
 
-	$: {
-		if (data) {
-			console.log('Component data:', {
-				openHours: data.openHours,
-				experience: data.experience,
-				hasIntervals:
-					data.openHours && getAvailableTimeIntervals(startDate, data.openHours).length > 0
-			});
-		}
-	}
-
 	// funktion för att hämta kapacitet
 	async function checkCapacity() {
 		try {
@@ -946,16 +905,19 @@
 
 	// lägg till i reaktiva uttryck
 	$: {
-		if (data.experience?.experience_type === 'guided' && startDate && startTime) {
-			checkCapacity();
+		if (startDate && data.experience?.experience_type === 'guided') {
+			const guidedHours = data.openHours?.guidedHours;
+			if (!guidedHours) {
+				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
+			} else {
+				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
+			}
 		}
 	}
 
 	// Add this function after the existing functions
 	function generateGuidedTimes(openTime, closeTime) {
 		try {
-			console.log('Generating guided times:', { openTime, closeTime });
-
 			if (!openTime || !closeTime) {
 				console.error('Missing open or close time');
 				return [];
@@ -970,28 +932,11 @@
 				hours--;
 			}
 
-			console.log('Calculated guided duration:', { hours });
-
 			// Returnera endast starttiden för guidade upplevelser
 			return [openTime];
 		} catch (error) {
 			console.error('Error generating guided times:', error);
 			return [];
-		}
-	}
-
-	// Add this reactive statement
-	$: {
-		if (startDate && data.experience?.experience_type === 'guided') {
-			const guidedHours = data.openHours?.guidedHours;
-			if (guidedHours) {
-				console.log('Generating guided times for date:', startDate);
-				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
-				console.log('Generated guided times:', possibleStartTimes);
-			} else {
-				console.error('Missing guided hours configuration in data.openHours');
-				console.log('Current openHours:', data.openHours);
-			}
 		}
 	}
 </script>
@@ -1051,14 +996,6 @@
 								selectedDate.setHours(12, 0, 0, 0);
 								const newDateStr = selectedDate.toISOString().split('T')[0];
 
-								console.log('📅 Date Selection:', {
-									rawDate: date,
-									selectedDate: selectedDate,
-									formattedDate: newDateStr,
-									currentDate: startDate,
-									isSameDate: startDate === newDateStr
-								});
-
 								// Only update if we don't have a date yet or if it's a different date
 								if (!startDate || startDate !== newDateStr) {
 									startDate = newDateStr;
@@ -1077,28 +1014,82 @@
 							}}
 						/>
 
-						{#if startDate && possibleStartTimes.length > 0}
-							<div class="mt-6 space-y-4" id="time-selection">
-								<Label>Välj starttid:</Label>
-								<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-									{#each possibleStartTimes as time}
+						{#if startDate}
+							{#if data.experience?.experience_type === 'guided'}
+								<div class="mt-6 space-y-4" id="time-selection">
+									<Label>Välj starttid:</Label>
+									<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
 										<Button
-											variant={startTime === time ? 'default' : 'outline'}
+											variant={startTime === data.openHours.guidedHours.openTime
+												? 'default'
+												: 'outline'}
+											on:click={() => handleTimeSelection(data.openHours.guidedHours.openTime)}
+										>
+											{data.openHours.guidedHours.openTime}
+										</Button>
+									</div>
+								</div>
+							{:else}
+								<!-- Original time selection for public experiences -->
+								<div class="space-y-4" id="time-selection">
+									<div class="flex justify-between items-center">
+										<Button
+											disabled={isLoadingTimes ||
+												Object.values(selectedAddons).every((v) => v === 0)}
 											on:click={async () => {
-												await handleTimeSelection(time);
-												console.log('Vald tid:', {
-													time,
-													availableSpots,
-													startTime,
-													endTime
-												});
+												await generateStartTimes();
+												// vänta på att dom:en uppdateras
+												await tick();
+												// vänta lite extra för att säkerställa att allt har renderats
+												await new Promise((resolve) => setTimeout(resolve, 100));
+												// skrolla till tidsväljaren
+												const timeSelection = document.getElementById('time-selection');
+												if (timeSelection) {
+													timeSelection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+												}
 											}}
 										>
-											{time}
+											{#if isLoadingTimes}
+												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+												Söker tillgängliga tider...
+											{:else if Object.values(selectedAddons).every((v) => v === 0)}
+												Välj minst en produkt
+											{:else}
+												Visa tillgängliga tider
+											{/if}
 										</Button>
-									{/each}
+									</div>
+
+									{#if hasGeneratedTimes && !isLoadingTimes}
+										{#if possibleStartTimes.length > 0}
+											<Label>Tillgängliga starttider:</Label>
+											<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+												{#each possibleStartTimes as time}
+													<Button
+														variant={startTime === time ? 'default' : 'outline'}
+														on:click={async () => {
+															startTime = time;
+															calculateReturnDate();
+															await scrollToElement('participants-section');
+														}}
+														class="w-full"
+													>
+														{time}
+													</Button>
+												{/each}
+											</div>
+										{:else}
+											<Alert variant="destructive">
+												<AlertTitle>Inga lediga tider</AlertTitle>
+												<AlertDescription>
+													Tyvärr hittades inga lediga tider för valt datum och utrustning. Vänligen
+													prova ett annat datum eller ändra din utrustning.
+												</AlertDescription>
+											</Alert>
+										{/if}
+									{/if}
 								</div>
-							</div>
+							{/if}
 						{/if}
 					</CardContent>
 				</Card>
@@ -1382,14 +1373,6 @@
 									selectedDate.setHours(12, 0, 0, 0);
 									const newDateStr = selectedDate.toISOString().split('T')[0];
 
-									console.log('📅 Date Selection:', {
-										rawDate: date,
-										selectedDate: selectedDate,
-										formattedDate: newDateStr,
-										currentDate: startDate,
-										isSameDate: startDate === newDateStr
-									});
-
 									// Only update if we don't have a date yet or if it's a different date
 									if (!startDate || startDate !== newDateStr) {
 										startDate = newDateStr;
@@ -1459,7 +1442,18 @@
 										Object.values(selectedAddons).every((v) => v === 0)}
 									variant={isLoadingTimes ? 'outline' : 'default'}
 									class="sm:w-auto"
-									on:click={generateStartTimes}
+									on:click={async () => {
+										await generateStartTimes();
+										// vänta på att dom:en uppdateras
+										await tick();
+										// vänta lite extra för att säkerställa att allt har renderats
+										await new Promise((resolve) => setTimeout(resolve, 100));
+										// skrolla till tidsväljaren
+										const timeSelection = document.getElementById('time-selection');
+										if (timeSelection) {
+											timeSelection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+										}
+									}}
 								>
 									{#if isLoadingTimes}
 										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
