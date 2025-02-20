@@ -2,10 +2,6 @@ import { query } from '$lib/db.js';
 
 export async function load({ params }) {
 	try {
-		// Lägg till console.group i början av funktionen
-		console.group('📋 Laddar bokningssida');
-		console.log('Experience ID:', params.id);
-
 		// Hämta upplevelsen med alla dess addons i en enda query
 		const experienceResult = await query(
 			`
@@ -32,7 +28,6 @@ export async function load({ params }) {
 		const experience = experienceResult.rows[0];
 
 		if (!experience) {
-			console.error('Upplevelsen hittades inte');
 			return { error: 'Upplevelsen hittades inte' };
 		}
 
@@ -107,26 +102,10 @@ export async function load({ params }) {
 					closeTime: periodOpenDates.rows[0].close_time
 				};
 			}
-
-			console.log('Guided hours configured:', openHours.guidedHours);
 		}
 
 		// Lägg till i openHours-objektet
 		openHours.maxParticipants = capacity.rows[0]?.max_participants || null;
-
-		// Logga relevant data innan vi returnerar
-		console.group('📋 Bokningsupplägg');
-		console.log('🎯 Upplevelse:', {
-			namn: experience.name,
-			typ: experience.experience_type,
-			tillägg: experience.addons.map((a) => a.name)
-		});
-		console.log('⏰ Tider:', {
-			periodTider: periodOpenDates.rows.length > 0,
-			specifikaDatum: specificDates.rows.length > 0,
-			blockeradeDatum: blockedDates.rows.length > 0
-		});
-		console.groupEnd();
 
 		return {
 			experience: {
@@ -140,7 +119,6 @@ export async function load({ params }) {
 			blocked_start_times: blockedStartTimes.rows
 		};
 	} catch (error) {
-		console.error('❌ Fel vid laddning av bokningssida:', error);
 		throw error;
 	}
 }

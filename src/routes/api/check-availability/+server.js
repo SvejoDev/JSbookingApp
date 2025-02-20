@@ -4,17 +4,6 @@ import { query } from '$lib/db.js';
 export async function POST({ request }) {
 	try {
 		const { date, bookingLength, addons, experienceId } = await request.json();
-
-		console.group('🔍 Tillgänglighetskontroll');
-		console.log('📝 Förfrågan:', {
-			datum: date,
-			längd: bookingLength,
-			tillägg: Object.entries(addons)
-				.filter(([_, qty]) => qty > 0)
-				.map(([name, qty]) => `${name}: ${qty}`)
-				.join(', ')
-		});
-
 		// Get experience data
 		const {
 			rows: [experience]
@@ -77,10 +66,8 @@ export async function POST({ request }) {
 			experienceId
 		});
 
-		console.log('\n✅ Tillgängliga tider:', availableTimes);
 		return json({ availableStartTimes: availableTimes });
 	} catch (error) {
-		console.error('❌ Fel:', error.message);
 		return json({ error: 'Internal server error', availableStartTimes: [] });
 	}
 }
@@ -173,18 +160,6 @@ async function checkAvailability({
 }) {
 	const requestedAddons = addonsList.filter((addon) => addons[addon.column_name] > 0);
 
-	console.group('🔍 Tillgänglighetskontroll');
-	console.log('📝 Förfrågan:', {
-		datum: date,
-		längd: `${durationHours}h / ${numberOfNights} nätter`,
-		tillägg: requestedAddons.map((a) => a.name).join(', ')
-	});
-
-	console.log('⏰ Kontrollerar tidsperiod:', {
-		datum: date,
-		tid: `${durationHours}h / ${numberOfNights} nätter`
-	});
-
 	const possibleTimes = generateTimeSlots(
 		openTime,
 		closeTime,
@@ -276,12 +251,10 @@ async function checkAddonAvailability({
 				const availableSlots = maxQuantity + bookedAmount;
 
 				if (amount > availableSlots) {
-					console.log(`⚠️ ${addon.name}: ${availableSlots}/${amount} tillgängliga`);
 					return false;
 				}
 			}
 		} else {
-			console.log('[Status] Ingen data - antar tillgänglig');
 		}
 	}
 

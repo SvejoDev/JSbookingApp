@@ -163,18 +163,6 @@
 		}
 	}
 
-	// beräknar returdatum när nödvändig information finns
-	$: if (startDate && startTime && selectedBookingLength) {
-		calculateReturnDate();
-		console.log('Bokningsdetaljer uppdaterade:', {
-			startDate,
-			startTime,
-			returnDate,
-			returnTime,
-			selectedBookingLength
-		});
-	}
-
 	// Add this near the other reactive statements
 	$: {
 		if (data.experience?.experience_type === 'guided') {
@@ -210,7 +198,6 @@
 
 		const element = document.getElementById(elementId);
 		if (!element) {
-			console.warn(`Element med id '${elementId}' hittades inte`);
 			return;
 		}
 
@@ -290,21 +277,13 @@
 
 	// uppdaterar antalet av ett specifikt tillval
 	function updateAddonQuantity(addonId, increment) {
-		console.log('Updating addon quantity:', { addonId, increment });
 		const addon = data.experience.addons.find((a) => a.id === addonId);
-		console.log('Found addon:', addon);
 
 		if (addon) {
 			const currentValue = selectedAddons[addon.column_name] || 0;
 			const newValue = increment
 				? Math.min(currentValue + 1, addon.max_quantity)
 				: Math.max(0, currentValue - 1);
-
-			console.log('Updating values:', {
-				columnName: addon.column_name,
-				currentValue,
-				newValue
-			});
 
 			selectedAddons = {
 				...selectedAddons,
@@ -385,7 +364,6 @@
 				possibleStartTimes = intervals.map((interval) => interval.startTime);
 			}
 		} catch (error) {
-			console.error('fel vid generering av starttider:', error);
 			possibleStartTimes = [];
 		} finally {
 			isLoadingTimes = false;
@@ -395,12 +373,6 @@
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
-			console.log('Missing required values:', {
-				selectedBookingLength,
-				startTime,
-				startDate,
-				openHours: data.openHours
-			});
 			return;
 		}
 
@@ -411,13 +383,11 @@
 			// hämta stängningstid från openHours
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
 			if (!intervals || intervals.length === 0) {
-				console.error('No available intervals found for return date');
 				return;
 			}
 
 			const closeTime = intervals[0].endTime;
 			if (!closeTime) {
-				console.error('No close time found in intervals');
 				return;
 			}
 
@@ -443,13 +413,6 @@
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
-
-			console.log('Return date calculated:', {
-				returnDate,
-				returnTime,
-				closeTime,
-				intervals
-			});
 		} catch (error) {
 			console.error('Error calculating return date:', error);
 		}
@@ -498,8 +461,6 @@
 				...selectedAddons
 			};
 
-			console.log('Sending checkout data:', checkoutData);
-
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
 				headers: {
@@ -508,9 +469,6 @@
 				body: JSON.stringify(checkoutData)
 			});
 
-			// Logga raw response för felsökning
-			console.log('Raw response:', response);
-
 			// Vänta med att parsa JSON tills vi vet att responsen är ok
 			if (!response.ok) {
 				const errorData = await response.json();
@@ -518,7 +476,6 @@
 			}
 
 			const result = await response.json();
-			console.log('Parsed response:', result);
 
 			if (!result || !result.url) {
 				throw new Error('Servern returnerade inget giltigt checkout-URL');
@@ -612,36 +569,6 @@
 		blockedDates = [...new Set(blockedDates.map((date) => date.toISOString()))].map(
 			(date) => new Date(date)
 		);
-
-		// Add near the start of your handleBooking function
-		console.group('🎫 New Booking Request');
-		console.log('📅 Booking Details:', {
-			experience: data.experience.name,
-			experienceId: selectedExperienceId,
-			startDate,
-			startTime,
-			returnDate,
-			returnTime,
-			bookingType: selectedBookingLength
-		});
-
-		console.log('👥 Participants:', {
-			adults: numAdults,
-			children: numChildren,
-			totalParticipants: numAdults + numChildren
-		});
-
-		console.log('💰 Pricing:', {
-			basePrice: totalPrice,
-			addons: selectedAddons,
-			finalTotal: calculateTotalPrice()
-		});
-
-		console.log('📍 Location:', {
-			name: selectedStartLocationName,
-			id: selectedStartLocation
-		});
-		console.groupEnd();
 	});
 
 	function generateForesightBlockedDates(foresightHours) {
@@ -743,22 +670,13 @@
 	}
 
 	function getAvailableTimeIntervals(date, openHours) {
-		console.log('📊 Getting available intervals:', {
-			date,
-			openHours,
-			periods: openHours.periods,
-			specificDates: openHours.specificDates
-		});
-
 		if (!date) {
-			console.log('❌ No date provided');
 			return [];
 		}
 
 		// Check for specific date first
 		const specificDate = openHours.specificDates?.find((d) => d.date === date);
 		if (specificDate) {
-			console.log('✅ Found specific date:', specificDate);
 			return [
 				{
 					startTime: specificDate.open_time,
@@ -776,8 +694,6 @@
 		});
 
 		if (matchingPeriod) {
-			console.log('✅ Found matching period:', matchingPeriod);
-
 			// Generate time slots every 30 minutes
 			const slots = [];
 			const startTime = new Date(`1970-01-01T${matchingPeriod.open_time}`);
@@ -791,11 +707,9 @@
 				startTime.setMinutes(startTime.getMinutes() + 30);
 			}
 
-			console.log('⏰ Generated time slots:', slots);
 			return slots;
 		}
 
-		console.log('❌ No available intervals found');
 		return [];
 	}
 
@@ -817,19 +731,6 @@
 
 		return startDate;
 	}
-
-	$: {
-		if (startTime && data.experience?.experience_type === 'guided') {
-			console.log('Bokningsuppdatering:', {
-				startDate,
-				startTime,
-				endTime,
-				returnDate,
-				returnTime
-			});
-		}
-	}
-
 	// Lägg till bland variablerna
 	let availableSpots = 0;
 	let availableCapacity = null;
@@ -905,17 +806,6 @@
 		}
 	}
 
-	$: {
-		if (data) {
-			console.log('Component data:', {
-				openHours: data.openHours,
-				experience: data.experience,
-				hasIntervals:
-					data.openHours && getAvailableTimeIntervals(startDate, data.openHours).length > 0
-			});
-		}
-	}
-
 	// funktion för att hämta kapacitet
 	async function checkCapacity() {
 		try {
@@ -949,8 +839,6 @@
 	// Add this function after the existing functions
 	function generateGuidedTimes(openTime, closeTime) {
 		try {
-			console.log('Generating guided times:', { openTime, closeTime });
-
 			if (!openTime || !closeTime) {
 				console.error('Missing open or close time');
 				return [];
@@ -965,8 +853,6 @@
 				hours--;
 			}
 
-			console.log('Calculated guided duration:', { hours });
-
 			// Returnera endast starttiden för guidade upplevelser
 			return [openTime];
 		} catch (error) {
@@ -980,12 +866,9 @@
 		if (startDate && data.experience?.experience_type === 'guided') {
 			const guidedHours = data.openHours?.guidedHours;
 			if (guidedHours) {
-				console.log('Generating guided times for date:', startDate);
 				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
-				console.log('Generated guided times:', possibleStartTimes);
 			} else {
 				console.error('Missing guided hours configuration in data.openHours');
-				console.log('Current openHours:', data.openHours);
 			}
 		}
 	}
@@ -1045,14 +928,6 @@
 								const selectedDate = new Date(date);
 								selectedDate.setHours(12, 0, 0, 0);
 								const newDateStr = selectedDate.toISOString().split('T')[0];
-
-								console.log('📅 Date Selection:', {
-									rawDate: date,
-									selectedDate: selectedDate,
-									formattedDate: newDateStr,
-									currentDate: startDate,
-									isSameDate: startDate === newDateStr
-								});
 
 								// Only update if we don't have a date yet or if it's a different date
 								if (!startDate || startDate !== newDateStr) {
@@ -1419,14 +1294,6 @@
 									const selectedDate = new Date(date);
 									selectedDate.setHours(12, 0, 0, 0);
 									const newDateStr = selectedDate.toISOString().split('T')[0];
-
-									console.log('📅 Date Selection:', {
-										rawDate: date,
-										selectedDate: selectedDate,
-										formattedDate: newDateStr,
-										currentDate: startDate,
-										isSameDate: startDate === newDateStr
-									});
 
 									// Only update if we don't have a date yet or if it's a different date
 									if (!startDate || startDate !== newDateStr) {
