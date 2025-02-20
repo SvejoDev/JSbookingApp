@@ -8,7 +8,24 @@ export async function POST({ request }) {
 		// hämta upplevelsens data
 		const {
 			rows: [experience]
-		} = await query('SELECT * FROM experiences WHERE id = $1', [experienceId]);
+		} = await query(
+			`
+			SELECT e.*, 
+				   eod.open_time as default_open_time,
+				   eod.close_time as default_close_time
+			FROM experiences e
+			LEFT JOIN experience_open_dates eod ON e.id = eod.experience_id
+			AND CURRENT_DATE BETWEEN eod.start_date AND eod.end_date
+			WHERE e.id = $1`,
+			[experienceId]
+		);
+
+		if (!experience?.default_open_time || !experience?.default_close_time) {
+			return json({
+				error: 'Öppettider saknas för denna upplevelse',
+				availableStartTimes: []
+			});
+		}
 
 		// hämta addons data
 		const { rows: addonsList } = await query(
@@ -20,11 +37,11 @@ export async function POST({ request }) {
 			[experienceId]
 		);
 
-		// hantera business_school på samma sätt som public
-		if (experience.experience_type === 'business_school') {
-			// parsa bokningslängd
-			const { durationHours, numberOfNights } = parseBookingLength(bookingLength);
-
+		// hantera både public och business_school på samma sätt
+		if (
+			experience.experience_type === 'public' ||
+			experience.experience_type === 'business_school'
+		) {
 			// hämta specifika tidsslots eller standardtider
 			const { rows: specificTimeSlots } = await query(
 				`SELECT open_time, close_time 
@@ -34,28 +51,28 @@ export async function POST({ request }) {
 				[experienceId, date]
 			);
 
+			// hämta öppettider från specifika datum eller standardtider
 			let openTime, closeTime;
 
 			if (specificTimeSlots.length > 0) {
 				openTime = specificTimeSlots[0].open_time;
 				closeTime = specificTimeSlots[0].close_time;
 			} else {
-				const {
-					rows: [periodTimes]
-				} = await query(
-					'SELECT open_time, close_time FROM experience_open_dates WHERE experience_id = $1',
-					[experienceId]
-				);
-
-				if (!periodTimes) {
-					return json({ error: 'Inga tillgängliga tider hittades', availableStartTimes: [] });
-				}
-
-				openTime = periodTimes.open_time;
-				closeTime = periodTimes.close_time;
+				openTime = experience.default_open_time;
+				closeTime = experience.default_close_time;
 			}
 
-			// kontrollera tillgänglighet baserat på addons
+			// parsa bokningslängd med öppettider
+			const { durationHours, numberOfNights } = parseBookingLength(
+				bookingLength,
+				openTime,
+				closeTime
+			);
+
+			// generera tider med hänsyn till bokningstyp
+			const possibleTimes = generateTimeSlots(openTime, closeTime, durationHours, bookingLength);
+
+			// kontrollera tillgänglighet för addons
 			const availableTimes = await checkAvailability({
 				date,
 				durationHours,
@@ -64,13 +81,13 @@ export async function POST({ request }) {
 				addonsList,
 				openTime,
 				closeTime,
-				experienceId
+				experienceId,
+				bookingLength
 			});
 
 			return json({ availableStartTimes: availableTimes });
 		}
 
-		// fortsätt med existerande logik för andra upplevelser
 		return json({ availableStartTimes: [] });
 	} catch (error) {
 		console.error('Fel vid kontroll av tillgänglighet:', error);
@@ -78,18 +95,37 @@ export async function POST({ request }) {
 	}
 }
 
-function parseBookingLength(bookingLength) {
-	if (bookingLength === 'Hela dagen') {
-		return { durationHours: 7, numberOfNights: 0 };
-	}
+function parseBookingLength(bookingLength, openTime, closeTime) {
+	// hantera övernattningar
 	if (bookingLength.includes('övernattning')) {
 		const nights = parseInt(bookingLength) || 1;
 		return { durationHours: 0, numberOfNights: nights };
 	}
+
+	// hantera timmar
 	if (bookingLength.includes('h')) {
 		const hours = parseInt(bookingLength);
 		return { durationHours: hours, numberOfNights: 0 };
 	}
+
+	// hantera hela dagen
+	if (bookingLength === 'Hela dagen') {
+		// kontrollera att öppettider finns
+		if (!openTime || !closeTime) {
+			throw new Error('Öppettider saknas för denna upplevelse');
+		}
+
+		// beräkna längden mellan öppning och stängning
+		const [openHours, openMinutes] = openTime.split(':').map(Number);
+		const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
+
+		const totalMinutes = closeHours * 60 + closeMinutes - (openHours * 60 + openMinutes);
+		const totalHours = totalMinutes / 60;
+
+		return { durationHours: totalHours, numberOfNights: 0 };
+	}
+
+	// standardvärde
 	return { durationHours: 0, numberOfNights: 0 };
 }
 
@@ -119,31 +155,40 @@ async function filterPastTimes(times, bookingDate, experienceId) {
 	});
 }
 
-function generateTimeSlots(openTime, closeTime, durationHours = 0) {
+function generateTimeSlots(openTime, closeTime, durationHours = 0, bookingType = '') {
 	const times = [];
+
+	// om det är en hela dagen-bokning, returnera endast öppningstiden
+	if (bookingType === 'Hela dagen') {
+		return [openTime];
+	}
+
 	let currentTime = new Date(`1970-01-01T${openTime}`);
 	const endTime = new Date(`1970-01-01T${closeTime}`);
 
-	const lastPossibleStart = new Date(endTime);
+	// För övernattningar, använd hela dagen
 	if (durationHours === 0) {
-		const [closeHour, closeMinute] = closeTime.split(':').map(Number);
-		lastPossibleStart.setHours(closeHour, closeMinute, 0);
+		while (currentTime <= endTime) {
+			times.push(currentTime.toTimeString().slice(0, 5));
+			currentTime.setMinutes(currentTime.getMinutes() + 30);
+		}
 	} else {
+		// För dagsbokningar, ta hänsyn till bokningslängden
+		const lastPossibleStart = new Date(endTime);
 		lastPossibleStart.setHours(lastPossibleStart.getHours() - Math.floor(durationHours));
 		lastPossibleStart.setMinutes(lastPossibleStart.getMinutes() - (durationHours % 1) * 60);
-	}
-	endTime.setTime(lastPossibleStart.getTime());
 
-	while (currentTime <= endTime) {
-		times.push(currentTime.toTimeString().slice(0, 5));
-		currentTime.setMinutes(currentTime.getMinutes() + 30);
+		while (currentTime <= lastPossibleStart) {
+			times.push(currentTime.toTimeString().slice(0, 5));
+			currentTime.setMinutes(currentTime.getMinutes() + 30);
+		}
 	}
 
 	return times;
 }
 
-function timeToMinutes(timeStr) {
-	const [hours, minutes] = timeStr.split(':').map(Number);
+function timeToMinutes(time) {
+	const [hours, minutes] = time.split(':').map(Number);
 	return hours * 60 + minutes;
 }
 
@@ -162,15 +207,18 @@ async function checkAvailability({
 	addonsList,
 	openTime,
 	closeTime,
-	experienceId
+	experienceId,
+	bookingLength
 }) {
-	const requestedAddons = addonsList.filter((addon) => addons[addon.column_name] > 0);
-
+	// generera möjliga tider
 	const possibleTimes = generateTimeSlots(
 		openTime,
 		closeTime,
-		numberOfNights === 0 ? durationHours : 0
+		numberOfNights === 0 ? durationHours : 0,
+		bookingLength
 	);
+
+	// filtrera tider som är i det förflutna
 	const validStartTimes = await filterPastTimes(possibleTimes, date, experienceId);
 
 	if (validStartTimes.length === 0) {
@@ -182,7 +230,7 @@ async function checkAvailability({
 	for (const startTime of validStartTimes) {
 		let allAddonsAvailable = true;
 
-		for (const addon of requestedAddons) {
+		for (const addon of addonsList) {
 			const isAvailable = await checkAddonAvailability({
 				addonId: addon.id,
 				amount: addons[addon.column_name],
@@ -190,7 +238,6 @@ async function checkAvailability({
 				startDate: date,
 				startTime,
 				numberOfNights,
-				durationHours,
 				openTime,
 				closeTime
 			});
@@ -216,11 +263,12 @@ async function checkAddonAvailability({
 	startDate,
 	startTime,
 	numberOfNights,
-	durationHours,
 	openTime,
 	closeTime
 }) {
-	// hämtar information om tillägget
+	if (!amount || amount <= 0) return true;
+
+	// hämta addon-information
 	const {
 		rows: [addon]
 	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
@@ -231,7 +279,11 @@ async function checkAddonAvailability({
 
 	// beräkna antalet dagar inklusive start- och slutdatum
 	const totalDays = numberOfNights + 1;
-	const dates = Array.from({ length: totalDays }, (_, i) => getDateString(startDate, i));
+	const dates = Array.from({ length: totalDays }, (_, i) => {
+		const date = new Date(startDate);
+		date.setDate(date.getDate() + i);
+		return date.toISOString().split('T')[0];
+	});
 
 	// kontrollera varje datum i perioden
 	for (const [index, currentDate] of dates.entries()) {
@@ -253,14 +305,13 @@ async function checkAddonAvailability({
 			// kontrollera varje kvart
 			for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
 				const columnName = (Math.floor(minutes / 15) * 15).toString();
-				const bookedAmount = parseInt(availabilityData[columnName] || '0');
-				const availableSlots = maxQuantity + bookedAmount;
+				const bookedAmount = Math.abs(parseInt(availabilityData[columnName] || '0'));
+				const availableSlots = maxQuantity - bookedAmount;
 
 				if (amount > availableSlots) {
 					return false;
 				}
 			}
-		} else {
 		}
 	}
 
