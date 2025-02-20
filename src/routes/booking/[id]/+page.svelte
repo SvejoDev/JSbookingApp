@@ -163,24 +163,50 @@
 		}
 	}
 
-	// Add this near the other reactive statements
+	// hantera guidade upplevelser
 	$: {
-		if (data.experience?.experience_type === 'guided') {
-			// For guided experiences, automatically set the first available location and booking length
-			selectedStartLocation = data.startLocations[0]?.id;
-			selectedBookingLength = data.bookingLengths[0]?.length;
-
-			// Update price when number of adults changes
-			if (numAdults >= 0) {
-				totalPrice = numAdults * data.startLocations[0]?.price;
+		if (data.experience?.experience_type === 'guided' && data.startLocations?.length > 0) {
+			// Only log errors for invalid values in guided experiences
+			if (!selectedStartLocation || numAdults < 0 || !data.openHours?.guidedHours) {
+				console.error('Guided Experience Error:', {
+					missingStartLocation: !selectedStartLocation,
+					missingOpenHours: !data.openHours?.guidedHours,
+					invalidAdults: numAdults < 0,
+					currentState: {
+						startLocation: selectedStartLocation,
+						openHours: data.openHours?.guidedHours,
+						numAdults
+					}
+				});
 			}
 
-			// Vänta på att DOM:en uppdateras och scrolla sedan till equipment-section
-			tick().then(async () => {
-				// Vänta 100ms för att ge en mer naturlig känsla
-				await new Promise((resolve) => setTimeout(resolve, 100));
-				await scrollToElement('equipment-section');
-			});
+			// sätt bara värden om de inte redan är satta
+			if (!selectedStartLocation) {
+				selectedStartLocation = data.startLocations[0]?.id;
+			}
+
+			if (!selectedBookingLength && data.bookingLengths?.length > 0) {
+				const guidedBookingLength = data.bookingLengths.find(
+					(bl) => Number(bl.location_id) === Number(data.startLocations[0]?.id)
+				);
+				selectedBookingLength = guidedBookingLength?.length;
+			}
+
+			// uppdatera pris endast om vi har alla nödvändiga värden
+			if (selectedStartLocation && numAdults >= 0) {
+				const location = data.startLocations.find((loc) => loc.id === selectedStartLocation);
+				totalPrice = location ? numAdults * location.price : 0;
+			}
+
+			// vänta på att DOM:en uppdateras innan scroll
+			if (selectedStartLocation && selectedBookingLength) {
+				tick().then(async () => {
+					await new Promise((resolve) => setTimeout(resolve, 100));
+					await scrollToElement('equipment-section');
+				});
+			}
+		} else {
+			console.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 		}
 	}
 
@@ -373,6 +399,12 @@
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
 		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
+			console.error('Return Date Calculation Error:', {
+				missingBookingLength: !selectedBookingLength,
+				missingStartTime: !startTime,
+				missingStartDate: !startDate,
+				missingOpenHours: !data.openHours
+			});
 			return;
 		}
 
@@ -380,16 +412,26 @@
 			const startDateTime = new Date(`${startDate}T${startTime}`);
 			let returnDateTime = new Date(startDateTime);
 
-			// hämta stängningstid från openHours
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
+			console.error('Available intervals:', intervals);
+
 			if (!intervals || intervals.length === 0) {
+				console.error('No intervals found for return date calculation');
 				return;
 			}
 
 			const closeTime = intervals[0].endTime;
 			if (!closeTime) {
+				console.error('No close time found');
 				return;
 			}
+
+			console.error('Processing booking type:', {
+				bookingLength: selectedBookingLength,
+				isOvernight: selectedBookingLength.includes('övernattning'),
+				isHourly: selectedBookingLength.includes('h'),
+				isFullDay: selectedBookingLength === 'Hela dagen'
+			});
 
 			// för övernattningar
 			if (selectedBookingLength.includes('övernattning')) {
@@ -413,6 +455,12 @@
 
 			returnDate = returnDateTime.toISOString().split('T')[0];
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
+
+			console.error('Final return date calculation:', {
+				returnDate,
+				returnTime,
+				calculatedDateTime: returnDateTime
+			});
 		} catch (error) {
 			console.error('Error calculating return date:', error);
 		}
@@ -430,7 +478,42 @@
 
 	// hanterar stripe-betalning
 	async function handleCheckout() {
-		if (!isFormValid) return;
+		console.error('Checkout Data Check:', {
+			isFormValid,
+			experienceId: data.experience?.id,
+			experienceName: data.experience?.name,
+			startDate,
+			returnDate,
+			startTime,
+			returnTime,
+			bookingLength: selectedBookingLength,
+			isOvernight: selectedBookingLength?.includes('övernattning'),
+			participants: {
+				adults: numAdults,
+				children: numChildren
+			},
+			userDetails: {
+				name: userName,
+				lastname: userLastname,
+				email: userEmail,
+				phone: userPhone,
+				hasComment: !!userComment
+			},
+			location: {
+				id: selectedStartLocation,
+				name: selectedStartLocationName
+			},
+			pricing: {
+				total: calculateTotalPrice(),
+				basePrice: totalPrice
+			},
+			addons: selectedAddons
+		});
+
+		if (!isFormValid) {
+			console.error('Form validation failed');
+			return;
+		}
 
 		try {
 			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
@@ -670,7 +753,18 @@
 	}
 
 	function getAvailableTimeIntervals(date, openHours) {
-		if (!date) {
+		// only log if there's an issue with the time intervals
+		if (!date || !openHours || (!openHours.specificDates.length && !openHours.periods.length)) {
+			console.error('Time Intervals Error:', {
+				missingDate: !date,
+				missingOpenHours: !openHours,
+				noAvailableDates: !openHours?.specificDates.length && !openHours?.periods.length,
+				currentState: {
+					date,
+					hasSpecificDates: openHours?.specificDates.length > 0,
+					hasPeriods: openHours?.periods.length > 0
+				}
+			});
 			return [];
 		}
 

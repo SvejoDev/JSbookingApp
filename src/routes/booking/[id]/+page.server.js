@@ -88,9 +88,15 @@ export async function load({ params }) {
 			isGuided: experience.experience_type === 'guided'
 		};
 
-		// För guidade upplevelser, använd första periodens tider
+		// För guidade upplevelser, validera och sätt upp öppettider
 		if (experience.experience_type === 'guided') {
-			// Använd specifika datum om det finns, annars använd periodtider
+			console.error('Server Guided Experience Setup:', {
+				hasSpecificDates: specificDates.rows.length > 0,
+				hasPeriodDates: periodOpenDates.rows.length > 0,
+				capacity: capacity.rows[0]?.max_participants
+			});
+
+			// Kontrollera och sätt öppettider i prioritetsordning
 			if (specificDates.rows.length > 0) {
 				openHours.guidedHours = {
 					openTime: specificDates.rows[0].open_time,
@@ -101,6 +107,8 @@ export async function load({ params }) {
 					openTime: periodOpenDates.rows[0].open_time,
 					closeTime: periodOpenDates.rows[0].close_time
 				};
+			} else {
+				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
 		}
 

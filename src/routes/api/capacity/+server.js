@@ -18,6 +18,12 @@ export async function GET({ url }) {
 	}
 
 	try {
+		console.error('Capacity Check Parameters:', {
+			experienceId,
+			date,
+			time
+		});
+
 		// hämta upplevelsens typ och kapacitet
 		const {
 			rows: [experience]
@@ -25,7 +31,8 @@ export async function GET({ url }) {
 			`
 			SELECT 
 				e.experience_type,
-				gec.max_participants
+				gec.max_participants,
+				e.name
 			FROM experiences e
 			LEFT JOIN guided_experience_capacity gec ON e.id = gec.experience_id
 			WHERE e.id = $1
@@ -33,13 +40,17 @@ export async function GET({ url }) {
 			[experienceId]
 		);
 
+		console.error('Experience Data:', experience);
+
 		// om det inte är en guidad upplevelse, returnera null
 		if (experience?.experience_type !== 'guided') {
+			console.error('Not a guided experience');
 			return json({ availableCapacity: null });
 		}
 
 		// om ingen kapacitet är satt, returnera fel
 		if (!experience.max_participants) {
+			console.error('No capacity set for guided experience:', experience.name);
 			return json({
 				error: 'Ingen kapacitet satt för denna upplevelse',
 				availableCapacity: 0
