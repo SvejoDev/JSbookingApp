@@ -14,7 +14,14 @@ export default defineConfig({
 		host: true,
 		strictPort: true,
 		allowedHosts: ['svejo.se', 'stisses.se', 'localhost', 'book.stisses.dev.svejo.se'],
-		hmr: false
+		hmr:
+			process.env.NODE_ENV === 'production'
+				? false
+				: {
+						protocol: 'ws',
+						host: 'localhost',
+						port: 3001
+					}
 	},
 	preview: {
 		port: 3001,
