@@ -15,7 +15,7 @@ if (!process.env.SENDGRID_API_KEY) {
 }
 
 // lägg till denna konstant i början av filen
-const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se'];
+const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se', 'info@stisses.se'];
 
 // formatera datum och tid för e-post
 function formatDateTime(date, time) {
