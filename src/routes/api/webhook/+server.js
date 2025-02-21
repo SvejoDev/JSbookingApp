@@ -168,7 +168,7 @@ async function updateAvailabilityForBooking(client, bookingData) {
 					});
 
 					const slots = [];
-					for (let minutes = startMinutes; minutes <= endMinutes; minutes += 15) {
+					for (let minutes = startMinutes; minutes < endMinutes; minutes += 15) {
 						const slotMinutes = Math.floor(minutes / 15) * 15;
 						slots.push(`"${slotMinutes}" = COALESCE("${slotMinutes}", 0) - ${amount}`);
 					}
