@@ -302,8 +302,33 @@ const invoiceBookingTemplate = `
 </head>
 <body>
 	<div class="header">
-		<h1>Tack för din bokning!</h1>
-		<p>Vi har tagit emot din bokningsförfrågan med faktura som betalningsmetod.</p>
+		<h1>Bokningsbekräftelse</h1>
+		<p>Tack för din bokning hos Stisses!</p>
+	</div>
+
+	<div class="invoice-info">
+		<h2>Fakturainformation</h2>
+		{{#if invoice}}
+			{{#if (eq invoice.invoiceType 'pdf')}}
+			<div class="invoice-details">
+				<p><strong>Fakturatyp:</strong> PDF-faktura</p>
+				<p><strong>E-postadress för faktura:</strong> {{invoice.invoiceEmail}}</p>
+				<p><strong>Organisation:</strong> {{invoice.organization}}</p>
+				<p><strong>Adress:</strong> {{invoice.address}}</p>
+				<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
+			</div>
+			{{else}}
+			<div class="invoice-details">
+				<p><strong>Fakturatyp:</strong> Elektronisk faktura</p>
+				<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
+				<p><strong>Märkning:</strong> {{invoice.marking}}</p>
+				<p><strong>Organisation:</strong> {{invoice.organization}}</p>
+				<p><strong>Adress:</strong> {{invoice.address}}</p>
+				<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
+				<p><strong>Ort:</strong> {{invoice.city}}</p>
+			</div>
+			{{/if}}
+		{{/if}}
 	</div>
 
 	<div class="important-notice">
@@ -344,6 +369,11 @@ const invoiceBookingTemplate = `
 </body>
 </html>
 `;
+
+// Lägg till Handlebars helper för att jämföra värden
+Handlebars.registerHelper('eq', function (a, b) {
+	return a === b;
+});
 
 async function generatePDF(booking, template = bookingTemplate) {
 	// registrera handlebars helpers
@@ -411,33 +441,38 @@ export async function sendBookingConfirmation(booking) {
 	}
 }
 
-// lägg till denna nya funktion efter sendBookingConfirmation
+// Uppdatera sendInvoiceRequest funktionen för att hantera olika fakturatyper korrekt
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
-		// registrera handlebars helpers om de inte redan är registrerade
-		Handlebars.registerHelper('formatDateTime', formatDateTime);
+		// Anpassa e-postmallen baserat på fakturatyp
+		const emailTemplate =
+			invoiceData.invoiceType === 'electronic' ? electronicInvoiceTemplate : pdfInvoiceTemplate;
 
-		const template = Handlebars.compile(invoiceRequestTemplate);
+		const template = Handlebars.compile(emailTemplate);
 		const html = template({
 			booking: bookingData,
 			invoice: invoiceData
 		});
 
-		// skicka e-post till alla mottagare
+		// Skicka e-post med korrekt innehåll baserat på fakturatyp
 		await sgMail.send({
 			to: INVOICE_RECIPIENTS,
 			from: 'info@stisses.se',
-			subject: `Ny fakturaförfrågan - ${bookingData.experience}`,
+			subject: `Ny ${invoiceData.invoiceType === 'electronic' ? 'elektronisk' : 'PDF'} fakturaförfrågan - ${bookingData.experience}`,
 			html: html
 		});
 
-		// skicka bekräftelse till kunden
+		// Skicka bekräftelse till kunden
 		await sendBookingConfirmation({
 			...bookingData,
-			status: 'pending_invoice'
+			status: 'pending_invoice',
+			invoice_type: invoiceData.invoiceType // Säkerställ att rätt fakturatyp skickas
 		});
 
-		console.log('✉️ Fakturaförfrågan skickad till:', INVOICE_RECIPIENTS.join(', '));
+		console.log(
+			`✉️ ${invoiceData.invoiceType === 'electronic' ? 'Elektronisk' : 'PDF'} fakturaförfrågan skickad till:`,
+			INVOICE_RECIPIENTS.join(', ')
+		);
 	} catch (error) {
 		console.error('❌ Fel vid skickande av fakturaförfrågan:', error);
 		throw error;

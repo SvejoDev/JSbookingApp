@@ -125,10 +125,73 @@
 				{#if isInvoiceBooking}
 					<div class="mt-6 bg-yellow-50 p-4 rounded-lg">
 						<h3 class="font-semibold mb-2">Viktig information om fakturering</h3>
-						<p>
-							En faktura kommer att skickas till din e-postadress inom kort. Vänligen notera att
-							bokningen inte är bekräftad förrän fakturan är betald.
-						</p>
+						<div class="space-y-4">
+							<p>
+								En faktura kommer att skickas {booking.invoice_type === 'pdf'
+									? 'till din e-postadress'
+									: 'elektroniskt'} inom kort. Vänligen notera att bokningen inte är bekräftad förrän
+								fakturan är betald.
+							</p>
+
+							<div class="mt-4">
+								<h4 class="font-semibold mb-2">Faktureringsinformation</h4>
+								{#if booking.invoice_type === 'pdf'}
+									<div class="grid gap-2">
+										<div class="flex justify-between">
+											<span>Fakturatyp:</span>
+											<span>PDF-faktura</span>
+										</div>
+										<div class="flex justify-between">
+											<span>E-postadress:</span>
+											<span>{booking.invoice_email}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Organisation:</span>
+											<span>{booking.organization}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Adress:</span>
+											<span>{booking.address}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Postnummer:</span>
+											<span>{booking.postal_code}</span>
+										</div>
+									</div>
+								{:else}
+									<div class="grid gap-2">
+										<div class="flex justify-between">
+											<span>Fakturatyp:</span>
+											<span>Elektronisk faktura</span>
+										</div>
+										<div class="flex justify-between">
+											<span>GLN/PEPPOL-ID:</span>
+											<span>{booking.gln_peppol_id}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Märkning:</span>
+											<span>{booking.marking}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Organisation:</span>
+											<span>{booking.organization}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Adress:</span>
+											<span>{booking.address}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Postnummer:</span>
+											<span>{booking.postal_code}</span>
+										</div>
+										<div class="flex justify-between">
+											<span>Ort:</span>
+											<span>{booking.city}</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+						</div>
 					</div>
 				{/if}
 
