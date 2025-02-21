@@ -284,8 +284,9 @@ async function createBooking(client, metadata, session) {
 			amount_total,
 			start_slot,
 			end_slot,
-			total_slots
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+			total_slots,
+			confirmation_sent
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING *`,
 		[
 			metadata.experience_id,
@@ -311,7 +312,8 @@ async function createBooking(client, metadata, session) {
 			session.amount_total / 100, // konvertera från ören till kronor
 			startSlot,
 			endSlot,
-			totalSlots
+			totalSlots,
+			false // sätt confirmation_sent till false när bokningen skapas
 		]
 	);
 

@@ -38,6 +38,9 @@
 		const date = new Date(dateString);
 		return date.toLocaleDateString('sv-SE');
 	};
+
+	// Lägg till en hjälpfunktion för att hantera undefined-värden
+	const formatValue = (value) => value || 'Ej angiven';
 </script>
 
 <div class="container mx-auto px-4 py-8 max-w-3xl">
@@ -80,7 +83,7 @@
 						</div>
 						<div class="flex justify-between">
 							<span>Startplats</span>
-							<span>{booking.startlocation_name}</span>
+							<span>{formatValue(booking.startLocationName)}</span>
 						</div>
 						<div class="flex justify-between">
 							<span>Datum</span>
@@ -127,7 +130,7 @@
 						<h3 class="font-semibold mb-2">Viktig information om fakturering</h3>
 						<div class="space-y-4">
 							<p>
-								En faktura kommer att skickas {booking.invoice_type === 'pdf'
+								En faktura kommer att skickas {booking.invoiceType === 'electronic'
 									? 'till din e-postadress'
 									: 'elektroniskt'} inom kort. Vänligen notera att bokningen inte är bekräftad förrän
 								fakturan är betald.
@@ -135,61 +138,51 @@
 
 							<div class="mt-4">
 								<h4 class="font-semibold mb-2">Faktureringsinformation</h4>
-								{#if booking.invoice_type === 'pdf'}
-									<div class="grid gap-2">
-										<div class="flex justify-between">
-											<span>Fakturatyp:</span>
-											<span>PDF-faktura</span>
-										</div>
-										<div class="flex justify-between">
-											<span>E-postadress:</span>
-											<span>{booking.invoice_email}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Organisation:</span>
-											<span>{booking.organization}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Adress:</span>
-											<span>{booking.address}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Postnummer:</span>
-											<span>{booking.postal_code}</span>
-										</div>
+								<div class="space-y-2">
+									<div class="flex justify-between">
+										<span>Fakturatyp:</span>
+										<span
+											>{booking.invoiceType === 'electronic'
+												? 'Elektronisk faktura'
+												: 'PDF-faktura'}</span
+										>
 									</div>
-								{:else}
-									<div class="grid gap-2">
-										<div class="flex justify-between">
-											<span>Fakturatyp:</span>
-											<span>Elektronisk faktura</span>
-										</div>
+
+									{#if booking.invoiceType === 'electronic'}
 										<div class="flex justify-between">
 											<span>GLN/PEPPOL-ID:</span>
-											<span>{booking.gln_peppol_id}</span>
+											<span>{formatValue(booking.glnPeppolId)}</span>
 										</div>
 										<div class="flex justify-between">
 											<span>Märkning:</span>
-											<span>{booking.marking}</span>
+											<span>{formatValue(booking.marking)}</span>
 										</div>
+									{:else}
+										<!-- Visa PDF-fakturainformation -->
 										<div class="flex justify-between">
-											<span>Organisation:</span>
-											<span>{booking.organization}</span>
+											<span>E-postadress för faktura:</span>
+											<span>{formatValue(booking.invoiceEmail)}</span>
 										</div>
-										<div class="flex justify-between">
-											<span>Adress:</span>
-											<span>{booking.address}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Postnummer:</span>
-											<span>{booking.postal_code}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Ort:</span>
-											<span>{booking.city}</span>
-										</div>
+									{/if}
+
+									<!-- Gemensamma fält för båda fakturatyper -->
+									<div class="flex justify-between">
+										<span>Organisation:</span>
+										<span>{formatValue(booking.organization)}</span>
 									</div>
-								{/if}
+									<div class="flex justify-between">
+										<span>Adress:</span>
+										<span>{formatValue(booking.address)}</span>
+									</div>
+									<div class="flex justify-between">
+										<span>Postnummer:</span>
+										<span>{formatValue(booking.postalCode)}</span>
+									</div>
+									<div class="flex justify-between">
+										<span>Ort:</span>
+										<span>{formatValue(booking.city)}</span>
+									</div>
+								</div>
 							</div>
 						</div>
 					</div>

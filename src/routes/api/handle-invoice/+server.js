@@ -44,7 +44,8 @@ export async function POST({ request }) {
 			'start_slot',
 			'end_slot',
 			'total_slots',
-			'payment_method'
+			'payment_method',
+			'confirmation_sent'
 		];
 
 		// Skapa motsvarande värden för baskolumnerna
@@ -69,7 +70,8 @@ export async function POST({ request }) {
 			startSlot,
 			endSlot,
 			totalSlots,
-			'invoice'
+			'invoice',
+			false
 		];
 
 		// Hämta alla addons från databasen
@@ -124,8 +126,9 @@ export async function POST({ request }) {
 			invoiceData.city
 		];
 
-		// Lägg till invoice_email endast för PDF-fakturor
+		// Lägg till invoice_email för PDF-fakturor
 		if (invoiceData.invoiceType === 'pdf') {
+			console.log('PDF faktura data:', invoiceData); // Lägg till för debugging
 			invoiceColumns.push('invoice_email');
 			invoiceValues.push(invoiceData.invoiceEmail);
 		}
@@ -138,6 +141,8 @@ export async function POST({ request }) {
 			 RETURNING *`,
 			invoiceValues
 		);
+
+		console.log('Sparad fakturainformation:', invoiceDetails); // Lägg till för debugging
 
 		// Skicka med de ursprungliga addon-värdena till updateAvailability
 		const bookingWithAddons = {
