@@ -520,10 +520,14 @@
 
 	// Uppdatera handleInvoiceSubmission funktionen
 	async function handleInvoiceSubmission() {
-		if (isSubmittingInvoice) return; // Förhindra dubbla klick
+		if (isSubmittingInvoice) return;
 
 		try {
 			isSubmittingInvoice = true;
+
+			// Logga för att se vad vi har
+			console.log('Selected addons before submission:', selectedAddons);
+
 			const bookingData = {
 				experience_id: data.experience.id,
 				experience: data.experience.name,
@@ -540,8 +544,12 @@
 				customer_email: userEmail,
 				customer_phone: userPhone,
 				customer_comment: userComment,
-				selectedStartLocation: selectedStartLocation
+				selectedStartLocation: selectedStartLocation,
+				// Lägg till addons här
+				addons: selectedAddons
 			};
+
+			console.log('Sending booking data:', bookingData);
 
 			const response = await fetch('/api/handle-invoice', {
 				method: 'POST',

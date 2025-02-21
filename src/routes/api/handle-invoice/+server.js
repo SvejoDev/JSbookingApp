@@ -6,79 +6,91 @@ export async function POST({ request }) {
 	try {
 		const { bookingData, invoiceData } = await request.json();
 
-		// Beräkna slots baserat på start och sluttid
-		const startSlot = calculateTimeSlot(bookingData.start_time);
-		const endSlot = calculateTimeSlot(bookingData.end_time);
-		const totalSlots = endSlot - startSlot + 1;
+		// Spara addons separat innan vi modifierar bookingData
+		const originalAddons = { ...bookingData.addons };
 
-		// spara bokningen i databasen med alla nödvändiga fält
+		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
+		console.log('🎁 Sparade addons:', originalAddons);
+
+		// Definiera baskolumner för bokningen (ta bort selected_start_location)
+		const baseColumns = [
+			'experience_id',
+			'experience',
+			'start_date',
+			'end_date',
+			'start_time',
+			'end_time',
+			'number_of_adults',
+			'number_of_children',
+			'amount_total',
+			'booking_name',
+			'booking_lastname',
+			'customer_email',
+			'customer_phone',
+			'customer_comment',
+			'booking_type' // Lägg till booking_type
+		];
+
+		// Skapa motsvarande värden för baskolumnerna
+		const baseValues = [
+			bookingData.experience_id,
+			bookingData.experience,
+			bookingData.start_date,
+			bookingData.end_date || bookingData.start_date,
+			bookingData.start_time,
+			bookingData.end_time,
+			bookingData.number_of_adults,
+			bookingData.number_of_children,
+			bookingData.amount_total,
+			bookingData.booking_name,
+			bookingData.booking_lastname,
+			bookingData.customer_email,
+			bookingData.customer_phone,
+			bookingData.customer_comment || '',
+			'day' // Standard booking_type
+		];
+
+		// Hämta alla addons från databasen
+		const { rows: addons } = await query(
+			'SELECT id, name, column_name, availability_table_name FROM addons'
+		);
+
+		console.log('🔍 Hämtade addons från DB:', addons);
+
+		// Skapa booking-objektet med addons inkluderade
+		const allColumns = [...baseColumns, ...addons.map((addon) => addon.column_name)];
+
+		// Använd originalAddons för att sätta värdena
+		const allValues = [
+			...baseValues,
+			...addons.map((addon) => parseInt(originalAddons?.[addon.column_name] || 0))
+		];
+
+		console.log('Inserting booking with columns:', allColumns);
+		console.log('and values:', allValues);
+
+		// Skapa bokningen i databasen
 		const {
 			rows: [booking]
 		} = await query(
-			`INSERT INTO bookings (
-                experience_id, experience, start_date, start_time, 
-                end_date, end_time, number_of_adults, number_of_children,
-                booking_name, booking_lastname, customer_email, 
-                customer_phone, customer_comment, startlocation,
-                status, amount_total, amount_canoes, amount_kayak, 
-                amount_sup, start_slot, end_slot, total_slots, booking_type
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-            RETURNING id`,
-			[
-				bookingData.experience_id,
-				bookingData.experience,
-				bookingData.start_date,
-				bookingData.start_time,
-				bookingData.end_date,
-				bookingData.end_time,
-				bookingData.number_of_adults,
-				bookingData.number_of_children,
-				bookingData.booking_name,
-				bookingData.booking_lastname,
-				bookingData.customer_email,
-				bookingData.customer_phone,
-				bookingData.customer_comment,
-				bookingData.selectedStartLocation,
-				'pending_invoice',
-				bookingData.amount_total,
-				bookingData.amount_canoes || 0,
-				bookingData.amount_kayak || 0,
-				bookingData.amount_sup || 0,
-				startSlot,
-				endSlot,
-				totalSlots,
-				'invoice'
-			]
+			`INSERT INTO bookings (${allColumns.join(', ')})
+			 VALUES (${allColumns.map((_, i) => `$${i + 1}`).join(', ')})
+			 RETURNING *`, // Ändrat till RETURNING * för att få all bokningsdata
+			allValues
 		);
 
-		// spara faktureringsinformation med korrekt fakturatyp
-		await query(
-			`INSERT INTO invoice_details (
-                booking_id, invoice_type, invoice_email, 
-                gln_peppol_id, marking, organization,
-                address, postal_code, city
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			[
-				booking.id,
-				invoiceData.invoiceType,
-				invoiceData.invoiceEmail,
-				invoiceData.glnPeppolId,
-				invoiceData.marking,
-				invoiceData.organization,
-				invoiceData.address,
-				invoiceData.postalCode,
-				invoiceData.city
-			]
-		);
+		// Skicka med de ursprungliga addon-värdena till updateAvailability
+		const bookingWithAddons = {
+			...booking,
+			addons: originalAddons
+		};
 
-		// Uppdatera tillgänglighet på samma sätt som för betalda bokningar
-		await updateAvailability(bookingData.start_date, bookingData.end_date, startSlot, endSlot);
+		await updateAvailability(bookingWithAddons);
 
-		// skicka e-postnotifieringar med korrekt fakturatyp
+		// Skicka e-postnotifieringar med korrekta addon-värden
 		await sendInvoiceRequest(
 			{
-				...bookingData,
-				id: booking.id,
+				...bookingWithAddons,
 				invoice_type: invoiceData.invoiceType
 			},
 			invoiceData
@@ -86,7 +98,7 @@ export async function POST({ request }) {
 
 		return json({ success: true, bookingId: booking.id });
 	} catch (error) {
-		console.error('Error handling invoice request:', error);
+		console.error('❌ Error handling invoice request:', error);
 		return json({ error: 'Could not process invoice request' }, { status: 500 });
 	}
 }
@@ -97,20 +109,105 @@ function calculateTimeSlot(time) {
 	return Math.floor((hours * 60 + minutes) / 30) + 1;
 }
 
-// Funktion för att uppdatera tillgänglighet
-async function updateAvailability(startDate, endDate, startSlot, endSlot) {
+// Uppdaterad updateAvailability funktion
+async function updateAvailability(bookingData) {
 	try {
-		await query(
-			`INSERT INTO availability (date, slot, is_booked) 
-             VALUES ($1, $2, true) 
-             ON CONFLICT (date, slot) 
-             DO UPDATE SET is_booked = true`,
-			[startDate, startSlot]
+		console.log('🎯 Starting updateAvailability with data:', {
+			bookingData: JSON.stringify(bookingData, null, 2),
+			originalAddons: bookingData.addons // Logga originalvärdena
+		});
+
+		const { rows: addons } = await query(
+			'SELECT name, availability_table_name, column_name FROM addons'
 		);
-		// Uppdatera alla slots mellan start och slut
-		// Implementera logiken här baserat på din befintliga tillgänglighetshantering
+
+		for (const addon of addons) {
+			// Använd originalvärdet direkt från bookingData.addons
+			const amount = parseInt(bookingData.addons?.[addon.column_name] || 0);
+
+			console.log(`🎲 Processing ${addon.name}:`, {
+				amount,
+				originalValue: bookingData.addons?.[addon.column_name],
+				columnName: addon.column_name
+			});
+
+			if (amount > 0) {
+				const startDate = new Date(bookingData.start_date);
+				const endDate = new Date(bookingData.end_date || bookingData.start_date);
+				const isOvernight = bookingData.booking_type === 'overnight';
+
+				for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+					const dateStr = date.toISOString().split('T')[0];
+					const isFirstDay = date.getTime() === startDate.getTime();
+					const isLastDay = date.getTime() === endDate.getTime();
+					const isMiddleDay = !isFirstDay && !isLastDay;
+
+					// beräkna start- och sluttider för denna dag
+					let startMinutes, endMinutes;
+
+					if (isOvernight) {
+						if (isFirstDay) {
+							startMinutes = timeToMinutes(bookingData.start_time);
+							endMinutes = 1440; // 24:00
+						} else if (isMiddleDay) {
+							startMinutes = 0;
+							endMinutes = 1440;
+						} else if (isLastDay) {
+							startMinutes = 0;
+							endMinutes = timeToMinutes(bookingData.end_time);
+						}
+					} else {
+						startMinutes = timeToMinutes(bookingData.start_time);
+						endMinutes = timeToMinutes(bookingData.end_time);
+					}
+
+					console.log('Time range:', {
+						date: dateStr,
+						isFirstDay,
+						isMiddleDay,
+						isLastDay,
+						startMinutes,
+						endMinutes
+					});
+
+					// skapa rad om den inte finns
+					const { rows } = await query(
+						`SELECT date FROM ${addon.availability_table_name} WHERE date = $1`,
+						[dateStr]
+					);
+
+					if (rows.length === 0) {
+						await query(`INSERT INTO ${addon.availability_table_name} (date) VALUES ($1)`, [
+							dateStr
+						]);
+					}
+
+					// uppdatera slots för denna dag
+					const slots = [];
+					for (let minutes = startMinutes; minutes <= endMinutes; minutes += 15) {
+						const slotMinutes = Math.floor(minutes / 15) * 15;
+						slots.push(`"${slotMinutes}" = COALESCE("${slotMinutes}", 0) - ${amount}`);
+					}
+
+					if (slots.length > 0) {
+						await query(
+							`UPDATE ${addon.availability_table_name}
+							 SET ${slots.join(', ')}
+							 WHERE date = $1`,
+							[dateStr]
+						);
+					}
+				}
+			}
+		}
 	} catch (error) {
-		console.error('Error updating availability:', error);
+		console.error('Error in updateAvailability:', error);
 		throw error;
 	}
+}
+
+// hjälpfunktion för att konvertera tid till minuter
+function timeToMinutes(time) {
+	const [hours, minutes] = time.split(':').map(Number);
+	return hours * 60 + minutes;
 }

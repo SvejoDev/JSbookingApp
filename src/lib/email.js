@@ -15,7 +15,7 @@ if (!process.env.SENDGRID_API_KEY) {
 }
 
 // lägg till denna konstant i början av filen
-const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se', 'info@stisses.se'];
+const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se'];
 
 // formatera datum och tid för e-post
 function formatDateTime(date, time) {
@@ -441,20 +441,59 @@ export async function sendBookingConfirmation(booking) {
 	}
 }
 
-// Uppdatera sendInvoiceRequest funktionen för att hantera olika fakturatyper korrekt
+// Lägg till dessa mallar i början av filen, efter imports
+const electronicInvoiceTemplate = `
+<h2>Ny elektronisk fakturaförfrågan</h2>
+<p>En ny elektronisk fakturaförfrågan har inkommit med följande information:</p>
+
+<h3>Bokningsinformation</h3>
+<ul>
+    <li>Upplevelse: {{experience}}</li>
+    <li>Datum: {{start_date}} - {{end_date}}</li>
+    <li>Tid: {{start_time}} - {{end_time}}</li>
+    <li>Antal vuxna: {{number_of_adults}}</li>
+    <li>Antal barn: {{number_of_children}}</li>
+    <li>Totalt belopp: {{amount_total}} kr</li>
+</ul>
+
+<h3>Fakturainformation</h3>
+<ul>
+    <li>Organisation: {{organization}}</li>
+    <li>GLN/PEPPOL-ID: {{glnPeppolId}}</li>
+    <li>Märkning: {{marking}}</li>
+    <li>Adress: {{address}}</li>
+    <li>Postnummer: {{postal_code}}</li>
+    <li>Ort: {{city}}</li>
+</ul>
+
+<h3>Kontaktinformation</h3>
+<ul>
+    <li>Namn: {{booking_name}} {{booking_lastname}}</li>
+    <li>E-post: {{customer_email}}</li>
+    <li>Telefon: {{customer_phone}}</li>
+</ul>
+
+<p>Kommentar: {{customer_comment}}</p>
+`;
+
+// Uppdatera sendInvoiceRequest funktionen
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
-		// Anpassa e-postmallen baserat på fakturatyp
-		const emailTemplate =
-			invoiceData.invoiceType === 'electronic' ? electronicInvoiceTemplate : pdfInvoiceTemplate;
+		// Välj rätt mall baserat på fakturatyp
+		const template =
+			invoiceData.invoiceType === 'electronic' ? electronicInvoiceTemplate : pdfInvoiceTemplate; // Antar att denna redan finns
 
-		const template = Handlebars.compile(emailTemplate);
-		const html = template({
-			booking: bookingData,
-			invoice: invoiceData
-		});
+		// Kombinera data för mallgenerering
+		const templateData = {
+			...bookingData,
+			...invoiceData
+		};
 
-		// Skicka e-post med korrekt innehåll baserat på fakturatyp
+		// Kompilera och generera HTML
+		const compiledTemplate = Handlebars.compile(template);
+		const html = compiledTemplate(templateData);
+
+		// Skicka e-post
 		await sgMail.send({
 			to: INVOICE_RECIPIENTS,
 			from: 'info@stisses.se',
