@@ -97,7 +97,36 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 };
 
 // E-faktura template
-export const electronicInvoiceTemplate = (bookingData, invoiceData) => `
-    <h2>Ny elektronisk fakturaförfrågan</h2>
-    <!-- Behåll samma struktur som tidigare -->
+export const electronicInvoiceTemplate = `
+<h2>Ny elektronisk fakturaförfrågan</h2>
+<p>En ny elektronisk fakturaförfrågan har inkommit med följande information:</p>
+
+<h3>Bokningsinformation</h3>
+<ul>
+    <li>Upplevelse: {{experience}}</li>
+    <li>Datum: {{start_date}} - {{end_date}}</li>
+    <li>Tid: {{start_time}} - {{end_time}}</li>
+    <li>Antal vuxna: {{number_of_adults}}</li>
+    <li>Antal barn: {{number_of_children}}</li>
+    <li>Totalt belopp: {{amount_total}} kr</li>
+</ul>
+
+<h3>Fakturainformation</h3>
+<ul>
+    <li>Organisation: {{organization}}</li>
+    <li>GLN/PEPPOL-ID: {{glnPeppolId}}</li>
+    <li>Märkning: {{marking}}</li>
+    <li>Adress: {{address}}</li>
+    <li>Postnummer: {{postal_code}}</li>
+    <li>Ort: {{city}}</li>
+</ul>
+
+<h3>Kontaktinformation</h3>
+<ul>
+    <li>Namn: {{booking_name}} {{booking_lastname}}</li>
+    <li>E-post: {{customer_email}}</li>
+    <li>Telefon: {{customer_phone}}</li>
+</ul>
+
+<p>Kommentar: {{customer_comment}}</p>
 `;

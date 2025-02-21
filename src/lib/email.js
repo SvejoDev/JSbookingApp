@@ -1,13 +1,11 @@
 import sgMail from '@sendgrid/mail';
 import dotenv from 'dotenv';
-import puppeteer from 'puppeteer-core';
 import Handlebars from 'handlebars';
-import { Buffer } from 'buffer';
 import html_to_pdf from 'html-pdf-node';
 
 import { bookingConfirmationTemplate } from './templates/bookingTemplates.js';
 import { pdfInvoiceTemplate, electronicInvoiceTemplate } from './templates/invoiceTemplates.js';
-import { formatDateTime, formatPrice } from './templates/emailTemplates.js';
+import { formatDateTime } from './templates/emailTemplates';
 
 dotenv.config();
 
@@ -26,24 +24,6 @@ const EMAIL_CONFIG = {
 
 // konfigurera sendgrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-// formatera datum och tid för e-post
-function formatDateTime(date, time) {
-	if (!date || !time) return 'Ej angivet';
-	try {
-		const dateObj = new Date(date);
-		const formattedDate = dateObj.toLocaleDateString('sv-SE', {
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric'
-		});
-		const formattedTime = time.split(':').slice(0, 2).join(':');
-		return `${formattedDate} kl. ${formattedTime}`;
-	} catch (error) {
-		console.error('Fel vid datumformatering:', error);
-		return 'Ogiltigt datum/tid';
-	}
-}
 
 // formatera pris med två decimaler
 function formatPrice(price) {
@@ -448,93 +428,16 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 	}
 }
 
-// Lägg till dessa mallar i början av filen, efter imports
-const electronicInvoiceTemplate = `
-<h2>Ny elektronisk fakturaförfrågan</h2>
-<p>En ny elektronisk fakturaförfrågan har inkommit med följande information:</p>
-
-<h3>Bokningsinformation</h3>
-<ul>
-    <li>Upplevelse: {{experience}}</li>
-    <li>Datum: {{start_date}} - {{end_date}}</li>
-    <li>Tid: {{start_time}} - {{end_time}}</li>
-    <li>Antal vuxna: {{number_of_adults}}</li>
-    <li>Antal barn: {{number_of_children}}</li>
-    <li>Totalt belopp: {{amount_total}} kr</li>
-</ul>
-
-<h3>Fakturainformation</h3>
-<ul>
-    <li>Organisation: {{organization}}</li>
-    <li>GLN/PEPPOL-ID: {{glnPeppolId}}</li>
-    <li>Märkning: {{marking}}</li>
-    <li>Adress: {{address}}</li>
-    <li>Postnummer: {{postal_code}}</li>
-    <li>Ort: {{city}}</li>
-</ul>
-
-<h3>Kontaktinformation</h3>
-<ul>
-    <li>Namn: {{booking_name}} {{booking_lastname}}</li>
-    <li>E-post: {{customer_email}}</li>
-    <li>Telefon: {{customer_phone}}</li>
-</ul>
-
-<p>Kommentar: {{customer_comment}}</p>
-`;
-
-// uppdatera sendEmail funktionen för att hantera olika typer av e-post
-async function sendEmail({ to, subject, html, attachments = [], type = 'booking' }) {
-	try {
-		// bestäm mottagare baserat på typ
-		const recipients = type === 'invoice' ? EMAIL_CONFIG.INVOICE_RECIPIENTS : to;
-
-		if (!recipients) {
-			throw new Error('saknar mottagaradress');
-		}
-
-		const msg = {
-			to: recipients,
-			from: EMAIL_CONFIG.FROM,
-			subject,
-			html,
-			attachments
-		};
-
-		// logga för debugging
-		console.log('📧 försöker skicka e-post:', {
-			type,
-			to: msg.to,
-			from: EMAIL_CONFIG.FROM.email,
-			subject
-		});
-
-		await sgMail.send(msg);
-		console.log('✉️ e-post skickad:', {
-			type,
-			to: msg.to
-		});
-	} catch (error) {
-		console.error('❌ fel vid skickande av e-post:', {
-			error: error.message,
-			type,
-			to,
-			subject
-		});
-		throw error;
-	}
-}
-
-// uppdatera sendInvoiceRequest funktionen
+// uppdatera sendInvoiceRequest funktionen för att använda den importerade mallen
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
 		const template =
 			invoiceData.invoiceType === 'pdf'
 				? pdfInvoiceTemplate(bookingData, invoiceData)
-				: electronicInvoiceTemplate(bookingData, invoiceData);
+				: electronicInvoiceTemplate; // använd den importerade mallen
 
 		await sendEmail({
-			to: null, // vi behöver inte skicka 'to' för fakturor
+			to: null,
 			subject: `Fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
 			html: template,
 			type: 'invoice'
