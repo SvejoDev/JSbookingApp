@@ -257,6 +257,11 @@ async function createBooking(client, metadata, session) {
 	const amountKayak = parseInt(metadata.amount_kayak) || 0;
 	const amountSup = parseInt(metadata.amount_sup) || 0;
 
+	// beräkna slots baserat på start- och sluttid
+	const startSlot = timeToSlot(metadata.start_time);
+	const endSlot = timeToSlot(metadata.end_time);
+	const totalSlots = calculateTotalSlots(startSlot, endSlot, metadata.booking_type === 'overnight');
+
 	const {
 		rows: [booking]
 	} = await client.query(
@@ -280,8 +285,12 @@ async function createBooking(client, metadata, session) {
 			amount_kayak,
 			amount_sup,
 			stripe_session_id,
-			experience
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+			experience,
+			amount_total,
+			start_slot,
+			end_slot,
+			total_slots
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		RETURNING *`,
 		[
 			metadata.experience_id,
@@ -303,11 +312,31 @@ async function createBooking(client, metadata, session) {
 			amountKayak,
 			amountSup,
 			session.id,
-			metadata.experience
+			metadata.experience,
+			session.amount_total / 100, // konvertera från ören till kronor
+			startSlot,
+			endSlot,
+			totalSlots
 		]
 	);
 
 	return booking;
+}
+
+// hjälpfunktioner för att hantera tidsslots
+function timeToSlot(time) {
+	// konvertera tid (HH:MM) till slot-nummer (15-minuters intervaller)
+	const [hours, minutes] = time.split(':').map(Number);
+	return (hours * 60 + minutes) / 15;
+}
+
+function calculateTotalSlots(startSlot, endSlot, isOvernight) {
+	if (isOvernight) {
+		// för övernattningar, räkna slots från start till midnatt (96 slots per dag)
+		return 96 - startSlot;
+	}
+	// för dagsbokningar, räkna slots mellan start och slut
+	return endSlot - startSlot;
 }
 
 async function createBookingAddons(client, bookingId, metadata) {

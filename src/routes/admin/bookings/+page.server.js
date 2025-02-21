@@ -6,6 +6,10 @@ export async function load({ url }) {
 	const { rows: bookings } = await query(
 		`SELECT 
       b.*,
+      CASE 
+        WHEN b.status = 'confirmed' THEN 'betald'
+        ELSE b.status 
+      END as status,
       array_agg(DISTINCT a.name) as addon_names,
       array_agg(DISTINCT a.column_name) as addon_columns,
       sl.location as startlocation_name
