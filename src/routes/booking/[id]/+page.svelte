@@ -1727,7 +1727,11 @@
 									</Button>
 									<Button
 										variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
-										on:click={() => (selectedPaymentMethod = 'invoice')}
+										on:click={async () => {
+											selectedPaymentMethod = 'invoice';
+											await tick();
+											scrollToElement('invoice-form');
+										}}
 										class="flex-1"
 										disabled={!isFormValid}
 									>
@@ -1740,7 +1744,7 @@
 								</div>
 
 								{#if selectedPaymentMethod === 'invoice'}
-									<Card class="mt-4">
+									<Card class="mt-4" id="invoice-form">
 										<CardHeader>
 											<CardTitle>Fakturauppgifter</CardTitle>
 										</CardHeader>
@@ -1769,14 +1773,6 @@
 											</Button>
 										</CardContent>
 									</Card>
-								{:else if selectedPaymentMethod === 'card'}
-									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
-										{#if !isFormValid}
-											Fyll i alla obligatoriska fält
-										{:else}
-											Gå till kortbetalning ({totalPrice}kr)
-										{/if}
-									</Button>
 								{/if}
 							</div>
 						{:else}
