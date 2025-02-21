@@ -76,28 +76,19 @@ export async function POST({ request }) {
 			experience.experience_type === 'public' ||
 			experience.experience_type === 'business_school'
 		) {
-			// hämta specifika tidsslots eller standardtider
-			const { rows: specificTimeSlots } = await query(
-				`SELECT open_time, close_time 
-				 FROM experience_available_dates 
-				 WHERE experience_id = $1 
-				 AND available_date = $2`,
-				[experienceId, date]
-			);
-
-			console.log('Specific time slots:', specificTimeSlots);
-
-			let openTime, closeTime;
-
-			if (specificTimeSlots.length > 0) {
-				openTime = specificTimeSlots[0].open_time;
-				closeTime = specificTimeSlots[0].close_time;
-			} else {
-				openTime = experience.open_time;
-				closeTime = experience.close_time;
-			}
+			// använd redan hämtade öppettider från CTE
+			let openTime = experience.open_time;
+			let closeTime = experience.close_time;
 
 			console.log('Using times:', { openTime, closeTime });
+
+			// validera öppettider
+			if (!openTime || !closeTime) {
+				return json({
+					error: 'Öppettider saknas för denna upplevelse',
+					availableStartTimes: []
+				});
+			}
 
 			const { durationHours, numberOfNights } = parseBookingLength(
 				bookingLength,
@@ -107,12 +98,15 @@ export async function POST({ request }) {
 
 			console.log('Parsed booking length:', { durationHours, numberOfNights });
 
+			// generera möjliga tider baserat på öppettider
 			const possibleTimes = generateTimeSlots(openTime, closeTime, durationHours, bookingLength);
 			console.log('Generated possible times:', possibleTimes);
 
+			// filtrera bort tider som redan är passerade
 			const validStartTimes = await filterPastTimes(possibleTimes, date, experienceId);
 			console.log('Valid start times after filtering past times:', validStartTimes);
 
+			// kontrollera tillgänglighet för addons
 			const availableTimes = await checkAvailability({
 				date,
 				durationHours,
@@ -129,8 +123,8 @@ export async function POST({ request }) {
 
 			return json({
 				success: true,
-				openTime: experience.open_time,
-				closeTime: experience.close_time,
+				openTime: openTime,
+				closeTime: closeTime,
 				availableStartTimes: availableTimes
 			});
 		}
