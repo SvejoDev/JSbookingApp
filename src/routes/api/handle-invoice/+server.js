@@ -12,6 +12,15 @@ export async function POST({ request }) {
 		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
 		console.log('🎁 Sparade addons:', originalAddons);
 
+		// Beräkna slots
+		const startSlot = timeToSlot(bookingData.start_time);
+		const endSlot = timeToSlot(bookingData.end_time);
+		const totalSlots = calculateTotalSlots(
+			startSlot,
+			endSlot,
+			bookingData.booking_type === 'overnight'
+		);
+
 		// Definiera baskolumner för bokningen (ta bort selected_start_location)
 		const baseColumns = [
 			'experience_id',
@@ -28,7 +37,13 @@ export async function POST({ request }) {
 			'customer_email',
 			'customer_phone',
 			'customer_comment',
-			'booking_type' // Lägg till booking_type
+			'booking_type',
+			'startlocation',
+			'status',
+			'start_slot',
+			'end_slot',
+			'total_slots',
+			'payment_method'
 		];
 
 		// Skapa motsvarande värden för baskolumnerna
@@ -47,7 +62,13 @@ export async function POST({ request }) {
 			bookingData.customer_email,
 			bookingData.customer_phone,
 			bookingData.customer_comment || '',
-			'day' // Standard booking_type
+			'day',
+			bookingData.selectedStartLocation,
+			'pending_payment',
+			startSlot,
+			endSlot,
+			totalSlots,
+			'invoice'
 		];
 
 		// Hämta alla addons från databasen
@@ -79,10 +100,49 @@ export async function POST({ request }) {
 			allValues
 		);
 
+		// Lägg till: Spara fakturainformation
+		const invoiceColumns = [
+			'booking_id',
+			'invoice_type',
+			'gln_peppol_id',
+			'marking',
+			'organization',
+			'address',
+			'postal_code',
+			'city'
+		];
+
+		const invoiceValues = [
+			booking.id,
+			invoiceData.invoiceType,
+			invoiceData.glnPeppolId,
+			invoiceData.marking,
+			invoiceData.organization,
+			invoiceData.address,
+			invoiceData.postalCode,
+			invoiceData.city
+		];
+
+		// Lägg till invoice_email endast för PDF-fakturor
+		if (invoiceData.invoiceType === 'pdf') {
+			invoiceColumns.push('invoice_email');
+			invoiceValues.push(invoiceData.invoiceEmail);
+		}
+
+		const {
+			rows: [invoiceDetails]
+		} = await query(
+			`INSERT INTO invoice_details (${invoiceColumns.join(', ')})
+			 VALUES (${invoiceColumns.map((_, i) => `$${i + 1}`).join(', ')})
+			 RETURNING *`,
+			invoiceValues
+		);
+
 		// Skicka med de ursprungliga addon-värdena till updateAvailability
 		const bookingWithAddons = {
 			...booking,
-			addons: originalAddons
+			addons: originalAddons,
+			invoiceDetails // Lägg till fakturainformationen i svaret
 		};
 
 		await updateAvailability(bookingWithAddons);
@@ -96,7 +156,11 @@ export async function POST({ request }) {
 			invoiceData
 		);
 
-		return json({ success: true, bookingId: booking.id });
+		return json({
+			success: true,
+			bookingId: booking.id,
+			invoiceDetails // Inkludera fakturainformationen i svaret
+		});
 	} catch (error) {
 		console.error('❌ Error handling invoice request:', error);
 		return json({ error: 'Could not process invoice request' }, { status: 500 });
@@ -210,4 +274,17 @@ async function updateAvailability(bookingData) {
 function timeToMinutes(time) {
 	const [hours, minutes] = time.split(':').map(Number);
 	return hours * 60 + minutes;
+}
+
+// Lägg till hjälpfunktioner för slots-beräkning
+function timeToSlot(time) {
+	const [hours, minutes] = time.split(':').map(Number);
+	return (hours * 60 + minutes) / 15;
+}
+
+function calculateTotalSlots(startSlot, endSlot, isOvernight) {
+	if (isOvernight) {
+		return 96 - startSlot; // 96 slots per dag (24 timmar * 4 slots per timme)
+	}
+	return endSlot - startSlot;
 }

@@ -15,44 +15,69 @@ export const load = async ({ url }) => {
 		let booking;
 
 		if (bookingType === 'invoice') {
-			// Hämta fakturabokningar
+			// Hämta både bokning och fakturainformation med startplats
 			const {
-				rows: [invoiceBooking]
+				rows: [bookingData]
 			} = await query(
 				`
 				SELECT 
 					b.*,
-					i.invoice_type,
-					i.organization,
+					id.*,
 					sl.location as startlocation_name,
 					sl.price as adult_price
 				FROM bookings b
-				LEFT JOIN invoice_details i ON b.id = i.booking_id
+				LEFT JOIN invoice_details id ON b.id = id.booking_id
 				LEFT JOIN start_locations sl ON b.startlocation = sl.id
 				WHERE b.id = $1
-			`,
+				`,
 				[bookingId]
 			);
 
-			if (!invoiceBooking) {
+			if (!bookingData) {
+				console.error('Ingen bokning hittades med ID:', bookingId);
 				throw redirect(303, '/');
 			}
 
-			const adultPrice = invoiceBooking.adult_price || 0;
+			// Beräkna priser
+			const adultPrice = bookingData.adult_price || 0;
 			const adultPriceExclVat = adultPrice / 1.25;
-			const totalAdultsExclVat = invoiceBooking.number_of_adults * adultPriceExclVat;
+			const totalAdultsExclVat = bookingData.number_of_adults * adultPriceExclVat;
+			const totalChildren = 0; // barn är gratis
 			const subtotal = totalAdultsExclVat;
 			const vat = subtotal * 0.25;
 			const total = subtotal + vat;
 
+			// Hämta addons för denna bokning
+			const { rows: bookingAddons } = await query(
+				`SELECT a.name, a.column_name, ba.amount 
+				 FROM booking_addons ba 
+				 JOIN addons a ON ba.addon_id = a.id 
+				 WHERE ba.booking_id = $1`,
+				[bookingData.id]
+			);
+
 			booking = {
-				...invoiceBooking,
+				...bookingData,
+				invoiceType: bookingData.invoice_type,
+				...(bookingData.invoice_type === 'pdf' && {
+					invoiceEmail: bookingData.invoice_email
+				}),
+				glnPeppolId: bookingData.gln_peppol_id,
+				marking: bookingData.marking,
+				organization: bookingData.organization,
+				address: bookingData.address,
+				postalCode: bookingData.postal_code,
+				city: bookingData.city,
+				startLocationName: bookingData.startlocation_name,
 				adultPrice,
 				adultPriceExclVat,
+				childPrice: 0,
 				totalAdultsExclVat,
+				totalChildren,
 				subtotal,
 				vat,
-				total
+				total,
+				addons: bookingAddons
 			};
 		} else {
 			// Befintlig logik för stripe-bokningar

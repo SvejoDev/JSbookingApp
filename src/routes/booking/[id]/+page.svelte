@@ -87,12 +87,7 @@
 	let stripePromise;
 
 	// Lägg till denna reaktiva validering
-	$: isFormValid =
-		acceptTerms &&
-		userName.trim() !== '' &&
-		userLastname.trim() !== '' &&
-		userPhone.trim() !== '' &&
-		userEmail.trim() !== '';
+	$: isFormValid = userName && userLastname && userEmail && userPhone && acceptTerms;
 
 	// ==================
 	// reaktiva uttryck
@@ -558,7 +553,10 @@
 				},
 				body: JSON.stringify({
 					bookingData,
-					invoiceData
+					invoiceData: {
+						...invoiceData,
+						invoiceEmail: invoiceData.email
+					}
 				})
 			});
 
@@ -915,6 +913,9 @@
 			return [];
 		}
 	}
+
+	// Lägg till denna variabel bland dina andra state-variabler
+	let acceptedTerms = false;
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1211,26 +1212,49 @@
 									<Textarea id="comment" bind:value={userComment} />
 								</div>
 
-								<div class="flex items-center space-x-2">
-									<Checkbox bind:checked={acceptTerms} id="terms" />
-									<Label for="terms">I accept the booking agreement and the terms of purchase</Label
-									>
+								<div class="flex items-center gap-2 mb-4">
+									<Checkbox id="terms" bind:checked={acceptTerms} />
+									<label for="terms" class="text-sm">
+										Jag accepterar <a
+											href="/terms"
+											class="text-primary hover:underline"
+											target="_blank">bokningsvillkoren och köpvillkoren</a
+										>
+									</label>
 								</div>
 
-								<Button
-									class="w-full mt-4"
-									disabled={!isFormValid || isSubmittingInvoice}
-									on:click={handleInvoiceSubmission}
-								>
-									{#if isSubmittingInvoice}
-										<div class="flex items-center justify-center">
-											<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-											<span>Bearbetar bokning...</span>
-										</div>
+								<div class="flex flex-col gap-4 mt-6">
+									{#if data.experience.experience_type !== 'business_school'}
+										<Button
+											disabled={!acceptTerms || isSubmittingInvoice}
+											on:click={handleInvoiceSubmission}
+											variant="outline"
+											class="w-full"
+										>
+											{#if isSubmittingInvoice}
+												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+											{/if}
+											Betala med faktura
+										</Button>
+
+										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+											Betala med kort
+										</Button>
 									{:else}
-										Skicka fakturabegäran ({totalPrice}kr)
+										<!-- För business_school visas endast fakturabetalning -->
+										<Button
+											disabled={!acceptTerms || isSubmittingInvoice}
+											on:click={handleInvoiceSubmission}
+											variant="outline"
+											class="w-full"
+										>
+											{#if isSubmittingInvoice}
+												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+											{/if}
+											Betala med faktura
+										</Button>
 									{/if}
-								</Button>
+								</div>
 							</CardContent>
 						</Card>
 					{/if}
@@ -1622,7 +1646,7 @@
 							<Textarea id="comment" bind:value={userComment} />
 						</div>
 
-						<div class="flex items-center space-x-2">
+						<div class="flex items-center gap-2 mb-4">
 							<Checkbox bind:checked={acceptTerms} id="terms" />
 							<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
 						</div>
@@ -1635,6 +1659,7 @@
 										variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
 										on:click={() => (selectedPaymentMethod = 'card')}
 										class="flex-1"
+										disabled={!acceptTerms}
 									>
 										Betala med kort
 									</Button>
@@ -1642,6 +1667,7 @@
 										variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
 										on:click={() => (selectedPaymentMethod = 'invoice')}
 										class="flex-1"
+										disabled={!acceptTerms}
 									>
 										Betala med faktura
 									</Button>
@@ -1657,22 +1683,33 @@
 
 											<Button
 												class="w-full mt-4"
-												disabled={!isFormValid || isSubmittingInvoice}
+												disabled={!isFormValid || isSubmittingInvoice || !acceptTerms}
 												on:click={handleInvoiceSubmission}
 											>
+												{#if isSubmittingInvoice}
+													<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+												{/if}
 												Skicka fakturabegäran ({totalPrice}kr)
 											</Button>
 										</CardContent>
 									</Card>
 								{:else if selectedPaymentMethod === 'card'}
-									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
+									<Button
+										disabled={!isFormValid || !acceptTerms}
+										on:click={handleCheckout}
+										class="w-full mt-4"
+									>
 										Gå till kortbetalning ({totalPrice}kr)
 									</Button>
 								{/if}
 							</div>
 						{:else}
 							<!-- Original payment button for public experiences -->
-							<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
+							<Button
+								disabled={!isFormValid || !acceptTerms}
+								on:click={handleCheckout}
+								class="w-full"
+							>
 								Gå till betalning ({totalPrice}kr)
 							</Button>
 						{/if}
@@ -1723,5 +1760,11 @@
 
 	.animate-slideIn {
 		animation: slideIn 1s forwards;
+	}
+
+	/* Om du vill styla disabled-tillståndet ytterligare */
+	:global(button:disabled) {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>
