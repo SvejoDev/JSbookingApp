@@ -14,6 +14,9 @@ if (!process.env.SENDGRID_API_KEY) {
 	console.error('Varning: SENDGRID_API_KEY saknas i miljövariablerna');
 }
 
+// lägg till denna konstant i början av filen
+const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se', 'info@stisses.se'];
+
 // formatera datum och tid för e-post
 function formatDateTime(date, time) {
 	if (!date || !time) return 'Ej angivet';
@@ -185,7 +188,164 @@ const bookingTemplate = `
 </html>
 `;
 
-async function generatePDF(booking) {
+// lägg till denna mall efter bookingTemplate
+const invoiceRequestTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+		.section {
+			margin-bottom: 20px;
+			padding: 15px;
+			background-color: #f5f5f5;
+			border-radius: 5px;
+		}
+		.section-title {
+			font-size: 18px;
+			font-weight: bold;
+			margin-bottom: 10px;
+		}
+	</style>
+</head>
+<body>
+	<h1>Ny fakturaförfrågan</h1>
+	
+	<div class="section">
+		<div class="section-title">Bokningsinformation</div>
+		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
+		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
+		<p><strong>Startdatum:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
+		<p><strong>Slutdatum:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
+		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+		<p><strong>Totalt pris:</strong> {{booking.amount_total}} kr</p>
+	</div>
+
+	<div class="section">
+		<div class="section-title">Kontaktuppgifter</div>
+		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
+		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
+		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
+		{{#if booking.customer_comment}}
+		<p><strong>Kommentar:</strong> {{booking.customer_comment}}</p>
+		{{/if}}
+	</div>
+
+	<div class="section">
+		<div class="section-title">Faktureringsinformation</div>
+		<p><strong>Fakturatyp:</strong> {{invoice.invoiceType}}</p>
+		{{#if invoice.invoiceEmail}}
+		<p><strong>Faktura e-post:</strong> {{invoice.invoiceEmail}}</p>
+		{{/if}}
+		{{#if invoice.glnPeppolId}}
+		<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
+		{{/if}}
+		{{#if invoice.marking}}
+		<p><strong>Märkning:</strong> {{invoice.marking}}</p>
+		{{/if}}
+		<p><strong>Organisation:</strong> {{invoice.organization}}</p>
+		<p><strong>Adress:</strong> {{invoice.address}}</p>
+		<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
+		<p><strong>Ort:</strong> {{invoice.city}}</p>
+	</div>
+</body>
+</html>
+`;
+
+// lägg till denna nya mall efter invoiceRequestTemplate
+const invoiceBookingTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+		.logo {
+			text-align: center;
+			padding: 20px;
+			background-color: #000000;
+		}
+		.logo img {
+			height: 80px;
+		}
+		.header {
+			text-align: center;
+			margin: 20px 0;
+		}
+		.booking-details {
+			background-color: #f5f5f5;
+			padding: 20px;
+			border-radius: 5px;
+			margin: 20px 0;
+		}
+		.important-notice {
+			background-color: #fff3cd;
+			border: 1px solid #ffeeba;
+			color: #856404;
+			padding: 15px;
+			border-radius: 5px;
+			margin: 20px 0;
+		}
+	</style>
+</head>
+<body>
+	<div class="header">
+		<h1>Tack för din bokning!</h1>
+		<p>Vi har tagit emot din bokningsförfrågan med faktura som betalningsmetod.</p>
+	</div>
+
+	<div class="important-notice">
+		<strong>Viktig information:</strong>
+		<p>Din bokning är mottagen och vi kommer att skicka en faktura till dig inom kort. 
+		Bokningen är preliminär tills fakturan är betald.</p>
+	</div>
+
+	<div class="booking-details">
+		<h2>Din bokningsinformation</h2>
+		<p><strong>Bokningsnummer:</strong> #{{booking.id}}</p>
+		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
+		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
+		<p><strong>Datum:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
+		{{#if booking.end_date}}
+		<p><strong>Slutdatum:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
+		{{/if}}
+		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+		<p><strong>Totalt belopp att fakturera:</strong> {{booking.amount_total}} kr</p>
+	</div>
+
+	<div class="contact-details">
+		<h2>Dina uppgifter</h2>
+		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
+		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
+		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
+		{{#if booking.customer_comment}}
+		<p><strong>Meddelande:</strong> {{booking.customer_comment}}</p>
+		{{/if}}
+	</div>
+
+	<div class="footer">
+		<p>Om du har några frågor, kontakta oss gärna på:</p>
+		<p>E-post: info@stisses.se</p>
+		<p>Telefon: 0730-540 540</p>
+	</div>
+</body>
+</html>
+`;
+
+async function generatePDF(booking, template = bookingTemplate) {
 	// registrera handlebars helpers
 	Handlebars.registerHelper('formatDateTime', formatDateTime);
 	Handlebars.registerHelper('formatPrice', formatPrice);
@@ -194,8 +354,8 @@ async function generatePDF(booking) {
 		return a > b;
 	});
 
-	const template = Handlebars.compile(bookingTemplate);
-	const html = template({ booking });
+	const compiledTemplate = Handlebars.compile(template);
+	const html = compiledTemplate({ booking });
 
 	const options = {
 		format: 'A4',
@@ -219,13 +379,22 @@ async function generatePDF(booking) {
 
 export async function sendBookingConfirmation(booking) {
 	try {
-		const pdf = await generatePDF(booking);
+		// Välj mall baserat på bokningsstatus
+		const template =
+			booking.status === 'pending_invoice' ? invoiceBookingTemplate : bookingTemplate;
+
+		const pdf = await generatePDF(booking, template);
+
+		const emailSubject =
+			booking.status === 'pending_invoice'
+				? `Bokningsbekräftelse (Faktura) - ${booking.experience}`
+				: `Bokningsbekräftelse - ${booking.experience}`;
 
 		await sgMail.send({
 			to: booking.customer_email,
 			from: 'info@stisses.se',
-			subject: `Bokningsbekräftelse - ${booking.experience}`,
-			html: Handlebars.compile(bookingTemplate)({ booking }),
+			subject: emailSubject,
+			html: Handlebars.compile(template)({ booking }),
 			attachments: [
 				{
 					content: pdf.toString('base64'),
@@ -239,5 +408,38 @@ export async function sendBookingConfirmation(booking) {
 		console.log('✉️ Bokningsbekräftelse skickad till:', booking.customer_email);
 	} catch (error) {
 		console.error('❌ Fel vid skickande av bokningsbekräftelse:', error);
+	}
+}
+
+// lägg till denna nya funktion efter sendBookingConfirmation
+export async function sendInvoiceRequest(bookingData, invoiceData) {
+	try {
+		// registrera handlebars helpers om de inte redan är registrerade
+		Handlebars.registerHelper('formatDateTime', formatDateTime);
+
+		const template = Handlebars.compile(invoiceRequestTemplate);
+		const html = template({
+			booking: bookingData,
+			invoice: invoiceData
+		});
+
+		// skicka e-post till alla mottagare
+		await sgMail.send({
+			to: INVOICE_RECIPIENTS,
+			from: 'info@stisses.se',
+			subject: `Ny fakturaförfrågan - ${bookingData.experience}`,
+			html: html
+		});
+
+		// skicka bekräftelse till kunden
+		await sendBookingConfirmation({
+			...bookingData,
+			status: 'pending_invoice'
+		});
+
+		console.log('✉️ Fakturaförfrågan skickad till:', INVOICE_RECIPIENTS.join(', '));
+	} catch (error) {
+		console.error('❌ Fel vid skickande av fakturaförfrågan:', error);
+		throw error;
 	}
 }

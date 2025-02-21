@@ -515,11 +515,16 @@
 		}
 	}
 
-	//Hantera faktura
+	// Lägg till denna variabel bland de andra tillståndsvariablerna
+	let isSubmittingInvoice = false;
+
+	// Uppdatera handleInvoiceSubmission funktionen
 	async function handleInvoiceSubmission() {
+		if (isSubmittingInvoice) return; // Förhindra dubbla klick
+
 		try {
-			const requestData = {
-				...invoiceData,
+			isSubmittingInvoice = true;
+			const bookingData = {
 				experience_id: data.experience.id,
 				experience: data.experience.name,
 				startLocation: selectedStartLocationName,
@@ -527,17 +532,15 @@
 				start_time: startTime,
 				end_date: returnDate,
 				end_time: returnTime,
-				start_slot: slotInfo.startSlot,
-				end_slot: slotInfo.endSlot,
-				booking_type: slotInfo.bookingType,
-				total_slots: slotInfo.totalSlots,
 				number_of_adults: numAdults,
 				number_of_children: numChildren,
 				amount_total: totalPrice,
 				booking_name: userName,
 				booking_lastname: userLastname,
+				customer_email: userEmail,
+				customer_phone: userPhone,
 				customer_comment: userComment,
-				customer_email: userEmail
+				selectedStartLocation: selectedStartLocation
 			};
 
 			const response = await fetch('/api/handle-invoice', {
@@ -545,18 +548,23 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify(requestData)
+				body: JSON.stringify({
+					bookingData,
+					invoiceData
+				})
 			});
 
 			if (!response.ok) {
 				throw new Error('Failed to submit invoice booking');
 			}
 
-			// Redirect to success page
-			window.location.href = '/success?booking_type=invoice';
+			const result = await response.json();
+			window.location.href = `/success?booking_type=invoice&booking_id=${result.bookingId}`;
 		} catch (error) {
 			console.error('Error submitting invoice booking:', error);
-			// Handle error (show error message to user)
+			alert('Ett fel uppstod vid bokningen. Vänligen försök igen.');
+		} finally {
+			isSubmittingInvoice = false;
 		}
 	}
 
@@ -1201,8 +1209,19 @@
 									>
 								</div>
 
-								<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full">
-									Gå till betalning ({totalPrice}kr)
+								<Button
+									class="w-full mt-4"
+									disabled={!isFormValid || isSubmittingInvoice}
+									on:click={handleInvoiceSubmission}
+								>
+									{#if isSubmittingInvoice}
+										<div class="flex items-center justify-center">
+											<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+											<span>Bearbetar bokning...</span>
+										</div>
+									{:else}
+										Skicka fakturabegäran ({totalPrice}kr)
+									{/if}
 								</Button>
 							</CardContent>
 						</Card>
@@ -1630,7 +1649,7 @@
 
 											<Button
 												class="w-full mt-4"
-												disabled={!isFormValid}
+												disabled={!isFormValid || isSubmittingInvoice}
 												on:click={handleInvoiceSubmission}
 											>
 												Skicka fakturabegäran ({totalPrice}kr)
@@ -1659,6 +1678,16 @@
 		<AlertTitle>Error</AlertTitle>
 		<AlertDescription>Upplevelsen hittades inte</AlertDescription>
 	</Alert>
+{/if}
+
+{#if isSubmittingInvoice}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+		<div class="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+			<Loader2 class="h-8 w-8 animate-spin mb-4" />
+			<p class="text-lg font-semibold">Bearbetar din bokning...</p>
+			<p class="text-sm text-gray-500">Vänligen vänta medan vi behandlar din förfrågan</p>
+		</div>
+	</div>
 {/if}
 
 <style>
