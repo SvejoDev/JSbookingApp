@@ -546,6 +546,9 @@
 
 			console.log('Sending booking data:', bookingData);
 
+			// Lägg till denna logg innan fetch-anropet
+			console.log('Invoice data innan submission:', invoiceData);
+
 			const response = await fetch('/api/handle-invoice', {
 				method: 'POST',
 				headers: {
@@ -554,8 +557,14 @@
 				body: JSON.stringify({
 					bookingData,
 					invoiceData: {
-						...invoiceData,
-						invoiceEmail: invoiceData.email
+						invoiceType: invoiceData.invoiceType,
+						invoiceEmail: invoiceData.invoiceEmail,
+						glnPeppolId: invoiceData.glnPeppolId || '',
+						marking: invoiceData.marking || '',
+						organization: invoiceData.organization,
+						address: invoiceData.address,
+						postalCode: invoiceData.postalCode,
+						city: invoiceData.city
 					}
 				})
 			});

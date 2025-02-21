@@ -6,6 +6,10 @@ import { timeToSlot, calculateTotalSlots, timeToMinutes } from '$lib/utils/timeS
 export async function POST({ request }) {
 	try {
 		const { bookingData, invoiceData } = await request.json();
+		console.log('Mottagen invoiceData:', {
+			...invoiceData,
+			invoiceEmail: invoiceData.invoiceEmail // Kontrollera specifikt detta fält
+		});
 
 		// Spara addons separat innan vi modifierar bookingData
 		const originalAddons = { ...bookingData.addons };
@@ -103,10 +107,11 @@ export async function POST({ request }) {
 			allValues
 		);
 
-		// Lägg till: Spara fakturainformation
+		// Uppdatera invoice_details hanteringen
 		const invoiceColumns = [
 			'booking_id',
 			'invoice_type',
+			'invoice_email', // Flytta detta till huvudlistan
 			'gln_peppol_id',
 			'marking',
 			'organization',
@@ -118,20 +123,16 @@ export async function POST({ request }) {
 		const invoiceValues = [
 			booking.id,
 			invoiceData.invoiceType,
-			invoiceData.glnPeppolId,
-			invoiceData.marking,
+			invoiceData.invoiceEmail, // Lägg till detta direkt
+			invoiceData.glnPeppolId || '',
+			invoiceData.marking || '',
 			invoiceData.organization,
 			invoiceData.address,
 			invoiceData.postalCode,
 			invoiceData.city
 		];
 
-		// Lägg till invoice_email för PDF-fakturor
-		if (invoiceData.invoiceType === 'pdf') {
-			console.log('PDF faktura data:', invoiceData); // Lägg till för debugging
-			invoiceColumns.push('invoice_email');
-			invoiceValues.push(invoiceData.invoiceEmail);
-		}
+		console.log('Invoice values som ska sparas:', invoiceValues); // Debugging
 
 		const {
 			rows: [invoiceDetails]
@@ -142,7 +143,7 @@ export async function POST({ request }) {
 			invoiceValues
 		);
 
-		console.log('Sparad fakturainformation:', invoiceDetails); // Lägg till för debugging
+		console.log('Sparad fakturainformation:', invoiceDetails); // Debugging
 
 		// Skicka med de ursprungliga addon-värdena till updateAvailability
 		const bookingWithAddons = {
@@ -168,8 +169,8 @@ export async function POST({ request }) {
 			invoiceDetails // Inkludera fakturainformationen i svaret
 		});
 	} catch (error) {
-		console.error('❌ Error handling invoice request:', error);
-		return json({ error: 'Could not process invoice request' }, { status: 500 });
+		console.error('Fel vid hantering av faktura:', error);
+		return json({ success: false, error: error.message });
 	}
 }
 

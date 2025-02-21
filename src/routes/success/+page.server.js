@@ -90,6 +90,11 @@ export const load = async ({ url }) => {
 					confirmation_sent: bookingData.confirmation_sent
 				};
 
+				console.log('Debug - Invoice Email:', {
+					raw: bookingData.invoice_email,
+					processed: booking.invoiceEmail
+				});
+
 				if (!bookingData.confirmation_sent) {
 					// Uppdatera först
 					await client.query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [

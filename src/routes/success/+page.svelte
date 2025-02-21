@@ -7,6 +7,9 @@
 	export let data;
 	const { booking, isInvoiceBooking } = data;
 
+	// Lägg till console.log för debugging
+	console.log('Booking data:', booking);
+
 	// Price formatting
 	const formatPrice = (price) => {
 		if (typeof price === 'number' && !isNaN(price)) {
