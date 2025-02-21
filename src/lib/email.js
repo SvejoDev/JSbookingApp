@@ -5,17 +5,27 @@ import Handlebars from 'handlebars';
 import { Buffer } from 'buffer';
 import html_to_pdf from 'html-pdf-node';
 
+import { bookingConfirmationTemplate } from './templates/bookingTemplates.js';
+import { pdfInvoiceTemplate, electronicInvoiceTemplate } from './templates/invoiceTemplates.js';
+import { formatDateTime, formatPrice } from './templates/emailTemplates.js';
+
 dotenv.config();
 
+// Konfigurera Handlebars helpers
+Handlebars.registerHelper('formatDateTime', formatDateTime);
+Handlebars.registerHelper('formatPrice', formatPrice);
+
+// e-post konfiguration
+const EMAIL_CONFIG = {
+	FROM: {
+		email: 'info@stisses.se',
+		name: 'Stisses'
+	},
+	INVOICE_RECIPIENTS: ['johan.svensson@svejo.se', 'info@stisses.se']
+};
+
+// konfigurera sendgrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-// lägg till felhantering för saknad API-nyckel
-if (!process.env.SENDGRID_API_KEY) {
-	console.error('Varning: SENDGRID_API_KEY saknas i miljövariablerna');
-}
-
-// lägg till denna konstant i början av filen
-const INVOICE_RECIPIENTS = ['johan.svensson@svejo.se', 'info@stisses.se'];
 
 // formatera datum och tid för e-post
 function formatDateTime(date, time) {
@@ -407,37 +417,34 @@ async function generatePDF(booking, template = bookingTemplate) {
 	}
 }
 
-export async function sendBookingConfirmation(booking) {
+export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
 	try {
-		// Välj mall baserat på bokningsstatus
-		const template =
-			booking.status === 'pending_invoice' ? invoiceBookingTemplate : bookingTemplate;
+		if (!bookingData.customer_email) {
+			throw new Error('kundens e-postadress saknas');
+		}
 
-		const pdf = await generatePDF(booking, template);
+		// välj rätt mall baserat på bokningstyp
+		const template = Handlebars.compile(
+			isInvoiceBooking ? invoiceBookingTemplate : bookingTemplate
+		);
 
-		const emailSubject =
-			booking.status === 'pending_invoice'
-				? `Bokningsbekräftelse (Faktura) - ${booking.experience}`
-				: `Bokningsbekräftelse - ${booking.experience}`;
-
-		await sgMail.send({
-			to: booking.customer_email,
-			from: 'info@stisses.se',
-			subject: emailSubject,
-			html: Handlebars.compile(template)({ booking }),
-			attachments: [
-				{
-					content: pdf.toString('base64'),
-					filename: `bokningsbekraftelse-${booking.id}.pdf`,
-					type: 'application/pdf',
-					disposition: 'attachment'
-				}
-			]
+		// kompilera template med all bokningsdata
+		const html = template({
+			booking: bookingData,
+			invoice: isInvoiceBooking ? bookingData : null
 		});
 
-		console.log('✉️ Bokningsbekräftelse skickad till:', booking.customer_email);
+		await sendEmail({
+			to: bookingData.customer_email,
+			subject: 'Bokningsbekräftelse - Stisses',
+			html,
+			type: 'booking'
+		});
+
+		console.log('✉️ bokningsbekräftelse skickad till:', bookingData.customer_email);
 	} catch (error) {
-		console.error('❌ Fel vid skickande av bokningsbekräftelse:', error);
+		console.error('fel vid skickande av bokningsbekräftelse:', error);
+		throw error;
 	}
 }
 
@@ -476,44 +483,67 @@ const electronicInvoiceTemplate = `
 <p>Kommentar: {{customer_comment}}</p>
 `;
 
-// Uppdatera sendInvoiceRequest funktionen
-export async function sendInvoiceRequest(bookingData, invoiceData) {
+// uppdatera sendEmail funktionen för att hantera olika typer av e-post
+async function sendEmail({ to, subject, html, attachments = [], type = 'booking' }) {
 	try {
-		// Välj rätt mall baserat på fakturatyp
-		const template =
-			invoiceData.invoiceType === 'electronic' ? electronicInvoiceTemplate : pdfInvoiceTemplate; // Antar att denna redan finns
+		// bestäm mottagare baserat på typ
+		const recipients = type === 'invoice' ? EMAIL_CONFIG.INVOICE_RECIPIENTS : to;
 
-		// Kombinera data för mallgenerering
-		const templateData = {
-			...bookingData,
-			...invoiceData
+		if (!recipients) {
+			throw new Error('saknar mottagaradress');
+		}
+
+		const msg = {
+			to: recipients,
+			from: EMAIL_CONFIG.FROM,
+			subject,
+			html,
+			attachments
 		};
 
-		// Kompilera och generera HTML
-		const compiledTemplate = Handlebars.compile(template);
-		const html = compiledTemplate(templateData);
-
-		// Skicka e-post
-		await sgMail.send({
-			to: INVOICE_RECIPIENTS,
-			from: 'info@stisses.se',
-			subject: `Ny ${invoiceData.invoiceType === 'electronic' ? 'elektronisk' : 'PDF'} fakturaförfrågan - ${bookingData.experience}`,
-			html: html
+		// logga för debugging
+		console.log('📧 försöker skicka e-post:', {
+			type,
+			to: msg.to,
+			from: EMAIL_CONFIG.FROM.email,
+			subject
 		});
 
-		// Skicka bekräftelse till kunden
-		await sendBookingConfirmation({
-			...bookingData,
-			status: 'pending_invoice',
-			invoice_type: invoiceData.invoiceType // Säkerställ att rätt fakturatyp skickas
+		await sgMail.send(msg);
+		console.log('✉️ e-post skickad:', {
+			type,
+			to: msg.to
 		});
-
-		console.log(
-			`✉️ ${invoiceData.invoiceType === 'electronic' ? 'Elektronisk' : 'PDF'} fakturaförfrågan skickad till:`,
-			INVOICE_RECIPIENTS.join(', ')
-		);
 	} catch (error) {
-		console.error('❌ Fel vid skickande av fakturaförfrågan:', error);
+		console.error('❌ fel vid skickande av e-post:', {
+			error: error.message,
+			type,
+			to,
+			subject
+		});
 		throw error;
 	}
 }
+
+// uppdatera sendInvoiceRequest funktionen
+export async function sendInvoiceRequest(bookingData, invoiceData) {
+	try {
+		const template =
+			invoiceData.invoiceType === 'pdf'
+				? pdfInvoiceTemplate(bookingData, invoiceData)
+				: electronicInvoiceTemplate(bookingData, invoiceData);
+
+		await sendEmail({
+			to: null, // vi behöver inte skicka 'to' för fakturor
+			subject: `Fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
+			html: template,
+			type: 'invoice'
+		});
+	} catch (error) {
+		console.error('Error in sendInvoiceRequest:', error);
+		throw error;
+	}
+}
+
+// Se till att exportera funktionen så den kan användas av andra moduler
+export { sendEmail };

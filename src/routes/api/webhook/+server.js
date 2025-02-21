@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { query, transaction } from '$lib/db.js';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
+import { timeToSlot, calculateTotalSlots } from '$lib/utils/timeSlots.js';
 
 dotenv.config();
 
@@ -201,12 +202,6 @@ function calculateTimeSlot(time) {
 	return (hours * 60 + minutes) / 15;
 }
 
-function calculateTotalSlots(startTime, endTime) {
-	const startSlot = calculateTimeSlot(startTime);
-	const endSlot = calculateTimeSlot(endTime);
-	return endSlot - startSlot;
-}
-
 function generateDateRange(startDate, endDate) {
 	const dates = [];
 	const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
@@ -321,22 +316,6 @@ async function createBooking(client, metadata, session) {
 	);
 
 	return booking;
-}
-
-// hjälpfunktioner för att hantera tidsslots
-function timeToSlot(time) {
-	// konvertera tid (HH:MM) till slot-nummer (15-minuters intervaller)
-	const [hours, minutes] = time.split(':').map(Number);
-	return (hours * 60 + minutes) / 15;
-}
-
-function calculateTotalSlots(startSlot, endSlot, isOvernight) {
-	if (isOvernight) {
-		// för övernattningar, räkna slots från start till midnatt (96 slots per dag)
-		return 96 - startSlot;
-	}
-	// för dagsbokningar, räkna slots mellan start och slut
-	return endSlot - startSlot;
 }
 
 async function createBookingAddons(client, bookingId, metadata) {

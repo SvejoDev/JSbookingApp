@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { query } from '$lib/db.js';
 import { sendInvoiceRequest } from '$lib/email.js';
+import { timeToSlot, calculateTotalSlots, timeToMinutes } from '$lib/utils/timeSlots.js';
 
 export async function POST({ request }) {
 	try {
@@ -167,12 +168,6 @@ export async function POST({ request }) {
 	}
 }
 
-// Hjälpfunktion för att beräkna tidsluckor
-function calculateTimeSlot(time) {
-	const [hours, minutes] = time.split(':').map(Number);
-	return Math.floor((hours * 60 + minutes) / 30) + 1;
-}
-
 // Uppdaterad updateAvailability funktion
 async function updateAvailability(bookingData) {
 	try {
@@ -268,23 +263,4 @@ async function updateAvailability(bookingData) {
 		console.error('Error in updateAvailability:', error);
 		throw error;
 	}
-}
-
-// hjälpfunktion för att konvertera tid till minuter
-function timeToMinutes(time) {
-	const [hours, minutes] = time.split(':').map(Number);
-	return hours * 60 + minutes;
-}
-
-// Lägg till hjälpfunktioner för slots-beräkning
-function timeToSlot(time) {
-	const [hours, minutes] = time.split(':').map(Number);
-	return (hours * 60 + minutes) / 15;
-}
-
-function calculateTotalSlots(startSlot, endSlot, isOvernight) {
-	if (isOvernight) {
-		return 96 - startSlot; // 96 slots per dag (24 timmar * 4 slots per timme)
-	}
-	return endSlot - startSlot;
 }

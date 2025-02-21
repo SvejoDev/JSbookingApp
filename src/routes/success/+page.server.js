@@ -79,6 +79,14 @@ export const load = async ({ url }) => {
 				total,
 				addons: bookingAddons
 			};
+
+			// skicka bokningsbekräftelse för fakturakund
+			await sendBookingConfirmation(booking, true);
+
+			return {
+				booking,
+				isInvoiceBooking: true
+			};
 		} else {
 			// Befintlig logik för stripe-bokningar
 			const {
@@ -121,19 +129,8 @@ export const load = async ({ url }) => {
 				[stripeBooking.id]
 			);
 
-			// skicka bokningsbekräftelse via e-post
-			await sendBookingConfirmation({
-				...stripeBooking,
-				adultPrice,
-				adultPriceExclVat,
-				childPrice: 0,
-				totalAdultsExclVat,
-				totalChildren,
-				subtotal,
-				vat,
-				total,
-				addons: bookingAddons
-			});
+			// skicka bokningsbekräftelse för direktbetalning
+			await sendBookingConfirmation(booking, false);
 
 			booking = {
 				...stripeBooking,
@@ -147,12 +144,12 @@ export const load = async ({ url }) => {
 				total,
 				addons: bookingAddons
 			};
-		}
 
-		return {
-			booking,
-			isInvoiceBooking: bookingType === 'invoice'
-		};
+			return {
+				booking,
+				isInvoiceBooking: false
+			};
+		}
 	} catch (error) {
 		console.error('Fel vid hämtning av bokning:', error);
 		throw redirect(303, '/');
