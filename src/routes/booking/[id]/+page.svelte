@@ -86,8 +86,16 @@
 	// Initialize Stripe
 	let stripePromise;
 
-	// Lägg till denna reaktiva validering
-	$: isFormValid = userName && userLastname && userEmail && userPhone && acceptTerms;
+	// Uppdatera den reaktiva valideringen för att inkludera alla obligatoriska fält
+	$: isFormValid =
+		userName?.trim() &&
+		userLastname?.trim() &&
+		userEmail?.trim() &&
+		userPhone?.trim() &&
+		acceptTerms;
+
+	// Lägg till bland de andra reaktiva variablerna
+	$: isInvoiceFormValid = validateInvoiceForm(invoiceData);
 
 	// ==================
 	// reaktiva uttryck
@@ -925,6 +933,28 @@
 
 	// Lägg till denna variabel bland dina andra state-variabler
 	let acceptedTerms = false;
+
+	// Uppdatera validateInvoiceForm funktionen
+	function validateInvoiceForm(data) {
+		// kontrollera att data existerar
+		if (!data) return false;
+
+		// gemensamma obligatoriska fält för båda fakturatyper
+		const hasBasicFields =
+			data.organization?.trim() &&
+			data.address?.trim() &&
+			data.postalCode?.trim() &&
+			data.city?.trim();
+
+		// specifika fält beroende på fakturatyp
+		if (data.invoiceType === 'pdf') {
+			return hasBasicFields && data.invoiceEmail?.trim();
+		} else if (data.invoiceType === 'electronic') {
+			return hasBasicFields && data.glnPeppolId?.trim() && data.marking?.trim();
+		}
+
+		return false;
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1243,7 +1273,17 @@
 											{#if isSubmittingInvoice}
 												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 											{/if}
-											Betala med faktura
+											{#if !isFormValid}
+												Fyll i alla kontaktuppgifter
+											{:else if !isInvoiceFormValid}
+												{#if invoiceData.invoiceType === 'pdf'}
+													Fyll i alla fakturauppgifter (PDF)
+												{:else}
+													Fyll i alla fakturauppgifter (Elektronisk)
+												{/if}
+											{:else}
+												Skicka fakturabegäran ({totalPrice}kr)
+											{/if}
 										</Button>
 
 										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
@@ -1252,15 +1292,24 @@
 									{:else}
 										<!-- För business_school visas endast fakturabetalning -->
 										<Button
-											disabled={!acceptTerms || isSubmittingInvoice}
+											class="w-full mt-4"
+											disabled={!isFormValid || !isInvoiceFormValid || isSubmittingInvoice}
 											on:click={handleInvoiceSubmission}
-											variant="outline"
-											class="w-full"
 										>
 											{#if isSubmittingInvoice}
 												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 											{/if}
-											Betala med faktura
+											{#if !isFormValid}
+												Fyll i alla kontaktuppgifter
+											{:else if !isInvoiceFormValid}
+												{#if invoiceData.invoiceType === 'pdf'}
+													Fyll i alla fakturauppgifter (PDF)
+												{:else}
+													Fyll i alla fakturauppgifter (Elektronisk)
+												{/if}
+											{:else}
+												Skicka fakturabegäran ({totalPrice}kr)
+											{/if}
 										</Button>
 									{/if}
 								</div>
@@ -1668,17 +1717,25 @@
 										variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
 										on:click={() => (selectedPaymentMethod = 'card')}
 										class="flex-1"
-										disabled={!acceptTerms}
+										disabled={!isFormValid}
 									>
-										Betala med kort
+										{#if !isFormValid}
+											Fyll i alla obligatoriska fält
+										{:else}
+											Betala med kort
+										{/if}
 									</Button>
 									<Button
 										variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
 										on:click={() => (selectedPaymentMethod = 'invoice')}
 										class="flex-1"
-										disabled={!acceptTerms}
+										disabled={!isFormValid}
 									>
-										Betala med faktura
+										{#if !isFormValid}
+											Fyll i alla obligatoriska fält
+										{:else}
+											Betala med faktura
+										{/if}
 									</Button>
 								</div>
 
@@ -1692,23 +1749,33 @@
 
 											<Button
 												class="w-full mt-4"
-												disabled={!isFormValid || isSubmittingInvoice || !acceptTerms}
+												disabled={!isFormValid || !isInvoiceFormValid || isSubmittingInvoice}
 												on:click={handleInvoiceSubmission}
 											>
 												{#if isSubmittingInvoice}
 													<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 												{/if}
-												Skicka fakturabegäran ({totalPrice}kr)
+												{#if !isFormValid}
+													Fyll i alla kontaktuppgifter
+												{:else if !isInvoiceFormValid}
+													{#if invoiceData.invoiceType === 'pdf'}
+														Fyll i alla fakturauppgifter (PDF)
+													{:else}
+														Fyll i alla fakturauppgifter (Elektronisk)
+													{/if}
+												{:else}
+													Skicka fakturabegäran ({totalPrice}kr)
+												{/if}
 											</Button>
 										</CardContent>
 									</Card>
 								{:else if selectedPaymentMethod === 'card'}
-									<Button
-										disabled={!isFormValid || !acceptTerms}
-										on:click={handleCheckout}
-										class="w-full mt-4"
-									>
-										Gå till kortbetalning ({totalPrice}kr)
+									<Button disabled={!isFormValid} on:click={handleCheckout} class="w-full mt-4">
+										{#if !isFormValid}
+											Fyll i alla obligatoriska fält
+										{:else}
+											Gå till kortbetalning ({totalPrice}kr)
+										{/if}
 									</Button>
 								{/if}
 							</div>
