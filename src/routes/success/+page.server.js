@@ -37,7 +37,30 @@ export const load = async ({ url }) => {
 						id.organization,
 						id.address,
 						id.postal_code,
-						id.city
+						id.city,
+						COALESCE(
+							(
+								SELECT json_agg(
+									json_build_object(
+										'name', a.name,
+										'amount', CASE 
+											WHEN a.column_name = 'amount_canoes' THEN b.amount_canoes
+											WHEN a.column_name = 'amount_kayak' THEN b.amount_kayak
+											WHEN a.column_name = 'amount_sup' THEN b.amount_sup
+											ELSE 0
+										END
+									)
+								)
+								FROM addons a
+								WHERE CASE 
+									WHEN a.column_name = 'amount_canoes' THEN b.amount_canoes > 0
+									WHEN a.column_name = 'amount_kayak' THEN b.amount_kayak > 0
+									WHEN a.column_name = 'amount_sup' THEN b.amount_sup > 0
+									ELSE false
+								END
+							),
+							'[]'::json
+						) as addons_info
 					FROM booking_base b
 					LEFT JOIN start_locations sl ON b.startlocation = sl.id
 					LEFT JOIN invoice_details id ON b.id = id.booking_id`,
@@ -85,7 +108,7 @@ export const load = async ({ url }) => {
 					subtotal,
 					vat,
 					total,
-					addons: bookingAddons,
+					addons: bookingData.addons_info || [],
 					customer_email: bookingData.customer_email,
 					confirmation_sent: bookingData.confirmation_sent
 				};

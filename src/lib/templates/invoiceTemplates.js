@@ -21,7 +21,38 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 		invoiceEmail: invoiceData.invoiceEmail || ''
 	};
 
+	// Formatera addons-information
+	const addonsHtml =
+		bookingData.addons && bookingData.addons.length > 0
+			? `
+			<tr>
+				<td colspan="2" style="padding: 10px 0; border-top: 1px solid #eee;">
+					<strong>Bokade produkter:</strong>
+				</td>
+			</tr>
+			${bookingData.addons
+				.filter((addon) => addon.amount > 0)
+				.map(
+					(addon) => `
+					<tr>
+						<td style="padding: 5px 0;">${addon.name}</td>
+						<td style="padding: 5px 0; text-align: right;">${addon.amount} st</td>
+					</tr>
+				`
+				)
+				.join('')}`
+			: '';
+
 	return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            /* Behåll befintlig styling */
+        </style>
+    </head>
+    <body>
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Fakturabegäran mottagen</h2>
             
@@ -54,6 +85,14 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
             
             <p>Med vänliga hälsningar,<br>Stisses</p>
         </div>
+        
+        <!-- Lägg till addons-information före prisinformationen -->
+        <table style="width: 100%; margin-top: 20px;">
+            ${addonsHtml}
+            <!-- Resten av din befintliga tabell -->
+        </table>
+    </body>
+    </html>
     `;
 };
 

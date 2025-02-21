@@ -187,6 +187,23 @@
 									</div>
 								</div>
 							</div>
+
+							<!-- Efter faktureringsinformationen -->
+							{#if booking.addons && booking.addons.length > 0}
+								<div class="mt-4">
+									<h4 class="font-semibold mb-2">Bokade produkter</h4>
+									<div class="space-y-2">
+										{#each booking.addons as addon}
+											{#if addon.amount > 0}
+												<div class="flex justify-between">
+													<span>{addon.name}:</span>
+													<span>{addon.amount} st</span>
+												</div>
+											{/if}
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</div>
 					</div>
 				{/if}
