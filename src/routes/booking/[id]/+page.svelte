@@ -19,6 +19,7 @@
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
+	import NumberInput from '$lib/components/NumberInput.svelte';
 
 	export let data;
 
@@ -85,6 +86,9 @@
 
 	// Initialize Stripe
 	let stripePromise;
+
+	// Lägg till bland de andra tillståndsvariablerna
+	let selectedOptionalProducts = {};
 
 	// Uppdatera den reaktiva valideringen för att inkludera alla obligatoriska fält
 	$: isFormValid =
@@ -489,7 +493,18 @@
 				userComment,
 				selectedStartLocation,
 				amount: calculateTotalPrice(),
-				...selectedAddons
+				...selectedAddons,
+				optional_products: Object.values(selectedOptionalProducts)
+					.filter((product) => product.enabled || product.quantity > 0)
+					.map((product) => ({
+						id: product.id,
+						name: product.name,
+						price: product.price,
+						type: product.type,
+						quantity: product.type === 'per_person' ? numAdults : product.quantity,
+						total_price:
+							product.price * (product.type === 'per_person' ? numAdults : product.quantity)
+					}))
 			};
 
 			const response = await fetch('/api/create-checkout-session', {
@@ -549,7 +564,18 @@
 				customer_comment: userComment,
 				selectedStartLocation: selectedStartLocation,
 				// Lägg till addons här
-				addons: selectedAddons
+				addons: selectedAddons,
+				optional_products: Object.values(selectedOptionalProducts)
+					.filter((product) => product.enabled || product.quantity > 0)
+					.map((product) => ({
+						id: product.id,
+						name: product.name,
+						price: product.price,
+						type: product.type,
+						quantity: product.type === 'per_person' ? numAdults : product.quantity,
+						total_price:
+							product.price * (product.type === 'per_person' ? numAdults : product.quantity)
+					}))
 			};
 
 			console.log('Sending booking data:', bookingData);
@@ -669,7 +695,7 @@
 		if (browser) {
 			await tick();
 			window.scrollTo({
-				top: document.documentElement.scrollHeight,
+				top: document.body.scrollHeight,
 				behavior: 'smooth'
 			});
 		}
@@ -677,13 +703,31 @@
 
 	// Lägg till denna funktion bland dina andra funktioner i script-taggen
 	function calculateTotalPrice() {
-		let total = totalPrice; // Baspriser för vuxna
+		let total = 0;
 
-		// Lägg till priser för addons
-		Object.entries(selectedAddons).forEach(([columnName, quantity]) => {
-			const addon = data.experience.addons.find((a) => a.column_name === columnName);
-			if (addon && addon.price) {
-				total += addon.price * quantity;
+		// Grundpris baserat på antal vuxna
+		const selectedLocation = data.startLocations.find(
+			(location) => location.id === selectedStartLocation
+		);
+		if (selectedLocation) {
+			total += selectedLocation.price * numAdults;
+		}
+
+		// Lägg till pris för addons
+		Object.entries(selectedAddons).forEach(([key, value]) => {
+			if (value > 0) {
+				const addon = data.experience.addons.find((a) => a.column_name === key);
+				if (addon) {
+					total += value * selectedLocation.price; // Använd samma pris som för vuxna
+				}
+			}
+		});
+
+		// Lägg till pris för tillvalsprodukter
+		Object.values(selectedOptionalProducts).forEach((product) => {
+			if (product.enabled || product.quantity > 0) {
+				const quantity = product.type === 'per_person' ? numAdults : product.quantity;
+				total += product.price * quantity;
 			}
 		});
 
@@ -955,6 +999,53 @@
 
 		return false;
 	}
+
+	// Lägg till bland de reaktiva uttrycken
+	$: {
+		console.log('Debug - Experience data:', data.experience);
+		console.log('Debug - Optional products:', data.experience?.optional_products);
+		console.log('Debug - Current state:', {
+			numAdults,
+			startTime,
+			showOptionalProducts: startTime && data.experience?.optional_products?.length > 0
+		});
+	}
+
+	$: {
+		console.log('Debug - Current state:', {
+			numAdults,
+			hasOptionalProducts: data.experience?.optional_products?.length > 0,
+			optionalProducts: data.experience?.optional_products,
+			selectedOptionalProducts
+		});
+	}
+
+	// Lägg till debug-loggar
+	$: {
+		console.log('Debug - Booking state:', {
+			numAdults,
+			experience: data.experience,
+			optionalProducts: data.experience?.optional_products,
+			showingOptionalProducts: numAdults > 0 && data.experience?.optional_products?.length > 0
+		});
+	}
+
+	// Lägg till en ny tillståndsvariabel för att hålla reda på vilket steg vi är på
+	let currentStep = 'participants'; // 'participants', 'optional_products', 'contact'
+
+	// Uppdatera funktionen som hanterar "Nästa" knappen
+	function handleNext() {
+		console.log('handleNext called');
+		console.log('Current step before:', currentStep);
+		console.log('numAdults:', numAdults);
+
+		// Efter state-uppdatering
+		if (currentStep === 'optional_products') {
+			currentStep = 'contact';
+			console.log('Current step after:', currentStep);
+			console.log('Selected products:', selectedOptionalProducts);
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1110,6 +1201,106 @@
 					</CardContent>
 				</Card>
 
+				{#if numAdults > 0 && data.experience?.optional_products?.length > 0}
+					<Card class="w-full mt-6">
+						<CardHeader>
+							<CardTitle>Tillvalsprodukter</CardTitle>
+							<CardDescription>Välj extra produkter till din upplevelse</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div class="grid gap-4">
+								{#each data.experience.optional_products as product (product.id)}
+									<div class="flex items-center justify-between p-4 border rounded-lg">
+										<div class="flex-1">
+											<div class="flex items-start gap-4">
+												{#if product.image_url}
+													<img
+														src={product.image_url}
+														alt={product.name}
+														class="w-16 h-16 object-cover rounded"
+													/>
+												{/if}
+												<div>
+													<h3 class="text-lg font-semibold">{product.name}</h3>
+													{#if product.description}
+														<p class="text-sm text-muted-foreground">{product.description}</p>
+													{/if}
+													<p class="text-sm font-medium mt-1">
+														{product.price} kr{product.type === 'per_person' ? '/person' : ''}
+													</p>
+												</div>
+											</div>
+										</div>
+
+										{#if product.type === 'per_person'}
+											<div class="flex items-center gap-2">
+												<Checkbox
+													checked={selectedOptionalProducts[product.id]?.enabled}
+													onCheckedChange={(checked) => {
+														selectedOptionalProducts = {
+															...selectedOptionalProducts,
+															[product.id]: {
+																...product,
+																enabled: checked,
+																quantity: checked ? numAdults : 0
+															}
+														};
+														totalPrice = calculateTotalPrice();
+													}}
+												/>
+												<span class="text-sm">Lägg till för alla ({numAdults} personer)</span>
+											</div>
+										{:else}
+											<div class="flex items-center gap-2">
+												<Button
+													variant="outline"
+													class="px-3"
+													disabled={selectedOptionalProducts[product.id]?.quantity <= 0}
+													on:click={() => {
+														const currentQuantity =
+															selectedOptionalProducts[product.id]?.quantity || 0;
+														selectedOptionalProducts = {
+															...selectedOptionalProducts,
+															[product.id]: {
+																...product,
+																quantity: Math.max(0, currentQuantity - 1)
+															}
+														};
+														totalPrice = calculateTotalPrice();
+													}}
+												>
+													-
+												</Button>
+												<span class="w-8 text-center">
+													{selectedOptionalProducts[product.id]?.quantity || 0}
+												</span>
+												<Button
+													variant="outline"
+													class="px-3"
+													on:click={() => {
+														const currentQuantity =
+															selectedOptionalProducts[product.id]?.quantity || 0;
+														selectedOptionalProducts = {
+															...selectedOptionalProducts,
+															[product.id]: {
+																...product,
+																quantity: currentQuantity + 1
+															}
+														};
+														totalPrice = calculateTotalPrice();
+													}}
+												>
+													+
+												</Button>
+											</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</CardContent>
+					</Card>
+				{/if}
+
 				{#if startDate && startTime}
 					<!-- Booking Summary -->
 					<Card class="mt-4" id="booking-summary">
@@ -1143,6 +1334,141 @@
 							</div>
 						</CardContent>
 					</Card>
+
+					<!-- Efter booking-summary -->
+					<div class="space-y-6">
+						<!-- Participants Section -->
+						{#if numAdults > 0}
+							<!-- Tillvalsprodukter -->
+							{#if currentStep === 'optional_products' || currentStep === 'contact'}
+								{#if data.experience?.optional_products?.length > 0}
+									<Card class="w-full">
+										<CardHeader>
+											<CardTitle>Tillvalsprodukter</CardTitle>
+											<CardDescription>Välj extra produkter till din upplevelse</CardDescription>
+										</CardHeader>
+										<CardContent>
+											<div class="grid gap-4">
+												{#each data.experience.optional_products as product (product.id)}
+													<!-- Existerande produktkod här... -->
+												{/each}
+											</div>
+											{#if currentStep === 'optional_products'}
+												<div class="flex justify-end mt-4">
+													<Button on:click={handleNext}>Gå till kontaktuppgifter</Button>
+												</div>
+											{/if}
+										</CardContent>
+									</Card>
+								{/if}
+							{/if}
+
+							<!-- Kontaktformulär -->
+							{#if currentStep === 'contact'}
+								<Card class="w-full mt-6">
+									<CardHeader>
+										<CardTitle>Kontaktuppgifter</CardTitle>
+									</CardHeader>
+									<CardContent class="space-y-4">
+										<div class="grid gap-4 sm:grid-cols-2">
+											<div class="space-y-2">
+												<Label for="firstName">Förnamn</Label>
+												<Input type="text" id="firstName" bind:value={userName} required />
+											</div>
+											<div class="space-y-2">
+												<Label for="lastName">Efternamn</Label>
+												<Input type="text" id="lastName" bind:value={userLastname} required />
+											</div>
+										</div>
+
+										<div class="space-y-2">
+											<Label for="phone">Telefonnummer</Label>
+											<Input
+												type="tel"
+												id="phone"
+												bind:value={userPhone}
+												pattern="^\+?[1-9]\d{14}$"
+												required
+											/>
+										</div>
+
+										<div class="space-y-2">
+											<Label for="email">E-postadress</Label>
+											<Input type="email" id="email" bind:value={userEmail} required />
+										</div>
+
+										<div class="space-y-2">
+											<Label for="comment">Kommentar (valfri)</Label>
+											<Textarea id="comment" bind:value={userComment} />
+										</div>
+
+										<div class="flex items-center gap-2 mb-4">
+											<Checkbox bind:checked={acceptTerms} id="terms" />
+											<label for="terms" class="text-sm">
+												Jag accepterar <a
+													href="/terms"
+													class="text-primary hover:underline"
+													target="_blank">bokningsvillkoren och köpvillkoren</a
+												>
+											</label>
+										</div>
+
+										<div class="flex flex-col gap-4 mt-6">
+											{#if data.experience.experience_type !== 'business_school'}
+												<Button
+													disabled={!acceptTerms || isSubmittingInvoice}
+													on:click={handleInvoiceSubmission}
+													variant="outline"
+													class="w-full"
+												>
+													{#if isSubmittingInvoice}
+														<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+													{/if}
+													{#if !isFormValid}
+														Fyll i alla kontaktuppgifter
+													{:else if !isInvoiceFormValid}
+														{#if invoiceData.invoiceType === 'pdf'}
+															Fyll i alla fakturauppgifter (PDF)
+														{:else}
+															Fyll i alla fakturauppgifter (Elektronisk)
+														{/if}
+													{:else}
+														Skicka fakturabegäran ({totalPrice}kr)
+													{/if}
+												</Button>
+
+												<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
+													Betala med kort
+												</Button>
+											{:else}
+												<!-- För business_school visas endast fakturabetalning -->
+												<Button
+													class="w-full mt-4"
+													disabled={!isFormValid || !isInvoiceFormValid || isSubmittingInvoice}
+													on:click={handleInvoiceSubmission}
+												>
+													{#if isSubmittingInvoice}
+														<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+													{/if}
+													{#if !isFormValid}
+														Fyll i alla kontaktuppgifter
+													{:else if !isInvoiceFormValid}
+														{#if invoiceData.invoiceType === 'pdf'}
+															Fyll i alla fakturauppgifter (PDF)
+														{:else}
+															Fyll i alla fakturauppgifter (Elektronisk)
+														{/if}
+													{:else}
+														Skicka fakturabegäran ({totalPrice}kr)
+													{/if}
+												</Button>
+											{/if}
+										</div>
+									</CardContent>
+								</Card>
+							{/if}
+						{/if}
+					</div>
 
 					<!-- Participants Section -->
 					<Card class="mt-4" id="participants-section">
@@ -1212,110 +1538,6 @@
 							</Button>
 						</CardContent>
 					</Card>
-
-					{#if showContactSection}
-						<Card id="contact-section-guided">
-							<CardHeader>
-								<CardTitle>Kontaktuppgifter</CardTitle>
-							</CardHeader>
-							<CardContent class="space-y-4">
-								<div class="grid gap-4 sm:grid-cols-2">
-									<div class="space-y-2">
-										<Label for="firstName">Förnamn</Label>
-										<Input type="text" id="firstName" bind:value={userName} required />
-									</div>
-									<div class="space-y-2">
-										<Label for="lastName">Efternamn</Label>
-										<Input type="text" id="lastName" bind:value={userLastname} required />
-									</div>
-								</div>
-
-								<div class="space-y-2">
-									<Label for="phone">Telefonnummer</Label>
-									<Input
-										type="tel"
-										id="phone"
-										bind:value={userPhone}
-										pattern="^\+?[1-9]\d{14}$"
-										required
-									/>
-								</div>
-
-								<div class="space-y-2">
-									<Label for="email">E-postadress</Label>
-									<Input type="email" id="email" bind:value={userEmail} required />
-								</div>
-
-								<div class="space-y-2">
-									<Label for="comment">Kommentar (valfri)</Label>
-									<Textarea id="comment" bind:value={userComment} />
-								</div>
-
-								<div class="flex items-center gap-2 mb-4">
-									<Checkbox id="terms" bind:checked={acceptTerms} />
-									<label for="terms" class="text-sm">
-										Jag accepterar <a
-											href="/terms"
-											class="text-primary hover:underline"
-											target="_blank">bokningsvillkoren och köpvillkoren</a
-										>
-									</label>
-								</div>
-
-								<div class="flex flex-col gap-4 mt-6">
-									{#if data.experience.experience_type !== 'business_school'}
-										<Button
-											disabled={!acceptTerms || isSubmittingInvoice}
-											on:click={handleInvoiceSubmission}
-											variant="outline"
-											class="w-full"
-										>
-											{#if isSubmittingInvoice}
-												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-											{/if}
-											{#if !isFormValid}
-												Fyll i alla kontaktuppgifter
-											{:else if !isInvoiceFormValid}
-												{#if invoiceData.invoiceType === 'pdf'}
-													Fyll i alla fakturauppgifter (PDF)
-												{:else}
-													Fyll i alla fakturauppgifter (Elektronisk)
-												{/if}
-											{:else}
-												Skicka fakturabegäran ({totalPrice}kr)
-											{/if}
-										</Button>
-
-										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-											Betala med kort
-										</Button>
-									{:else}
-										<!-- För business_school visas endast fakturabetalning -->
-										<Button
-											class="w-full mt-4"
-											disabled={!isFormValid || !isInvoiceFormValid || isSubmittingInvoice}
-											on:click={handleInvoiceSubmission}
-										>
-											{#if isSubmittingInvoice}
-												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-											{/if}
-											{#if !isFormValid}
-												Fyll i alla kontaktuppgifter
-											{:else if !isInvoiceFormValid}
-												{#if invoiceData.invoiceType === 'pdf'}
-													Fyll i alla fakturauppgifter (PDF)
-												{:else}
-													Fyll i alla fakturauppgifter (Elektronisk)
-												{/if}
-											{:else}
-												Skicka fakturabegäran ({totalPrice}kr)
-											{/if}
-										</Button>
-									{/if}
-								</div>
-							</CardContent>
-						</Card>
-					{/if}
 				{/if}
 			</div>
 		{:else}
@@ -1655,7 +1877,7 @@
 							<AlertDescription>{totalPrice}kr</AlertDescription>
 						</Alert>
 
-						<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+						<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNext}>
 							{#if numAdults === 0}
 								Välj antal deltagare
 							{:else}
@@ -1666,12 +1888,13 @@
 				</Card>
 			{/if}
 
-			{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
-				<Card id="contact-section">
+			{#if showContactSection}
+				<Card id="contact-section" class="w-full mt-6">
 					<CardHeader>
 						<CardTitle>Kontaktuppgifter</CardTitle>
 					</CardHeader>
 					<CardContent class="space-y-4">
+						<!-- Behåll den ursprungliga kontaktformulär-koden här -->
 						<div class="grid gap-4 sm:grid-cols-2">
 							<div class="space-y-2">
 								<Label for="firstName">Förnamn</Label>
@@ -1805,6 +2028,174 @@
 			<p class="text-sm text-gray-500">Vänligen vänta medan vi behandlar din förfrågan</p>
 		</div>
 	</div>
+{/if}
+
+<!-- Efter antal deltagare-sektionen -->
+{#if numAdults > 0}
+	{#if currentStep === 'participants'}
+		<div class="flex justify-end mt-4">
+			<Button on:click={handleNext}>Nästa steg</Button>
+		</div>
+	{:else if currentStep === 'optional_products'}
+		<!-- Tillvalsprodukter -->
+		{#if data.experience?.optional_products?.length > 0}
+			<Card class="w-full mt-6">
+				<CardHeader>
+					<CardTitle>Tillvalsprodukter</CardTitle>
+					<CardDescription>Välj extra produkter till din upplevelse</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div class="grid gap-4">
+						{#each data.experience.optional_products as product (product.id)}
+							<div class="flex items-center justify-between p-4 border rounded-lg">
+								<div class="flex-1">
+									<div class="flex items-start gap-4">
+										{#if product.image_url}
+											<img
+												src={product.image_url}
+												alt={product.name}
+												class="w-16 h-16 object-cover rounded"
+											/>
+										{/if}
+										<div>
+											<h3 class="text-lg font-semibold">{product.name}</h3>
+											{#if product.description}
+												<p class="text-sm text-muted-foreground">{product.description}</p>
+											{/if}
+											<p class="text-sm font-medium mt-1">
+												{product.price} kr{product.type === 'per_person' ? '/person' : ''}
+											</p>
+										</div>
+									</div>
+								</div>
+
+								{#if product.type === 'per_person'}
+									<div class="flex items-center gap-2">
+										<Checkbox
+											checked={selectedOptionalProducts[product.id]?.enabled}
+											onCheckedChange={(checked) => {
+												selectedOptionalProducts = {
+													...selectedOptionalProducts,
+													[product.id]: {
+														...product,
+														enabled: checked,
+														quantity: checked ? numAdults : 0
+													}
+												};
+												totalPrice = calculateTotalPrice();
+											}}
+										/>
+										<span class="text-sm">Lägg till för alla ({numAdults} personer)</span>
+									</div>
+								{:else}
+									<div class="flex items-center gap-2">
+										<Button
+											variant="outline"
+											class="px-3"
+											disabled={selectedOptionalProducts[product.id]?.quantity <= 0}
+											on:click={() => {
+												const currentQuantity = selectedOptionalProducts[product.id]?.quantity || 0;
+												selectedOptionalProducts = {
+													...selectedOptionalProducts,
+													[product.id]: {
+														...product,
+														quantity: Math.max(0, currentQuantity - 1)
+													}
+												};
+												totalPrice = calculateTotalPrice();
+											}}
+										>
+											-
+										</Button>
+										<span class="w-8 text-center">
+											{selectedOptionalProducts[product.id]?.quantity || 0}
+										</span>
+										<Button
+											variant="outline"
+											class="px-3"
+											on:click={() => {
+												const currentQuantity = selectedOptionalProducts[product.id]?.quantity || 0;
+												selectedOptionalProducts = {
+													...selectedOptionalProducts,
+													[product.id]: {
+														...product,
+														quantity: currentQuantity + 1
+													}
+												};
+												totalPrice = calculateTotalPrice();
+											}}
+										>
+											+
+										</Button>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+					<div class="flex justify-end mt-4">
+						<Button on:click={handleNext}>Gå till kontaktuppgifter</Button>
+					</div>
+				</CardContent>
+			</Card>
+		{/if}
+
+		<!-- Kontaktformulär -->
+		{#if currentStep === 'contact'}
+			<Card class="w-full mt-6">
+				<CardHeader>
+					<CardTitle>Kontaktuppgifter</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<Label for="firstName">Förnamn</Label>
+							<Input type="text" id="firstName" bind:value={userName} required />
+						</div>
+						<div class="space-y-2">
+							<Label for="lastName">Efternamn</Label>
+							<Input type="text" id="lastName" bind:value={userLastname} required />
+						</div>
+					</div>
+
+					<div class="space-y-2">
+						<Label for="phone">Telefonnummer</Label>
+						<Input
+							type="tel"
+							id="phone"
+							bind:value={userPhone}
+							pattern="^\+?[1-9]\d{14}$"
+							required
+						/>
+					</div>
+
+					<div class="space-y-2">
+						<Label for="email">E-postadress</Label>
+						<Input type="email" id="email" bind:value={userEmail} required />
+					</div>
+
+					<div class="space-y-2">
+						<Label for="comment">Kommentar (valfri)</Label>
+						<Textarea id="comment" bind:value={userComment} />
+					</div>
+
+					<div class="flex items-center gap-2 mb-4">
+						<Checkbox bind:checked={acceptTerms} id="terms" />
+						<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+					</div>
+
+					<!-- Betalningsalternativ och knappar här... -->
+				</CardContent>
+			</Card>
+		{/if}
+	{/if}
+{/if}
+
+{#if currentStep === 'optional_products' || currentStep === 'contact'}
+	console.log('Rendering optional products section, currentStep:', currentStep);
+{/if}
+
+{#if currentStep === 'contact'}
+	console.log('Rendering contact section, currentStep:', currentStep);
 {/if}
 
 <style>

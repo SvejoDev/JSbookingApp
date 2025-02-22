@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { query, transaction } from '$lib/db.js';
 import { sendBookingConfirmation } from '$lib/email.js';
+import { stripe } from '$lib/stripe.js';
 
 export const load = async ({ url }) => {
 	try {
@@ -128,31 +129,20 @@ export const load = async ({ url }) => {
 					await sendBookingConfirmation(booking, true);
 				}
 			} else {
-				// För stripe-bokningar
-				const {
-					rows: [stripeBooking]
-				} = await client.query(
-					`SELECT b.* 
-					 FROM bookings b 
-					 WHERE b.stripe_session_id = $1 
-					 FOR UPDATE`,
-					[sessionId]
-				);
-
-				if (!stripeBooking) {
-					throw redirect(303, '/');
-				}
+				const session = await stripe.checkout.sessions.retrieve(sessionId, {
+					expand: ['line_items']
+				});
 
 				// hämta priset för denna experience_id (barn är gratis)
 				const {
 					rows: [locationData]
 				} = await client.query(
 					'SELECT price FROM start_locations WHERE experience_id = $1 LIMIT 1',
-					[stripeBooking.experience_id]
+					[session.metadata.experience_id]
 				);
 
 				console.log('prislookup:', {
-					experience_id: stripeBooking.experience_id,
+					experience_id: session.metadata.experience_id,
 					locationData
 				});
 
@@ -160,7 +150,7 @@ export const load = async ({ url }) => {
 				const adultPriceExclVat = adultPrice / 1.25;
 
 				// beräkna totaler
-				const totalAdultsExclVat = stripeBooking.number_of_adults * adultPriceExclVat;
+				const totalAdultsExclVat = session.metadata.number_of_adults * adultPriceExclVat;
 				const totalChildren = 0; // barn är gratis
 				const subtotal = totalAdultsExclVat; // räkna bara vuxna, exkl. moms
 				const vat = subtotal * 0.25;
@@ -172,11 +162,11 @@ export const load = async ({ url }) => {
 					 FROM booking_addons ba 
 					 JOIN addons a ON ba.addon_id = a.id 
 					 WHERE ba.booking_id = $1`,
-					[stripeBooking.id]
+					[session.metadata.booking_id]
 				);
 
 				booking = {
-					...stripeBooking,
+					...session.metadata,
 					adultPrice,
 					adultPriceExclVat,
 					childPrice: 0,
@@ -186,18 +176,44 @@ export const load = async ({ url }) => {
 					vat,
 					total,
 					addons: bookingAddons,
-					customer_email: stripeBooking.customer_email, // säkerställ att detta finns med
-					confirmation_sent: stripeBooking.confirmation_sent
+					customer_email: session.metadata.customer_email, // säkerställ att detta finns med
+					confirmation_sent: session.metadata.confirmation_sent
 				};
 
-				if (!stripeBooking.confirmation_sent) {
+				if (!session.metadata.confirmation_sent) {
 					// Uppdatera först
 					await client.query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [
-						stripeBooking.id
+						session.metadata.booking_id
 					]);
 
 					// Skicka sedan mejl
 					await sendBookingConfirmation(booking, false);
+				}
+
+				// Spara tillvalsprodukter om de finns i metadata
+				if (session.metadata.optional_products) {
+					const optionalProducts = JSON.parse(session.metadata.optional_products);
+					if (optionalProducts.length > 0) {
+						const optionalProductValues = optionalProducts.map((product) => [
+							session.metadata.booking_id,
+							product.id,
+							product.quantity,
+							product.price,
+							product.total_price
+						]);
+
+						await client.query(
+							`INSERT INTO booking_optional_products 
+							(booking_id, optional_product_id, quantity, price_per_unit, total_price)
+							VALUES ${optionalProductValues
+								.map(
+									(_, i) =>
+										`($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`
+								)
+								.join(', ')}`,
+							optionalProductValues.flat()
+						);
+					}
 				}
 			}
 		});
@@ -207,7 +223,7 @@ export const load = async ({ url }) => {
 			isInvoiceBooking: bookingType === 'invoice'
 		};
 	} catch (error) {
-		console.error('Fel vid hämtning av bokning:', error);
+		console.error('Error in success page load:', error);
 		throw redirect(303, '/');
 	}
 };

@@ -397,33 +397,46 @@ async function generatePDF(booking, template = bookingTemplate) {
 	}
 }
 
-export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
+export async function sendBookingConfirmation(booking, isInvoice = false) {
 	try {
-		if (!bookingData.customer_email) {
-			throw new Error('kundens e-postadress saknas');
+		// Hämta tillvalsprodukter om de finns
+		let optionalProducts = [];
+		if (booking.id) {
+			const { rows } = await query(
+				`SELECT 
+					op.name,
+					bop.quantity,
+					bop.price_per_unit,
+					bop.total_price,
+					op.type
+				FROM booking_optional_products bop
+				JOIN optional_products op ON bop.optional_product_id = op.id
+				WHERE bop.booking_id = $1`,
+				[booking.id]
+			);
+			optionalProducts = rows;
 		}
 
-		// välj rätt mall baserat på bokningstyp
-		const template = Handlebars.compile(
-			isInvoiceBooking ? invoiceBookingTemplate : bookingTemplate
-		);
+		const emailData = {
+			...booking,
+			optional_products: optionalProducts,
+			formatted_start_date: formatDateTime(booking.start_date, booking.start_time),
+			formatted_end_date: formatDateTime(booking.end_date || booking.start_date, booking.end_time),
+			total_price: formatPrice(booking.amount_total)
+		};
 
-		// kompilera template med all bokningsdata
-		const html = template({
-			booking: bookingData,
-			invoice: isInvoiceBooking ? bookingData : null
-		});
-
+		// Skicka e-post med uppdaterad data
 		await sendEmail({
-			to: bookingData.customer_email,
-			subject: 'Bokningsbekräftelse - Stisses',
-			html,
-			type: 'booking'
+			to: booking.customer_email,
+			subject: isInvoice ? 'Faktura för din bokning' : 'Bokningsbekräftelse',
+			html: isInvoice
+				? pdfInvoiceTemplate(emailData, booking)
+				: bookingConfirmationTemplate(emailData)
 		});
 
-		console.log('✉️ bokningsbekräftelse skickad till:', bookingData.customer_email);
+		return true;
 	} catch (error) {
-		console.error('fel vid skickande av bokningsbekräftelse:', error);
+		console.error('Error sending booking confirmation:', error);
 		throw error;
 	}
 }

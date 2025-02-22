@@ -19,3 +19,23 @@ export function formatDateTime(date, time) {
 export function formatPrice(price) {
 	return typeof price === 'number' ? price.toFixed(2) : '0.00';
 }
+
+export function formatOptionalProducts(optionalProducts) {
+	if (!optionalProducts || optionalProducts.length === 0) return '';
+
+	return optionalProducts
+		.map(
+			(product) => `
+			<tr>
+				<td style="padding: 5px 0; border-bottom: 1px solid #eee;">${product.name}</td>
+				<td style="padding: 5px 0; text-align: right; border-bottom: 1px solid #eee;">
+					${product.type === 'per_person' ? `${product.quantity} personer` : `${product.quantity} st`}
+				</td>
+				<td style="padding: 5px 0; text-align: right; border-bottom: 1px solid #eee;">
+					${formatPrice(product.total_price)} kr
+				</td>
+			</tr>
+		`
+		)
+		.join('');
+}

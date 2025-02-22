@@ -9,7 +9,8 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 		start_time: bookingData.start_time || 'N/A',
 		number_of_adults: bookingData.number_of_adults || 0,
 		number_of_children: bookingData.number_of_children || 0,
-		amount_total: bookingData.amount_total || 0
+		amount_total: bookingData.amount_total || 0,
+		optional_products: bookingData.optional_products || []
 	};
 
 	const safeInvoiceData = {
@@ -42,6 +43,29 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 				)
 				.join('')}`
 			: '';
+
+	// Formatera tillvalsprodukter
+	const optionalProductsHtml = safeBookingData.optional_products.length
+		? `
+		<tr>
+			<td colspan="2" style="padding: 10px 0; border-top: 1px solid #eee;">
+				<strong>Tillvalsprodukter:</strong>
+			</td>
+		</tr>
+		${safeBookingData.optional_products
+			.map(
+				(product) => `
+				<tr>
+					<td style="padding: 5px 0;">${product.name}</td>
+					<td style="text-align: right;">
+						${product.type === 'per_person' ? `${product.quantity} personer` : `${product.quantity} st`}
+					</td>
+					<td style="text-align: right;">${formatPrice(product.total_price)} kr</td>
+				</tr>
+			`
+			)
+			.join('')}`
+		: '';
 
 	return `
     <!DOCTYPE html>
@@ -89,6 +113,7 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
         <!-- Lägg till addons-information före prisinformationen -->
         <table style="width: 100%; margin-top: 20px;">
             ${addonsHtml}
+            ${optionalProductsHtml}
             <!-- Resten av din befintliga tabell -->
         </table>
     </body>

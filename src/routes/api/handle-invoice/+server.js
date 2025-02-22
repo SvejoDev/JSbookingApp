@@ -103,9 +103,31 @@ export async function POST({ request }) {
 		} = await query(
 			`INSERT INTO bookings (${allColumns.join(', ')})
 			 VALUES (${allColumns.map((_, i) => `$${i + 1}`).join(', ')})
-			 RETURNING *`, // Ändrat till RETURNING * för att få all bokningsdata
+			 RETURNING *`,
 			allValues
 		);
+
+		// Spara tillvalsprodukter
+		if (bookingData.optional_products && bookingData.optional_products.length > 0) {
+			const optionalProductValues = bookingData.optional_products.map((product) => [
+				booking.id,
+				product.id,
+				product.quantity,
+				product.price,
+				product.total_price
+			]);
+
+			await query(
+				`INSERT INTO booking_optional_products 
+				(booking_id, optional_product_id, quantity, price_per_unit, total_price)
+				VALUES ${optionalProductValues
+					.map(
+						(_, i) => `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`
+					)
+					.join(', ')}`,
+				optionalProductValues.flat()
+			);
+		}
 
 		// Uppdatera invoice_details hanteringen
 		const invoiceColumns = [
@@ -169,8 +191,8 @@ export async function POST({ request }) {
 			invoiceDetails // Inkludera fakturainformationen i svaret
 		});
 	} catch (error) {
-		console.error('Fel vid hantering av faktura:', error);
-		return json({ success: false, error: error.message });
+		console.error('Error in invoice handler:', error);
+		throw error;
 	}
 }
 

@@ -33,7 +33,8 @@ export async function POST({ request }) {
 			customer_email: data.userEmail || '',
 			customer_phone: data.userPhone || '',
 			customer_comment: data.userComment || '',
-			selectedStartLocation: data.selectedStartLocation?.toString() || ''
+			selectedStartLocation: data.selectedStartLocation?.toString() || '',
+			optional_products: JSON.stringify(data.optional_products || [])
 		};
 
 		// Lägg till addon-metadata
@@ -44,24 +45,43 @@ export async function POST({ request }) {
 		// Konvertera priset till ören (cents)
 		const unitAmount = Math.round(data.amount * 100);
 
+		// Lägg till tillvalsprodukter i line items
+		const lineItems = [
+			{
+				price_data: {
+					currency: 'sek',
+					product_data: {
+						name: data.name
+					},
+					unit_amount: unitAmount
+				},
+				quantity: 1
+			}
+		];
+
+		if (data.optional_products && data.optional_products.length > 0) {
+			data.optional_products.forEach((product) => {
+				lineItems.push({
+					price_data: {
+						currency: 'sek',
+						product_data: {
+							name: product.name,
+							description: product.description || ''
+						},
+						unit_amount: product.price * 100 // Konvertera till öre
+					},
+					quantity: product.type === 'per_person' ? data.numAdults : product.quantity
+				});
+			});
+		}
+
 		// Försök upp till 3 gånger med en sekunds mellanrum
 		for (let attempt = 1; attempt <= 3; attempt++) {
 			try {
 				const session = await stripe.checkout.sessions.create({
 					payment_method_types: ['card'],
 					customer_email: data.userEmail,
-					line_items: [
-						{
-							price_data: {
-								currency: 'sek',
-								product_data: {
-									name: data.name
-								},
-								unit_amount: unitAmount
-							},
-							quantity: 1
-						}
-					],
+					line_items: lineItems,
 					mode: 'payment',
 					success_url: `${request.headers.get('origin')}/success?session_id={CHECKOUT_SESSION_ID}`,
 					cancel_url: `${request.headers.get('origin')}/cancel`,
