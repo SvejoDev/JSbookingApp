@@ -5,13 +5,34 @@ import html_to_pdf from 'html-pdf-node';
 
 import { bookingConfirmationTemplate } from './templates/bookingTemplates.js';
 import { pdfInvoiceTemplate, electronicInvoiceTemplate } from './templates/invoiceTemplates.js';
-import { formatDateTime } from './templates/emailTemplates';
+import { formatDateTime, formatPrice, formatDate } from './templates/emailTemplates.js';
 
 dotenv.config();
+
+// Lägg till debug-loggning för att se om API-nyckeln läses in korrekt
+console.log('SendGrid API Key length:', process.env.SENDGRID_API_KEY?.length || 0);
 
 // Konfigurera Handlebars helpers
 Handlebars.registerHelper('formatDateTime', formatDateTime);
 Handlebars.registerHelper('formatPrice', formatPrice);
+Handlebars.registerHelper('formatDate', formatDate);
+
+// Lägg till jämförelse-helpers
+Handlebars.registerHelper('gt', function (a, b) {
+	return a > b;
+});
+Handlebars.registerHelper('gte', function (a, b) {
+	return a >= b;
+});
+Handlebars.registerHelper('lt', function (a, b) {
+	return a < b;
+});
+Handlebars.registerHelper('lte', function (a, b) {
+	return a <= b;
+});
+Handlebars.registerHelper('eq', function (a, b) {
+	return a === b;
+});
 
 // e-post konfiguration
 const EMAIL_CONFIG = {
@@ -22,8 +43,14 @@ const EMAIL_CONFIG = {
 	INVOICE_RECIPIENTS: ['johan.svensson@svejo.se', 'info@stisses.se']
 };
 
+// lägg till verifiering av api-nyckel
+const apiKey = process.env.SENDGRID_API_KEY?.trim();
+if (!apiKey) {
+	throw new Error('SendGrid API-nyckel saknas');
+}
+
 // konfigurera sendgrid
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+sgMail.setApiKey(apiKey);
 
 // formatera pris med två decimaler
 function formatPrice(price) {
@@ -173,6 +200,55 @@ const bookingTemplate = `
 			<span>Totalt pris</span>
 			<span>{{formatPrice booking.total}} kr</span>
 		</div>
+	</div>
+
+	<div class="booking-details">
+		<h2>Din bokningsinformation</h2>
+		<p><strong>Bokningsnummer:</strong> #{{booking.id}}</p>
+		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
+		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
+		<p><strong>Datum:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
+		{{#if booking.end_date}}
+		<p><strong>Slutdatum:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
+		{{/if}}
+		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+
+		{{#if booking.optional_products.length}}
+		<h3>Tillvalsprodukter</h3>
+		<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+			<tr style="border-bottom: 1px solid #ddd;">
+				<th style="text-align: left; padding: 5px;">Produkt</th>
+				<th style="text-align: right; padding: 5px;">Antal</th>
+				<th style="text-align: right; padding: 5px;">Totalt</th>
+			</tr>
+			{{#each booking.optional_products}}
+			<tr style="border-bottom: 1px solid #eee;">
+				<td style="padding: 5px;">{{name}}</td>
+				<td style="text-align: right; padding: 5px;">{{quantity}}</td>
+				<td style="text-align: right; padding: 5px;">{{formatPrice total_price}} kr</td>
+			</tr>
+			{{/each}}
+		</table>
+		{{/if}}
+
+		<p><strong>Totalt belopp att betala:</strong> {{booking.amount_total}} kr</p>
+	</div>
+
+	<div class="contact-details">
+		<h2>Dina uppgifter</h2>
+		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
+		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
+		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
+		{{#if booking.customer_comment}}
+		<p><strong>Meddelande:</strong> {{booking.customer_comment}}</p>
+		{{/if}}
+	</div>
+
+	<div class="footer">
+		<p>Om du har några frågor, kontakta oss gärna på:</p>
+		<p>E-post: info@stisses.se</p>
+		<p>Telefon: 0730-540 540</p>
 	</div>
 </body>
 </html>
@@ -338,6 +414,25 @@ const invoiceBookingTemplate = `
 		{{/if}}
 		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
 		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+
+		{{#if booking.optional_products.length}}
+		<h3>Tillvalsprodukter</h3>
+		<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+			<tr style="border-bottom: 1px solid #ddd;">
+				<th style="text-align: left; padding: 5px;">Produkt</th>
+				<th style="text-align: right; padding: 5px;">Antal</th>
+				<th style="text-align: right; padding: 5px;">Totalt</th>
+			</tr>
+			{{#each booking.optional_products}}
+			<tr style="border-bottom: 1px solid #eee;">
+				<td style="padding: 5px;">{{name}}</td>
+				<td style="text-align: right; padding: 5px;">{{quantity}}</td>
+				<td style="text-align: right; padding: 5px;">{{formatPrice total_price}} kr</td>
+			</tr>
+			{{/each}}
+		</table>
+		{{/if}}
+
 		<p><strong>Totalt belopp att fakturera:</strong> {{booking.amount_total}} kr</p>
 	</div>
 
@@ -360,16 +455,11 @@ const invoiceBookingTemplate = `
 </html>
 `;
 
-// Lägg till Handlebars helper för att jämföra värden
-Handlebars.registerHelper('eq', function (a, b) {
-	return a === b;
-});
-
 async function generatePDF(booking, template = bookingTemplate) {
 	// registrera handlebars helpers
 	Handlebars.registerHelper('formatDateTime', formatDateTime);
 	Handlebars.registerHelper('formatPrice', formatPrice);
-	Handlebars.registerHelper('formatDate', (date) => new Date(date).toLocaleDateString('sv-SE'));
+	Handlebars.registerHelper('formatDate', formatDate);
 	Handlebars.registerHelper('gt', function (a, b) {
 		return a > b;
 	});
@@ -393,6 +483,50 @@ async function generatePDF(booking, template = bookingTemplate) {
 		return buffer;
 	} catch (error) {
 		console.error('Fel vid generering av PDF:', error);
+		throw error;
+	}
+}
+
+// Definiera sendEmail funktionen
+async function sendEmail({ to, subject, html, type = 'standard' }) {
+	try {
+		console.log('Attempting to send email:', {
+			to,
+			subject,
+			type,
+			fromEmail: process.env.SENDGRID_FROM_EMAIL
+		});
+
+		const msg = {
+			to: type === 'invoice' ? process.env.INVOICE_EMAIL : to,
+			from: {
+				email: process.env.SENDGRID_FROM_EMAIL,
+				name: 'Stisses Kanotuthyrning'
+			},
+			subject,
+			html
+		};
+
+		// Lägg till verifiering innan sändning
+		console.log('Verifierar e-postinställningar:', {
+			toAddress: msg.to,
+			fromAddress: msg.from.email,
+			apiKeyLength: apiKey.length,
+			subject: msg.subject
+		});
+
+		const response = await sgMail.send(msg);
+		console.log('SendGrid response:', response[0].statusCode);
+		return response;
+	} catch (error) {
+		// Förbättrad felhantering
+		const errorDetails = {
+			code: error.code,
+			message: error.message,
+			response: error.response?.body,
+			stack: error.stack
+		};
+		console.error('Detaljerat SendGrid-fel:', JSON.stringify(errorDetails, null, 2));
 		throw error;
 	}
 }
@@ -428,16 +562,16 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 	}
 }
 
-// uppdatera sendInvoiceRequest funktionen för att använda den importerade mallen
+// Sedan kan vi använda den i sendInvoiceRequest
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
 		const template =
 			invoiceData.invoiceType === 'pdf'
 				? pdfInvoiceTemplate(bookingData, invoiceData)
-				: electronicInvoiceTemplate; // använd den importerade mallen
+				: electronicInvoiceTemplate;
 
 		await sendEmail({
-			to: null,
+			to: process.env.INVOICE_EMAIL, // använd miljövariabel för faktura-email
 			subject: `Fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
 			html: template,
 			type: 'invoice'
@@ -448,5 +582,6 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 	}
 }
 
-// Se till att exportera funktionen så den kan användas av andra moduler
+// Exportera både sendEmail och sendInvoiceRequest
 export { sendEmail };
+export { sendInvoiceRequest };

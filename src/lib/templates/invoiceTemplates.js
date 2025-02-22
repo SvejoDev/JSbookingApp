@@ -91,6 +91,38 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
             ${addonsHtml}
             <!-- Resten av din befintliga tabell -->
         </table>
+
+        <div class="invoice-details">
+            ${
+							bookingData.optional_products && bookingData.optional_products.length > 0
+								? `
+                <div class="optional-products">
+                    <h3>Tillvalsprodukter</h3>
+                    <table>
+                        <tr>
+                            <th>Produkt</th>
+                            <th>Antal</th>
+                            <th>Pris per enhet</th>
+                            <th>Totalt</th>
+                        </tr>
+                        ${bookingData.optional_products
+													.map(
+														(product) => `
+                            <tr>
+                                <td>${product.name}</td>
+                                <td>${product.quantity}</td>
+                                <td>${formatPrice(product.price)} kr</td>
+                                <td>${formatPrice(product.total_price)} kr</td>
+                            </tr>
+                        `
+													)
+													.join('')}
+                    </table>
+                </div>
+            `
+								: ''
+						}
+        </div>
     </body>
     </html>
     `;
