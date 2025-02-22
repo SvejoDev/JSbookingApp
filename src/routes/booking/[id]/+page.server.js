@@ -7,18 +7,26 @@ export async function load({ params }) {
 			`
             SELECT 
                 e.*,
-                json_agg(
-                    json_build_object(
-                        'id', a.id,
-                        'name', a.name,
-                        'max_quantity', a.max_quantity,
-                        'image_url', a.image_url,
-                        'column_name', a.column_name
-                    )
-                ) as addons
+                json_agg(DISTINCT jsonb_build_object(
+                    'id', a.id,
+                    'name', a.name,
+                    'max_quantity', a.max_quantity,
+                    'image_url', a.image_url,
+                    'column_name', a.column_name
+                )) as addons,
+                json_agg(DISTINCT jsonb_build_object(
+                    'id', op.id,
+                    'name', op.name,
+                    'description', op.description,
+                    'price', op.price,
+                    'type', op.type,
+                    'image_url', op.image_url
+                )) as optional_products
             FROM experiences e
             LEFT JOIN experience_addons ea ON e.id = ea.experience_id
             LEFT JOIN addons a ON ea.addon_id = a.id
+            LEFT JOIN experience_optional_products eop ON e.id = eop.experience_id
+            LEFT JOIN optional_products op ON eop.optional_product_id = op.id
             WHERE e.id = $1
             GROUP BY e.id
             `,
@@ -30,6 +38,12 @@ export async function load({ params }) {
 		if (!experience) {
 			return { error: 'Upplevelsen hittades inte' };
 		}
+
+		// Filtrera bort null-värden från arrays
+		experience.addons = experience.addons.filter((addon) => addon.id !== null);
+		experience.optional_products = experience.optional_products.filter(
+			(product) => product.id !== null
+		);
 
 		// Hämta all nödvändig data för bokningen
 		const [
@@ -113,7 +127,8 @@ export async function load({ params }) {
 		return {
 			experience: {
 				...experience,
-				addons: experience.addons.filter((addon) => addon.id !== null)
+				addons: experience.addons,
+				optional_products: experience.optional_products
 			},
 			startLocations: startLocations.rows,
 			bookingLengths: bookingLengths.rows,

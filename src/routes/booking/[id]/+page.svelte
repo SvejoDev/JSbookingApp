@@ -955,6 +955,45 @@
 
 		return false;
 	}
+
+	// Lägg till bland de andra tillståndsvariablerna
+	let selectedOptionalProducts = {};
+
+	// Lägg till bland hjälpfunktionerna
+	function updateOptionalProductQuantity(productId, increment) {
+		selectedOptionalProducts = {
+			...selectedOptionalProducts,
+			[productId]: {
+				quantity: increment
+					? (selectedOptionalProducts[productId]?.quantity || 0) + 1
+					: Math.max(0, (selectedOptionalProducts[productId]?.quantity || 0) - 1),
+				price: data.experience.optional_products.find((p) => p.id === productId).price
+			}
+		};
+	}
+
+	function updateOptionalProductPrice(product) {
+		selectedOptionalProducts = {
+			...selectedOptionalProducts,
+			[product.id]: {
+				selected: !selectedOptionalProducts[product.id]?.selected,
+				price: product.price
+			}
+		};
+	}
+
+	function calculateOptionalProductsTotal() {
+		return Object.entries(selectedOptionalProducts).reduce((total, [productId, data]) => {
+			const product = data.experience.optional_products.find((p) => p.id === parseInt(productId));
+			if (!product) return total;
+
+			if (product.type === 'per_person') {
+				return total + (data.selected ? product.price * numAdults : 0);
+			} else {
+				return total + (data.quantity || 0) * product.price;
+			}
+		}, 0);
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1805,6 +1844,104 @@
 			<p class="text-sm text-gray-500">Vänligen vänta medan vi behandlar din förfrågan</p>
 		</div>
 	</div>
+{/if}
+
+{#if data.experience?.experience_type === 'business_school' && numAdults > 0}
+	<Card id="optional-products-section">
+		<CardHeader>
+			<CardTitle>Tillvalsprodukter</CardTitle>
+			<CardDescription>Välj extra produkter till din bokning</CardDescription>
+		</CardHeader>
+		<CardContent class="space-y-6">
+			{#if data.experience.optional_products?.length > 0}
+				{#each data.experience.optional_products as product (product.id)}
+					<div class="flex items-start space-x-4 p-4 border rounded-lg">
+						{#if product.image_url}
+							<img
+								src={product.image_url}
+								alt={product.name}
+								class="w-20 h-20 object-cover rounded"
+							/>
+						{/if}
+						<div class="flex-1 space-y-2">
+							<div class="flex justify-between items-start">
+								<div>
+									<h3 class="font-medium">{product.name}</h3>
+									<p class="text-sm text-muted-foreground">{product.description}</p>
+								</div>
+								<div class="text-right">
+									<p class="font-medium">
+										{#if product.type === 'per_person'}
+											{product.price} kr/person
+										{:else}
+											{product.price} kr/st
+										{/if}
+									</p>
+								</div>
+							</div>
+
+							{#if product.type === 'per_person'}
+								<div class="flex items-center space-x-2">
+									<Checkbox
+										id={`product-${product.id}`}
+										bind:checked={selectedOptionalProducts[product.id]}
+										on:change={() => updateOptionalProductQuantity(product.id, false)}
+									/>
+									<Label for={`product-${product.id}`}>
+										Lägg till för alla deltagare ({numAdults * product.price} kr totalt)
+									</Label>
+								</div>
+							{:else}
+								<div class="flex items-center space-x-4">
+									<Button
+										variant="outline"
+										class="px-3"
+										on:click={() => updateOptionalProductQuantity(product.id, false)}
+									>
+										-
+									</Button>
+									<span class="w-12 text-center">
+										{selectedOptionalProducts[product.id]?.quantity || 0}
+									</span>
+									<Button
+										variant="outline"
+										class="px-3"
+										on:click={() => updateOptionalProductQuantity(product.id, true)}
+									>
+										+
+									</Button>
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/each}
+
+				<div class="mt-6">
+					<Alert>
+						<AlertTitle>Totalt för tillvalsprodukter</AlertTitle>
+						<AlertDescription>{calculateOptionalProductsTotal()} kr</AlertDescription>
+					</Alert>
+				</div>
+
+				<Button
+					class="w-full mt-4"
+					on:click={() => {
+						showContactSection = true;
+						tick().then(() => scrollToElement('contact-section'));
+					}}
+				>
+					Gå vidare till kontaktuppgifter
+				</Button>
+			{:else}
+				<Alert>
+					<AlertTitle>Inga tillvalsprodukter</AlertTitle>
+					<AlertDescription>
+						Det finns inga tillvalsprodukter för denna upplevelse.
+					</AlertDescription>
+				</Alert>
+			{/if}
+		</CardContent>
+	</Card>
 {/if}
 
 <style>
