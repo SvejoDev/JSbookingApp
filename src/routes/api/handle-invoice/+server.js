@@ -1,32 +1,23 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/db.js';
+import { query, transaction } from '$lib/db.js';
 import { sendInvoiceRequest } from '$lib/email.js';
 import { timeToSlot, calculateTotalSlots, timeToMinutes } from '$lib/utils/timeSlots.js';
 
 export async function POST({ request }) {
 	try {
 		const { bookingData, invoiceData } = await request.json();
+
+		// Validera och säkerställ att alla nödvändiga värden finns
+		if (!bookingData.experience_id || !bookingData.selectedStartLocation) {
+			throw new Error('Saknar nödvändig bokningsdata');
+		}
+
 		console.log('Mottagen invoiceData:', {
 			...invoiceData,
 			invoiceEmail: invoiceData.invoiceEmail // Kontrollera specifikt detta fält
 		});
 
-		// Spara addons separat innan vi modifierar bookingData
-		const originalAddons = { ...bookingData.addons };
-
-		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
-		console.log('🎁 Sparade addons:', originalAddons);
-
-		// Beräkna slots
-		const startSlot = timeToSlot(bookingData.start_time);
-		const endSlot = timeToSlot(bookingData.end_time);
-		const totalSlots = calculateTotalSlots(
-			startSlot,
-			endSlot,
-			bookingData.booking_type === 'overnight'
-		);
-
-		// Definiera baskolumner för bokningen (ta bort selected_start_location)
+		// Definiera baskolumnerna för bookings-tabellen
 		const baseColumns = [
 			'experience_id',
 			'experience',
@@ -52,24 +43,39 @@ export async function POST({ request }) {
 			'confirmation_sent'
 		];
 
-		// Skapa motsvarande värden för baskolumnerna
+		// Spara addons separat innan vi modifierar bookingData
+		const originalAddons = { ...bookingData.addons };
+
+		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
+		console.log('🎁 Sparade addons:', originalAddons);
+
+		// Beräkna slots
+		const startSlot = timeToSlot(bookingData.start_time);
+		const endSlot = timeToSlot(bookingData.end_time);
+		const totalSlots = calculateTotalSlots(
+			startSlot,
+			endSlot,
+			bookingData.booking_type === 'overnight'
+		);
+
+		// Säkerställ att alla värden är korrekta typer
 		const baseValues = [
-			bookingData.experience_id,
+			parseInt(bookingData.experience_id),
 			bookingData.experience,
 			bookingData.start_date,
 			bookingData.end_date || bookingData.start_date,
 			bookingData.start_time,
 			bookingData.end_time,
-			bookingData.number_of_adults,
-			bookingData.number_of_children,
-			bookingData.amount_total,
+			parseInt(bookingData.number_of_adults) || 0,
+			parseInt(bookingData.number_of_children) || 0,
+			parseInt(bookingData.amount_total) || 0,
 			bookingData.booking_name,
 			bookingData.booking_lastname,
 			bookingData.customer_email,
 			bookingData.customer_phone,
 			bookingData.customer_comment || '',
 			'day',
-			bookingData.selectedStartLocation,
+			parseInt(bookingData.selectedStartLocation),
 			'pending_payment',
 			startSlot,
 			endSlot,
@@ -98,14 +104,40 @@ export async function POST({ request }) {
 		console.log('and values:', allValues);
 
 		// Skapa bokningen i databasen
-		const {
-			rows: [booking]
-		} = await query(
-			`INSERT INTO bookings (${allColumns.join(', ')})
-			 VALUES (${allColumns.map((_, i) => `$${i + 1}`).join(', ')})
-			 RETURNING *`, // Ändrat till RETURNING * för att få all bokningsdata
-			allValues
+		const bookingResult = await query(
+			`INSERT INTO bookings (${baseColumns.join(', ')}) 
+			 VALUES (${baseValues.map((_, i) => `$${i + 1}`).join(', ')})
+			 RETURNING *`,
+			baseValues
 		);
+
+		const bookingId = bookingResult.rows[0].id;
+
+		// Spara tillvalsprodukter om de finns
+		if (bookingData.selectedOptionalProducts) {
+			for (const [productId, quantity] of Object.entries(bookingData.selectedOptionalProducts)) {
+				if (quantity > 0) {
+					const product = await query('SELECT price, type FROM optional_products WHERE id = $1', [
+						productId
+					]);
+
+					if (product.rows[0]) {
+						const { price, type } = product.rows[0];
+						const totalPrice =
+							type === 'per_person'
+								? quantity * price
+								: (bookingData.number_of_adults + bookingData.number_of_children) * price;
+
+						await query(
+							`INSERT INTO booking_optional_products 
+							(booking_id, optional_product_id, quantity, price_per_unit, total_price)
+							VALUES ($1, $2, $3, $4, $5)`,
+							[bookingId, productId, quantity, price, totalPrice]
+						);
+					}
+				}
+			}
+		}
 
 		// Uppdatera invoice_details hanteringen
 		const invoiceColumns = [
@@ -121,7 +153,7 @@ export async function POST({ request }) {
 		];
 
 		const invoiceValues = [
-			booking.id,
+			bookingId,
 			invoiceData.invoiceType,
 			invoiceData.invoiceEmail, // Lägg till detta direkt
 			invoiceData.glnPeppolId || '',
@@ -147,7 +179,7 @@ export async function POST({ request }) {
 
 		// Skicka med de ursprungliga addon-värdena till updateAvailability
 		const bookingWithAddons = {
-			...booking,
+			...bookingResult.rows[0],
 			addons: originalAddons,
 			invoiceDetails // Lägg till fakturainformationen i svaret
 		};
@@ -165,12 +197,16 @@ export async function POST({ request }) {
 
 		return json({
 			success: true,
-			bookingId: booking.id,
-			invoiceDetails // Inkludera fakturainformationen i svaret
+			bookingId: bookingId || null, // Säkerställ att vi alltid har ett värde
+			invoiceDetails: invoiceDetails || null
 		});
 	} catch (error) {
 		console.error('Fel vid hantering av faktura:', error);
-		return json({ success: false, error: error.message });
+		return json({
+			success: false,
+			error: error.message,
+			stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+		});
 	}
 }
 

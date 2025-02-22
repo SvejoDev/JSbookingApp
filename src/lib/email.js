@@ -2,16 +2,37 @@ import sgMail from '@sendgrid/mail';
 import dotenv from 'dotenv';
 import Handlebars from 'handlebars';
 import html_to_pdf from 'html-pdf-node';
+import { query } from '$lib/db.js';
 
 import { bookingConfirmationTemplate } from './templates/bookingTemplates.js';
 import { pdfInvoiceTemplate, electronicInvoiceTemplate } from './templates/invoiceTemplates.js';
-import { formatDateTime } from './templates/emailTemplates';
+import { formatDateTime, formatPrice } from './templates/emailTemplates';
 
 dotenv.config();
 
 // Konfigurera Handlebars helpers
 Handlebars.registerHelper('formatDateTime', formatDateTime);
 Handlebars.registerHelper('formatPrice', formatPrice);
+// lägg till formatDate helper som använder formatDateTime
+Handlebars.registerHelper('formatDate', (date) => {
+	if (!date) return 'Ej angivet';
+	try {
+		const dateObj = new Date(date);
+		return dateObj.toLocaleDateString('sv-SE', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
+		});
+	} catch (error) {
+		console.error('Fel vid datumformatering:', error);
+		return 'Ogiltigt datum';
+	}
+});
+
+// Lägg till gt helper
+Handlebars.registerHelper('gt', function (a, b) {
+	return a > b;
+});
 
 // e-post konfiguration
 const EMAIL_CONFIG = {
@@ -24,6 +45,24 @@ const EMAIL_CONFIG = {
 
 // konfigurera sendgrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+// Definiera sendEmail funktionen INNAN den används
+async function sendEmail({ to, subject, html, type = 'booking' }) {
+	try {
+		const msg = {
+			to: type === 'invoice' ? EMAIL_CONFIG.INVOICE_RECIPIENTS : to,
+			from: EMAIL_CONFIG.FROM,
+			subject,
+			html
+		};
+
+		await sgMail.send(msg);
+		console.log('✉️ E-post skickad:', { to: msg.to, subject });
+	} catch (error) {
+		console.error('Fel vid skickande av e-post:', error);
+		throw error;
+	}
+}
 
 // formatera pris med två decimaler
 function formatPrice(price) {
@@ -397,22 +436,47 @@ async function generatePDF(booking, template = bookingTemplate) {
 	}
 }
 
-export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
+export async function sendBookingConfirmation(bookingData) {
 	try {
+		// Hämta tillvalsprodukter för bokningen
+		const optionalProductsResult = await query(
+			`SELECT 
+				op.name,
+				op.price,
+				op.type as product_type,
+				bop.quantity,
+				bop.total_price
+			FROM booking_optional_products bop
+			JOIN optional_products op ON bop.optional_product_id = op.id
+			WHERE bop.booking_id = $1`,
+			[bookingData.id]
+		);
+
+		// Formatera tillvalsprodukter för e-postmallen
+		const optional_products = optionalProductsResult.rows.map((product) => ({
+			name: product.name,
+			quantity: product.quantity,
+			price: product.price,
+			is_per_person: product.product_type === 'per_person',
+			total_price: product.total_price
+		}));
+
+		// Lägg till tillvalsprodukter i template data
+		const templateData = {
+			...bookingData,
+			optional_products
+			// ... resten av din befintliga template data
+		};
+
 		if (!bookingData.customer_email) {
 			throw new Error('kundens e-postadress saknas');
 		}
 
 		// välj rätt mall baserat på bokningstyp
-		const template = Handlebars.compile(
-			isInvoiceBooking ? invoiceBookingTemplate : bookingTemplate
-		);
+		const template = Handlebars.compile(bookingTemplate);
 
 		// kompilera template med all bokningsdata
-		const html = template({
-			booking: bookingData,
-			invoice: isInvoiceBooking ? bookingData : null
-		});
+		const html = template(templateData);
 
 		await sendEmail({
 			to: bookingData.customer_email,
@@ -449,4 +513,4 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 }
 
 // Se till att exportera funktionen så den kan användas av andra moduler
-export { sendEmail };
+export { sendEmail, sendBookingConfirmation, sendInvoiceRequest };

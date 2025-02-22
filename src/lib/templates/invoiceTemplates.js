@@ -43,6 +43,22 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 				.join('')}`
 			: '';
 
+	// Lägg till tillvalsprodukter i fakturaspecifikationen
+	const optionalProductsHtml = bookingData.optional_products
+		? bookingData.optional_products
+				.map(
+					(product) => `
+			<tr>
+				<td>${product.name}</td>
+				<td>${product.quantity} st</td>
+				<td>${product.price} kr${product.is_per_person ? '/st' : '/person'}</td>
+				<td>${product.total_price} kr</td>
+			</tr>
+		`
+				)
+				.join('')
+		: '';
+
 	return `
     <!DOCTYPE html>
     <html>
@@ -89,7 +105,7 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
         <!-- Lägg till addons-information före prisinformationen -->
         <table style="width: 100%; margin-top: 20px;">
             ${addonsHtml}
-            <!-- Resten av din befintliga tabell -->
+            ${optionalProductsHtml}
         </table>
     </body>
     </html>
