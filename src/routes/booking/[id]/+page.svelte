@@ -99,6 +99,7 @@
 
 	// Bland tillståndsvariablerna
 	let selectedOptionalProducts = {};
+	let perPersonSelections = {};
 
 	// ==================
 	// reaktiva uttryck
@@ -973,38 +974,125 @@
 
 	// Hjälpfunktioner för tillvalsprodukter
 	function updateOptionalProductQuantity(productId, increment) {
+		const product = data.experience.optional_products.find((p) => p.id === productId);
+		console.log('Updating fixed quantity product:', {
+			productId,
+			productName: product.name,
+			currentQuantity: selectedOptionalProducts[productId]?.quantity || 0,
+			increment,
+			pricePerUnit: product.price
+		});
+
 		selectedOptionalProducts = {
 			...selectedOptionalProducts,
 			[productId]: {
 				quantity: increment
 					? (selectedOptionalProducts[productId]?.quantity || 0) + 1
 					: Math.max(0, (selectedOptionalProducts[productId]?.quantity || 0) - 1),
-				price: data.experience.optional_products.find((p) => p.id === productId).price
+				price: product.price,
+				type: 'fixed_quantity'
 			}
 		};
+
+		console.log('Updated state:', selectedOptionalProducts[productId]);
 	}
 
+	// Uppdatera updateOptionalProductPrice funktionen
 	function updateOptionalProductPrice(product) {
+		// Logga innan uppdatering
+		console.log('Before update:', {
+			productId: product.id,
+			perPersonSelections,
+			selectedOptionalProducts
+		});
+
+		// Uppdatera selections med spread operator för reaktivitet
+		const newSelected = !perPersonSelections[product.id];
+		perPersonSelections = {
+			...perPersonSelections,
+			[product.id]: newSelected
+		};
+
 		selectedOptionalProducts = {
 			...selectedOptionalProducts,
 			[product.id]: {
-				selected: !selectedOptionalProducts[product.id]?.selected,
-				price: product.price
+				selected: newSelected,
+				price: product.price,
+				type: 'per_person'
 			}
 		};
+
+		// Logga efter uppdatering
+		console.log('After update:', {
+			productId: product.id,
+			newSelected,
+			perPersonSelections,
+			selectedOptionalProducts
+		});
+
+		// Tvinga fram en omberäkning av totalpriset
+		optionalProductsTotal = calculateOptionalProductsTotal();
 	}
 
 	function calculateOptionalProductsTotal() {
-		return Object.entries(selectedOptionalProducts).reduce((total, [productId, data]) => {
-			const product = data.experience.optional_products.find((p) => p.id === parseInt(productId));
-			if (!product) return total;
+		console.log('Calculating total with:', {
+			selectedProducts: selectedOptionalProducts,
+			numAdults
+		});
 
-			if (product.type === 'per_person') {
-				return total + (data.selected ? product.price * numAdults : 0);
-			} else {
-				return total + (data.quantity || 0) * product.price;
+		return Object.entries(selectedOptionalProducts).reduce((total, [productId, data]) => {
+			if (data.type === 'per_person') {
+				const subtotal = data.selected ? data.price * numAdults : 0;
+				console.log('Per-person product calculation:', {
+					productId,
+					selected: data.selected,
+					price: data.price,
+					numAdults,
+					subtotal
+				});
+				return total + subtotal;
+			} else if (data.type === 'fixed_quantity') {
+				const subtotal = (data.quantity || 0) * data.price;
+				console.log('Fixed quantity product calculation:', {
+					productId,
+					quantity: data.quantity || 0,
+					price: data.price,
+					subtotal
+				});
+				return total + subtotal;
 			}
+			return total;
 		}, 0);
+	}
+
+	// Lägg till en ny variabel för tillvalsprodukters totalpris
+	let optionalProductsTotal = 0;
+
+	// Uppdatera den reaktiva beräkningen
+	$: {
+		// Beräkna total när något relevant ändras
+		if (selectedOptionalProducts || numAdults || perPersonSelections) {
+			optionalProductsTotal = calculateOptionalProductsTotal();
+			console.log('New total price:', {
+				optionalProductsTotal,
+				selectedProducts: selectedOptionalProducts,
+				perPersonSelections
+			});
+		}
+	}
+
+	// Uppdatera även den totala summan för hela bokningen
+	$: totalPrice =
+		(selectedStartLocation
+			? data.startLocations.find((loc) => loc.id === selectedStartLocation)?.price * numAdults
+			: 0) + optionalProductsTotal;
+
+	// Lägg till en reaktiv beräkning som triggar när relevanta värden ändras
+	$: {
+		if (selectedOptionalProducts || numAdults) {
+			optionalProductsTotal = calculateOptionalProductsTotal();
+			console.log('Recalculated total:', optionalProductsTotal);
+		}
 	}
 </script>
 
@@ -1755,8 +1843,8 @@
 											<div class="flex items-center space-x-2">
 												<Checkbox
 													id={`product-${product.id}`}
-													bind:checked={selectedOptionalProducts[product.id]}
-													on:change={() => updateOptionalProductQuantity(product.id, false)}
+													on:click={() => updateOptionalProductPrice(product)}
+													checked={perPersonSelections[product.id] || false}
 												/>
 												<Label for={`product-${product.id}`}>
 													Lägg till för alla deltagare ({numAdults * product.price} kr totalt)
@@ -1790,7 +1878,7 @@
 							<div class="mt-6">
 								<Alert>
 									<AlertTitle>Totalt för tillvalsprodukter</AlertTitle>
-									<AlertDescription>{calculateOptionalProductsTotal()} kr</AlertDescription>
+									<AlertDescription>{optionalProductsTotal} kr</AlertDescription>
 								</Alert>
 							</div>
 
