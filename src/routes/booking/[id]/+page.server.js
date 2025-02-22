@@ -31,6 +31,18 @@ export async function load({ params }) {
 			return { error: 'Upplevelsen hittades inte' };
 		}
 
+		// Lägg till denna nya query för att hämta tillvalsprodukter
+		const optionalProductsResult = await query(
+			`
+            SELECT 
+                op.*
+            FROM optional_products op
+            JOIN experience_optional_products eop ON op.id = eop.optional_product_id
+            WHERE eop.experience_id = $1
+            `,
+			[params.id]
+		);
+
 		// Hämta all nödvändig data för bokningen
 		const [
 			startLocations,
@@ -115,6 +127,7 @@ export async function load({ params }) {
 				...experience,
 				addons: experience.addons.filter((addon) => addon.id !== null)
 			},
+			optionalProducts: optionalProductsResult.rows,
 			startLocations: startLocations.rows,
 			bookingLengths: bookingLengths.rows,
 			openHours,

@@ -19,6 +19,7 @@
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
+	import { Badge } from '$lib/components/ui/badge';
 
 	export let data;
 
@@ -320,30 +321,6 @@
 				...selectedAddons,
 				[addon.column_name]: newValue
 			};
-		}
-	}
-
-	// beräknar totalpris baserat på val
-	function updatePrice() {
-		if (selectedStartLocation && data.startLocations) {
-			const selectedLocation = data.startLocations.find(
-				(location) => location.id === selectedStartLocation
-			);
-
-			if (selectedLocation?.price && numAdults > 0) {
-				// säkerställ att priset är ett giltigt nummer
-				const basePrice = Number(selectedLocation.price) || 0;
-				totalPrice = Math.round(numAdults * basePrice);
-			} else {
-				totalPrice = 0;
-			}
-		} else {
-			totalPrice = 0;
-		}
-
-		// säkerställ att totalPrice alltid är ett giltigt nummer
-		if (isNaN(totalPrice)) {
-			totalPrice = 0;
 		}
 	}
 
@@ -955,6 +932,66 @@
 
 		return false;
 	}
+
+	// Lägg till bland de andra tillståndsvariablerna
+	let selectedOptionalProducts = {};
+	let showOptionalProducts = false;
+
+	// Lägg till denna reaktiva beräkning för totalpris med tillval
+	$: {
+		if (data.optionalProducts) {
+			// initialisera selectedOptionalProducts om det behövs
+			data.optionalProducts.forEach((product) => {
+				if (selectedOptionalProducts[product.id] === undefined) {
+					selectedOptionalProducts[product.id] = product.type === 'per_person' ? 0 : false;
+				}
+			});
+		}
+	}
+
+	// Uppdatera beräkningen av totalpris för att inkludera tillvalsprodukter
+	function calculateOptionalProductsTotal() {
+		if (!data.optionalProducts) return 0;
+
+		return data.optionalProducts.reduce((total, product) => {
+			const selected = selectedOptionalProducts[product.id];
+			if (product.type === 'per_person') {
+				return total + selected * product.price;
+			} else {
+				return total + (selected ? (numAdults + numChildren) * product.price : 0);
+			}
+		}, 0);
+	}
+
+	// Uppdatera den befintliga updatePrice funktionen
+	function updatePrice() {
+		if (selectedStartLocation && data.startLocations) {
+			const selectedLocation = data.startLocations.find(
+				(location) => location.id === selectedStartLocation
+			);
+
+			if (selectedLocation?.price && numAdults > 0) {
+				const basePrice = Number(selectedLocation.price) || 0;
+				const optionalProductsTotal = calculateOptionalProductsTotal();
+				totalPrice = Math.round(numAdults * basePrice + optionalProductsTotal);
+			} else {
+				totalPrice = 0;
+			}
+		} else {
+			totalPrice = 0;
+		}
+
+		if (isNaN(totalPrice)) {
+			totalPrice = 0;
+		}
+	}
+
+	// Lägg till en watch för att uppdatera pris när tillval ändras
+	$: {
+		if (selectedOptionalProducts && Object.keys(selectedOptionalProducts).length > 0) {
+			updatePrice();
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1202,7 +1239,13 @@
 							<Button
 								class="w-full mt-4"
 								disabled={numAdults === 0}
-								on:click={handleNextStepGuided}
+								on:click={() => {
+									if (data.experience.experience_type === 'business_school') {
+										showOptionalProducts = true;
+									} else {
+										showContactSection = true;
+									}
+								}}
 							>
 								{#if numAdults === 0}
 									Välj antal deltagare
@@ -1212,6 +1255,88 @@
 							</Button>
 						</CardContent>
 					</Card>
+
+					<!-- Optional Products Section -->
+					{#if data.experience.experience_type === 'business_school' && numAdults > 0 && showOptionalProducts}
+						<Card class="mt-6">
+							<CardHeader>
+								<CardTitle>Tillvalsprodukter</CardTitle>
+								<CardDescription
+									>Välj extra produkter eller tjänster till din bokning</CardDescription
+								>
+							</CardHeader>
+							<CardContent>
+								<div class="grid gap-6">
+									{#each data.optionalProducts as product (product.id)}
+										<div class="flex items-start space-x-4 p-4 border rounded-lg">
+											{#if product.image_url}
+												<img
+													src={product.image_url}
+													alt={product.name}
+													class="w-20 h-20 object-cover rounded"
+												/>
+											{/if}
+											<div class="flex-1">
+												<div class="flex justify-between items-start">
+													<div>
+														<h3 class="font-medium">{product.name}</h3>
+														<p class="text-sm text-muted-foreground">{product.description}</p>
+													</div>
+													<Badge variant="outline">
+														{product.price} kr{product.type === 'per_person' ? '/st' : '/person'}
+													</Badge>
+												</div>
+												<div class="mt-4">
+													{#if product.type === 'per_person'}
+														<div class="flex items-center space-x-2">
+															<Button
+																variant="outline"
+																size="sm"
+																on:click={() => {
+																	selectedOptionalProducts[product.id] = Math.max(
+																		0,
+																		selectedOptionalProducts[product.id] - 1
+																	);
+																}}
+																disabled={selectedOptionalProducts[product.id] <= 0}
+															>
+																-
+															</Button>
+															<span class="w-8 text-center">
+																{selectedOptionalProducts[product.id]}
+															</span>
+															<Button
+																variant="outline"
+																size="sm"
+																on:click={() => {
+																	selectedOptionalProducts[product.id] =
+																		selectedOptionalProducts[product.id] + 1;
+																}}
+															>
+																+
+															</Button>
+														</div>
+													{:else}
+														<Checkbox
+															checked={selectedOptionalProducts[product.id]}
+															on:change={(e) => {
+																selectedOptionalProducts[product.id] = e.target.checked;
+															}}
+														>
+															Lägg till ({product.price} kr/person)
+														</Checkbox>
+													{/if}
+												</div>
+											</div>
+										</div>
+									{/each}
+								</div>
+								<Button class="w-full mt-6" on:click={() => (showContactSection = true)}>
+									Gå vidare till kontaktuppgifter
+								</Button>
+							</CardContent>
+						</Card>
+					{/if}
 
 					{#if showContactSection}
 						<Card id="contact-section-guided">
@@ -1655,7 +1780,17 @@
 							<AlertDescription>{totalPrice}kr</AlertDescription>
 						</Alert>
 
-						<Button class="w-full mt-4" disabled={numAdults === 0} on:click={handleNextStep}>
+						<Button
+							class="w-full mt-4"
+							disabled={numAdults === 0}
+							on:click={() => {
+								if (data.experience.experience_type === 'business_school') {
+									showOptionalProducts = true;
+								} else {
+									showContactSection = true;
+								}
+							}}
+						>
 							{#if numAdults === 0}
 								Välj antal deltagare
 							{:else}
@@ -1666,7 +1801,86 @@
 				</Card>
 			{/if}
 
-			{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+			{#if data.experience.experience_type === 'business_school' && numAdults > 0 && showOptionalProducts}
+				<Card class="mt-6">
+					<CardHeader>
+						<CardTitle>Tillvalsprodukter</CardTitle>
+						<CardDescription>Välj extra produkter eller tjänster till din bokning</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div class="grid gap-6">
+							{#each data.optionalProducts as product (product.id)}
+								<div class="flex items-start space-x-4 p-4 border rounded-lg">
+									{#if product.image_url}
+										<img
+											src={product.image_url}
+											alt={product.name}
+											class="w-20 h-20 object-cover rounded"
+										/>
+									{/if}
+									<div class="flex-1">
+										<div class="flex justify-between items-start">
+											<div>
+												<h3 class="font-medium">{product.name}</h3>
+												<p class="text-sm text-muted-foreground">{product.description}</p>
+											</div>
+											<Badge variant="outline">
+												{product.price} kr{product.type === 'per_person' ? '/st' : '/person'}
+											</Badge>
+										</div>
+										<div class="mt-4">
+											{#if product.type === 'per_person'}
+												<div class="flex items-center space-x-2">
+													<Button
+														variant="outline"
+														size="sm"
+														on:click={() => {
+															selectedOptionalProducts[product.id] = Math.max(
+																0,
+																selectedOptionalProducts[product.id] - 1
+															);
+														}}
+														disabled={selectedOptionalProducts[product.id] <= 0}
+													>
+														-
+													</Button>
+													<span class="w-8 text-center">
+														{selectedOptionalProducts[product.id]}
+													</span>
+													<Button
+														variant="outline"
+														size="sm"
+														on:click={() => {
+															selectedOptionalProducts[product.id] =
+																selectedOptionalProducts[product.id] + 1;
+														}}
+													>
+														+
+													</Button>
+												</div>
+											{:else}
+												<Checkbox
+													checked={selectedOptionalProducts[product.id]}
+													on:change={(e) => {
+														selectedOptionalProducts[product.id] = e.target.checked;
+													}}
+												>
+													Lägg till ({product.price} kr/person)
+												</Checkbox>
+											{/if}
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+						<Button class="w-full mt-6" on:click={() => (showContactSection = true)}>
+							Gå vidare till kontaktuppgifter
+						</Button>
+					</CardContent>
+				</Card>
+			{/if}
+
+			{#if showContactSection}
 				<Card id="contact-section">
 					<CardHeader>
 						<CardTitle>Kontaktuppgifter</CardTitle>
