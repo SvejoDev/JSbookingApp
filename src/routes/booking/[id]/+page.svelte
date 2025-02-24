@@ -19,6 +19,7 @@
 	import { browser } from '$app/environment';
 	import { loadStripe } from '@stripe/stripe-js';
 	import InvoiceForm from '$lib/components/InvoiceForm.svelte';
+	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
 
 	export let data;
 
@@ -48,6 +49,7 @@
 	let hasCheckedTimes = false;
 	let showContactSection = false;
 	let showContactSectionGuided = false;
+	let isLoadingContact = false; // Lägg till denna rad
 
 	// deltagarvariabler
 	let numAdults = 0;
@@ -96,6 +98,10 @@
 
 	// Lägg till bland de andra reaktiva variablerna
 	$: isInvoiceFormValid = validateInvoiceForm(invoiceData);
+
+	// Bland tillståndsvariablerna
+	let selectedOptionalProducts = {};
+	let perPersonSelections = {};
 
 	// ==================
 	// reaktiva uttryck
@@ -267,9 +273,10 @@
 
 	// visar kontaktformuläret när användaren går vidare från deltagarval
 	async function handleNextStep() {
-		showContactSection = true;
-		await tick();
-		scrollToBottom();
+		showOptionalProductsSection = true;
+		tick().then(() => {
+			scrollToElement('optional-products-section');
+		});
 	}
 
 	// Lägg till denna funktion bland de andra hjälpfunktionerna
@@ -528,64 +535,49 @@
 		try {
 			isSubmittingInvoice = true;
 
-			// Logga för att se vad vi har
-			console.log('Selected addons before submission:', selectedAddons);
-
-			const bookingData = {
-				experience_id: data.experience.id,
-				experience: data.experience.name,
-				startLocation: selectedStartLocationName,
-				start_date: startDate,
-				start_time: startTime,
-				end_date: returnDate,
-				end_time: returnTime,
-				number_of_adults: numAdults,
-				number_of_children: numChildren,
-				amount_total: totalPrice,
-				booking_name: userName,
-				booking_lastname: userLastname,
-				customer_email: userEmail,
-				customer_phone: userPhone,
-				customer_comment: userComment,
-				selectedStartLocation: selectedStartLocation,
-				// Lägg till addons här
-				addons: selectedAddons
-			};
-
-			console.log('Sending booking data:', bookingData);
-
-			// Lägg till denna logg innan fetch-anropet
-			console.log('Invoice data innan submission:', invoiceData);
-
 			const response = await fetch('/api/handle-invoice', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					bookingData,
-					invoiceData: {
-						invoiceType: invoiceData.invoiceType,
-						invoiceEmail: invoiceData.invoiceEmail,
-						glnPeppolId: invoiceData.glnPeppolId || '',
-						marking: invoiceData.marking || '',
-						organization: invoiceData.organization,
-						address: invoiceData.address,
-						postalCode: invoiceData.postalCode,
-						city: invoiceData.city
-					}
+					bookingData: {
+						experience_id: data.experience.id,
+						experience: data.experience.name,
+						startLocation: selectedStartLocationName,
+						start_date: startDate,
+						start_time: startTime,
+						end_date: returnDate,
+						end_time: returnTime,
+						number_of_adults: numAdults,
+						number_of_children: numChildren,
+						amount_total: totalPrice + optionalProductsTotal, // Uppdatera totalpriset
+						booking_name: userName,
+						booking_lastname: userLastname,
+						customer_email: userEmail,
+						customer_phone: userPhone,
+						customer_comment: userComment,
+						selectedStartLocation: selectedStartLocation,
+						addons: selectedAddons,
+						optional_products: prepareOptionalProductsForSubmission(), // Lägg till tillvalsprodukterna
+						payment_method: 'invoice'
+					},
+					invoiceData
 				})
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to submit invoice booking');
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to process invoice request');
 			}
 
-			const result = await response.json();
-			window.location.href = `/success?booking_type=invoice&booking_id=${result.bookingId}`;
+			const { bookingId } = await response.json();
+
+			// Omdirigera till success-sidan med booking_id
+			window.location.href = `/success?booking_id=${bookingId}`;
 		} catch (error) {
-			console.error('Error submitting invoice booking:', error);
-			alert('Ett fel uppstod vid bokningen. Vänligen försök igen.');
+			console.error('Error submitting invoice:', error);
+			alert('Ett fel uppstod vid hantering av fakturan. Vänligen försök igen.');
 		} finally {
 			isSubmittingInvoice = false;
 		}
@@ -955,6 +947,300 @@
 
 		return false;
 	}
+
+	// Lägg till en ny funktion för att gå till kontaktuppgifter
+	async function handleGoToContact() {
+		try {
+			isLoadingContact = true;
+			showContactSection = true;
+			tick().then(() => {
+				scrollToElement('contact-section');
+			});
+		} catch (error) {
+			console.error('Error:', error);
+			alert('Ett fel uppstod. Vänligen försök igen.');
+		} finally {
+			isLoadingContact = false;
+		}
+	}
+
+	// Bland tillståndsvariablerna, lägg till:
+	let showOptionalProductsSection = false;
+
+	// Hjälpfunktioner för tillvalsprodukter
+	function updateOptionalProductQuantity(productId, increment) {
+		const product = data.experience.optional_products.find((p) => p.id === parseInt(productId));
+		if (!product) {
+			console.error('Product not found:', productId);
+			return;
+		}
+
+		console.log('Updating quantity:', {
+			productId,
+			currentQuantity: selectedOptionalProducts[productId]?.quantity || 0,
+			increment,
+			pricePerUnit: product.price
+		});
+
+		selectedOptionalProducts = {
+			...selectedOptionalProducts,
+			[productId]: {
+				quantity: increment
+					? (selectedOptionalProducts[productId]?.quantity || 0) + 1
+					: Math.max(0, (selectedOptionalProducts[productId]?.quantity || 0) - 1),
+				price: product.price,
+				type: 'fixed_quantity'
+			}
+		};
+
+		// Uppdatera totalpriset
+		optionalProductsTotal = calculateOptionalProductsTotal();
+	}
+
+	// Uppdatera updateOptionalProductPrice funktionen
+	function updateOptionalProductPrice(product) {
+		if (!product) {
+			console.error('Invalid product provided');
+			return;
+		}
+
+		console.log('Updating per-person product:', {
+			productId: product.id,
+			currentSelection: perPersonSelections[product.id],
+			price: product.price
+		});
+
+		const newSelected = !perPersonSelections[product.id];
+		perPersonSelections = {
+			...perPersonSelections,
+			[product.id]: newSelected
+		};
+
+		selectedOptionalProducts = {
+			...selectedOptionalProducts,
+			[product.id]: {
+				selected: newSelected,
+				price: product.price,
+				type: 'per_person'
+			}
+		};
+
+		// Uppdatera totalpriset
+		optionalProductsTotal = calculateOptionalProductsTotal();
+	}
+
+	function calculateOptionalProductsTotal() {
+		console.log('Calculating total with:', {
+			selectedProducts: selectedOptionalProducts,
+			numAdults
+		});
+
+		return Object.entries(selectedOptionalProducts).reduce((total, [productId, data]) => {
+			if (data.type === 'per_person') {
+				const subtotal = data.selected ? data.price * numAdults : 0;
+				console.log('Per-person product calculation:', {
+					productId,
+					selected: data.selected,
+					price: data.price,
+					numAdults,
+					subtotal
+				});
+				return total + subtotal;
+			} else if (data.type === 'fixed_quantity') {
+				const subtotal = (data.quantity || 0) * data.price;
+				console.log('Fixed quantity product calculation:', {
+					productId,
+					quantity: data.quantity || 0,
+					price: data.price,
+					subtotal
+				});
+				return total + subtotal;
+			}
+			return total;
+		}, 0);
+	}
+
+	// Lägg till en ny variabel för tillvalsprodukters totalpris
+	let optionalProductsTotal = 0;
+
+	// Uppdatera den reaktiva beräkningen
+	$: {
+		// Beräkna total när något relevant ändras
+		if (selectedOptionalProducts || numAdults || perPersonSelections) {
+			optionalProductsTotal = calculateOptionalProductsTotal();
+			console.log('New total price:', {
+				optionalProductsTotal,
+				selectedProducts: selectedOptionalProducts,
+				perPersonSelections
+			});
+		}
+	}
+
+	// Uppdatera även den totala summan för hela bokningen
+	$: totalPrice =
+		(selectedStartLocation
+			? data.startLocations.find((loc) => loc.id === selectedStartLocation)?.price * numAdults
+			: 0) + optionalProductsTotal;
+
+	// Lägg till en reaktiv beräkning som triggar när relevanta värden ändras
+	$: {
+		if (selectedOptionalProducts || numAdults) {
+			optionalProductsTotal = calculateOptionalProductsTotal();
+			console.log('Recalculated total:', optionalProductsTotal);
+		}
+	}
+
+	// Lägg till denna funktion bland dina andra hjälpfunktioner
+	function prepareOptionalProductsForSubmission() {
+		const products = [];
+
+		// kontrollera att vi har tillgång till experience och optional_products
+		if (!data?.experience?.optional_products) {
+			console.log('No optional products data available');
+			return [];
+		}
+
+		console.log('Processing optional products:', {
+			perPersonSelections,
+			selectedOptionalProducts,
+			availableProducts: data.experience.optional_products
+		});
+
+		// hantera per_person produkter
+		if (perPersonSelections) {
+			Object.entries(perPersonSelections).forEach(([productId, selected]) => {
+				if (selected) {
+					const product = data.experience.optional_products.find(
+						(p) => p.id === parseInt(productId)
+					);
+					if (product) {
+						products.push({
+							id: parseInt(productId),
+							name: product.name,
+							type: 'per_person',
+							quantity: numAdults,
+							price: product.price,
+							total_price: product.price * numAdults
+						});
+					}
+				}
+			});
+		}
+
+		// hantera fixed_quantity produkter
+		if (selectedOptionalProducts) {
+			Object.entries(selectedOptionalProducts).forEach(([productId, productData]) => {
+				if (productData?.quantity > 0) {
+					const product = data.experience.optional_products.find(
+						(p) => p.id === parseInt(productId)
+					);
+					if (product) {
+						products.push({
+							id: parseInt(productId),
+							name: product.name,
+							type: 'fixed_quantity',
+							quantity: productData.quantity,
+							price: product.price,
+							total_price: product.price * productData.quantity
+						});
+					}
+				}
+			});
+		}
+
+		console.log('Prepared optional products:', products);
+		return products;
+	}
+
+	// Uppdatera handleSubmit funktionen
+	async function handleSubmit() {
+		isSubmitting = true;
+		const bookingData = {
+			experience_id: data.experience.id,
+			experience: data.experience.name,
+			startLocation: selectedStartLocation.location,
+			start_date: startDate,
+			start_time: startTime,
+			end_date: endDate,
+			end_time: endTime,
+			number_of_adults: numAdults,
+			number_of_children: numChildren,
+			amount_total: totalPrice + optionalProductsTotal, // Uppdatera totalpriset
+			booking_name: userName,
+			booking_lastname: userLastname,
+			customer_email: userEmail,
+			customer_phone: userPhone,
+			customer_comment: userComment,
+			selectedStartLocation: selectedStartLocation.id,
+			addons: selectedAddons,
+			optional_products: prepareOptionalProductsForSubmission(), // Lägg till tillvalsprodukterna
+			payment_method: selectedPaymentMethod
+		};
+
+		// Resten av din handleSubmit-funktion...
+	}
+
+	// Lägg till isSubmittingCard bland tillståndsvariablerna
+	let isSubmittingCard = false;
+
+	async function handleCardPayment() {
+		if (isSubmittingCard) return;
+
+		try {
+			isSubmittingCard = true;
+			console.log('Initierar kortbetalning...');
+
+			// Formatera tillvalsprodukter för backend
+			const formattedOptionalProducts = prepareOptionalProductsForSubmission();
+			console.log('Formatted optional products:', formattedOptionalProducts);
+
+			const response = await fetch('/api/create-checkout-session', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					domain: window.location.origin,
+					experience_id: data.experience.id,
+					experience: data.experience.name,
+					start_date: startDate,
+					end_date: returnDate,
+					start_time: startTime,
+					end_time: returnTime,
+					number_of_adults: numAdults,
+					number_of_children: numChildren,
+					amount_total: totalPrice + optionalProductsTotal,
+					booking_name: userName,
+					booking_lastname: userLastname,
+					customer_email: userEmail,
+					customer_phone: userPhone,
+					customer_comment: userComment,
+					selectedStartLocation,
+					addons: selectedAddons,
+					optional_products: formattedOptionalProducts,
+					booking_type: 'card'
+				})
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to create checkout session');
+			}
+
+			const { url } = await response.json();
+			if (!url) {
+				throw new Error('Ingen checkout-URL returnerades');
+			}
+
+			// Omdirigera till Stripe Checkout
+			window.location.href = url;
+		} catch (error) {
+			console.error('Error initiating card payment:', error);
+			alert('Ett fel uppstod vid betalningen. Vänligen försök igen.');
+		} finally {
+			isSubmittingCard = false;
+		}
+	}
 </script>
 
 {#if data.experience && data.experience.id}
@@ -1286,8 +1572,18 @@
 											{/if}
 										</Button>
 
-										<Button disabled={!acceptTerms} on:click={handleCheckout} class="w-full">
-											Betala med kort
+										<!-- Knapp för att gå vidare till kontaktuppgifter -->
+										<Button
+											disabled={!isFormValid || isSubmittingInvoice}
+											on:click={handleGoToContact}
+											class="w-full"
+										>
+											{#if isLoadingContact}
+												<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+												Bearbetar...
+											{:else}
+												Gå vidare till kontaktuppgifter
+											{/if}
 										</Button>
 									{:else}
 										<!-- För business_school visas endast fakturabetalning -->
@@ -1659,14 +1955,109 @@
 							{#if numAdults === 0}
 								Välj antal deltagare
 							{:else}
-								Nästa steg
+								Gå vidare till tillvalsprodukter
 							{/if}
 						</Button>
 					</CardContent>
 				</Card>
 			{/if}
 
-			{#if selectedStartLocation && startDate && startTime && selectedBookingLength && showContactSection}
+			{#if showOptionalProductsSection}
+				<Card id="optional-products-section">
+					<CardHeader>
+						<CardTitle>Tillvalsprodukter</CardTitle>
+						<CardDescription>Välj extra produkter till din bokning</CardDescription>
+					</CardHeader>
+					<CardContent class="space-y-6">
+						{#if data.experience.optional_products?.length > 0}
+							{#each data.experience.optional_products as product (product.id)}
+								<div class="flex items-start space-x-4 p-4 border rounded-lg">
+									{#if product.image_url}
+										<img
+											src={product.image_url}
+											alt={product.name}
+											class="w-20 h-20 object-cover rounded"
+										/>
+									{/if}
+									<div class="flex-1 space-y-2">
+										<div class="flex justify-between items-start">
+											<div>
+												<h3 class="font-medium">{product.name}</h3>
+												<p class="text-sm text-muted-foreground">{product.description}</p>
+											</div>
+											<div class="text-right">
+												<p class="font-medium">
+													{#if product.type === 'per_person'}
+														{product.price} kr/person
+													{:else}
+														{product.price} kr/st
+													{/if}
+												</p>
+											</div>
+										</div>
+
+										{#if product.type === 'per_person'}
+											<div class="flex items-center space-x-2">
+												<Checkbox
+													id={`product-${product.id}`}
+													on:click={() => updateOptionalProductPrice(product)}
+													checked={perPersonSelections[product.id] || false}
+												/>
+												<Label for={`product-${product.id}`}>
+													Lägg till för alla deltagare ({numAdults * product.price} kr totalt)
+												</Label>
+											</div>
+										{:else}
+											<div class="flex items-center space-x-4">
+												<Button
+													variant="outline"
+													class="px-3"
+													on:click={() => updateOptionalProductQuantity(product.id, false)}
+												>
+													-
+												</Button>
+												<span class="w-12 text-center">
+													{selectedOptionalProducts[product.id]?.quantity || 0}
+												</span>
+												<Button
+													variant="outline"
+													class="px-3"
+													on:click={() => updateOptionalProductQuantity(product.id, true)}
+												>
+													+
+												</Button>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+
+							<div class="mt-6">
+								<Alert>
+									<AlertTitle>Totalt för tillvalsprodukter</AlertTitle>
+									<AlertDescription>{optionalProductsTotal} kr</AlertDescription>
+								</Alert>
+							</div>
+
+							<Button class="w-full mt-4" on:click={handleGoToContact}>
+								Gå vidare till kontaktuppgifter
+							</Button>
+						{:else}
+							<Alert>
+								<AlertTitle>Inga tillvalsprodukter</AlertTitle>
+								<AlertDescription>
+									Det finns inga tillvalsprodukter för denna upplevelse.
+								</AlertDescription>
+							</Alert>
+							<Button class="w-full mt-4" on:click={handleGoToContact}>
+								Gå vidare till kontaktuppgifter
+							</Button>
+						{/if}
+					</CardContent>
+				</Card>
+			{/if}
+
+			{#if showContactSection}
 				<Card id="contact-section">
 					<CardHeader>
 						<CardTitle>Kontaktuppgifter</CardTitle>
@@ -1713,18 +2104,24 @@
 						{#if data.experience.experience_type === 'business_school'}
 							<div class="space-y-4">
 								<div class="flex gap-4">
+									<!-- Kortbetalningsknapp -->
 									<Button
 										variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
-										on:click={() => (selectedPaymentMethod = 'card')}
+										on:click={handleCardPayment}
 										class="flex-1"
-										disabled={!isFormValid}
+										disabled={!isFormValid || isSubmittingCard}
 									>
-										{#if !isFormValid}
+										{#if isSubmittingCard}
+											<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+											Bearbetar...
+										{:else if !isFormValid}
 											Fyll i alla obligatoriska fält
 										{:else}
 											Betala med kort
 										{/if}
 									</Button>
+
+									<!-- Fakturabetalningsknapp -->
 									<Button
 										variant={selectedPaymentMethod === 'invoice' ? 'default' : 'outline'}
 										on:click={async () => {
@@ -1779,7 +2176,7 @@
 							<!-- Original payment button for public experiences -->
 							<Button
 								disabled={!isFormValid || !acceptTerms}
-								on:click={handleCheckout}
+								on:click={handleCardPayment}
 								class="w-full"
 							>
 								Gå till betalning ({totalPrice}kr)

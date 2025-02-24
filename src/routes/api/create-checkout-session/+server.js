@@ -12,84 +12,59 @@ export async function POST({ request }) {
 		const data = await request.json();
 		console.log('Checkout Request Data:', data);
 
-		// Hämta addons från databasen
-		const { rows: addons } = await query('SELECT name, column_name FROM addons');
-
-		// sätt standardvärden för saknade fält
-		const metadata = {
-			experience_id: data.experienceId?.toString() || '',
-			experience: data.name || '',
-			start_date: data.startDate || '',
-			end_date: data.endDate || data.startDate || '',
-			start_time: data.startTime || '',
-			end_time: data.returnTime || '',
-			booking_type: data.is_overnight ? 'overnight' : 'day',
-			booking_length: (data.booking_length || '3h').toString(),
-			is_overnight: (data.is_overnight || false).toString(),
-			number_of_adults: (data.numAdults || 0).toString(),
-			number_of_children: (data.numChildren || 0).toString(),
-			booking_name: data.userName || '',
-			booking_lastname: data.userLastname || '',
-			customer_email: data.userEmail || '',
-			customer_phone: data.userPhone || '',
-			customer_comment: data.userComment || '',
-			selectedStartLocation: data.selectedStartLocation?.toString() || ''
-		};
-
-		// Lägg till addon-metadata
-		const addonMetadata = Object.fromEntries(
-			addons.map((addon) => [addon.column_name, data[addon.column_name]?.toString() || '0'])
+		// Beräkna totalpris inklusive tillvalsprodukter
+		const optionalProductsTotal = (data.optional_products || []).reduce(
+			(sum, product) => sum + (parseInt(product.total_price) || 0),
+			0
 		);
 
-		// Konvertera priset till ören (cents)
-		const unitAmount = Math.round(data.amount * 100);
+		const totalPrice = parseInt(data.amount_total) + optionalProductsTotal;
 
-		// Försök upp till 3 gånger med en sekunds mellanrum
-		for (let attempt = 1; attempt <= 3; attempt++) {
-			try {
-				const session = await stripe.checkout.sessions.create({
-					payment_method_types: ['card'],
-					customer_email: data.userEmail,
-					line_items: [
-						{
-							price_data: {
-								currency: 'sek',
-								product_data: {
-									name: data.name
-								},
-								unit_amount: unitAmount
-							},
-							quantity: 1
-						}
-					],
-					mode: 'payment',
-					success_url: `${request.headers.get('origin')}/success?session_id={CHECKOUT_SESSION_ID}`,
-					cancel_url: `${request.headers.get('origin')}/cancel`,
-					metadata: {
-						...metadata,
-						...addonMetadata
-					}
-				});
-				return json({ url: session.url });
-			} catch (error) {
-				if (attempt === 3 || error.type !== 'StripeConnectionError') {
-					throw error;
+		// Skapa Stripe checkout session
+		const session = await stripe.checkout.sessions.create({
+			payment_method_types: ['card'],
+			line_items: [
+				{
+					price_data: {
+						currency: 'sek',
+						product_data: {
+							name: `${data.experience} - ${data.number_of_adults} vuxna`,
+							description: `Datum: ${data.start_date}, Tid: ${data.start_time}`
+						},
+						unit_amount: totalPrice * 100 // Stripe använder minsta valutaenhet (öre)
+					},
+					quantity: 1
 				}
-				console.log(`Försök ${attempt} misslyckades, försöker igen...`);
-				await new Promise((resolve) => setTimeout(resolve, 1000));
+			],
+			mode: 'payment',
+			success_url: `${data.domain}/success?session_id={CHECKOUT_SESSION_ID}`,
+			cancel_url: `${data.domain}/booking/${data.experience_id}`,
+			metadata: {
+				experience_id: data.experience_id,
+				experience: data.experience,
+				start_date: data.start_date,
+				end_date: data.end_date || data.start_date,
+				start_time: data.start_time,
+				end_time: data.end_time,
+				number_of_adults: data.number_of_adults,
+				number_of_children: data.number_of_children,
+				booking_name: data.booking_name,
+				booking_lastname: data.booking_lastname,
+				customer_email: data.customer_email,
+				customer_phone: data.customer_phone,
+				customer_comment: data.customer_comment || '',
+				startlocation: data.selectedStartLocation,
+				amount_canoes: data.addons?.amount_canoes || 0,
+				amount_kayak: data.addons?.amount_kayak || 0,
+				amount_sup: data.addons?.amount_sup || 0,
+				optional_products: JSON.stringify(data.optional_products || [])
 			}
-		}
+		});
+
+		return json({ url: session.url });
 	} catch (error) {
-		console.error('Detaljerat checkout fel:', error);
-		return json(
-			{
-				error: 'Kunde inte skapa checkout-session',
-				details: error.message
-			},
-			{
-				status: 500
-			}
-		);
+		console.error('Error creating checkout session:', error);
+		return json({ error: error.message }, { status: 400 });
 	}
 }
 

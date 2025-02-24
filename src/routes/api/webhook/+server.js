@@ -9,89 +9,88 @@ dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST({ request }) {
-	const payload = await request.text();
-	const sig = request.headers.get('stripe-signature');
-
-	let event;
-
 	try {
-		event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
-		console.group('💫 Stripe Webhook Event');
-		console.log('🎫 Event Type:', event.type);
-	} catch (err) {
-		console.error('Webhook Error:', err.message);
-		return new Response(JSON.stringify({ error: err.message }), { status: 400 });
-	}
+		const payload = await request.text();
+		const sig = request.headers.get('stripe-signature');
+		const event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
 
-	if (event.type === 'checkout.session.completed') {
-		const session = event.data.object;
-		console.log('Session metadata:', session.metadata);
-		console.log('Session ID:', session.id);
+		console.log(`Webhook mottagen: ${event.type} vid ${new Date().toISOString()}`);
 
-		try {
-			await transaction(async (client) => {
-				// Hämta experience_type först
-				const {
-					rows: [experience]
-				} = await client.query('SELECT experience_type FROM experiences WHERE id = $1', [
-					session.metadata.experience_id
-				]);
+		if (event.type === 'checkout.session.completed') {
+			const session = event.data.object;
+			console.log('Session metadata:', session.metadata);
+			console.log('Session ID:', session.id);
 
-				// Kontrollera kapacitet endast för guidade upplevelser
-				if (experience?.experience_type === 'guided') {
+			try {
+				await transaction(async (client) => {
+					// Hämta experience_type först
 					const {
-						rows: [capacity]
-					} = await client.query(
-						`SELECT 
-							gec.max_participants, 
-							COALESCE(SUM(b.number_of_adults), 0) as current_bookings
-						 FROM guided_experience_capacity gec
-						 LEFT JOIN bookings b ON b.experience_id = gec.experience_id 
-						 AND b.start_date = $1 
-						 AND b.start_time = $2
-						 AND b.status != 'cancelled'
-						 WHERE gec.experience_id = $3
-						 GROUP BY gec.max_participants`,
-						[
-							session.metadata.start_date,
-							session.metadata.start_time,
-							session.metadata.experience_id
-						]
-					);
+						rows: [experience]
+					} = await client.query('SELECT experience_type FROM experiences WHERE id = $1', [
+						session.metadata.experience_id
+					]);
 
-					if (!capacity) {
-						throw new Error('Kunde inte hitta kapacitetsinformation för denna guidade upplevelse');
-					}
-
-					const requestedSpots = parseInt(session.metadata.number_of_adults);
-					const availableSpots = capacity.max_participants - capacity.current_bookings;
-
-					if (availableSpots < requestedSpots) {
-						throw new Error(
-							`Inte tillräckligt med lediga platser. Tillgängligt: ${availableSpots}, Efterfrågat: ${requestedSpots}`
+					// Kontrollera kapacitet endast för guidade upplevelser
+					if (experience?.experience_type === 'guided') {
+						const {
+							rows: [capacity]
+						} = await client.query(
+							`SELECT 
+								gec.max_participants, 
+								COALESCE(SUM(b.number_of_adults), 0) as current_bookings
+							 FROM guided_experience_capacity gec
+							 LEFT JOIN bookings b ON b.experience_id = gec.experience_id 
+							 AND b.start_date = $1 
+							 AND b.start_time = $2
+							 AND b.status != 'cancelled'
+							 WHERE gec.experience_id = $3
+							 GROUP BY gec.max_participants`,
+							[
+								session.metadata.start_date,
+								session.metadata.start_time,
+								session.metadata.experience_id
+							]
 						);
+
+						if (!capacity) {
+							throw new Error(
+								'Kunde inte hitta kapacitetsinformation för denna guidade upplevelse'
+							);
+						}
+
+						const requestedSpots = parseInt(session.metadata.number_of_adults);
+						const availableSpots = capacity.max_participants - capacity.current_bookings;
+
+						if (availableSpots < requestedSpots) {
+							throw new Error(
+								`Inte tillräckligt med lediga platser. Tillgängligt: ${availableSpots}, Efterfrågat: ${requestedSpots}`
+							);
+						}
 					}
-				}
 
-				// Skapa bokningen
-				const booking = await createBooking(client, session.metadata, session);
-				await createBookingAddons(client, booking.id, session.metadata);
-				await updateAvailabilityForBooking(client, session.metadata);
+					// Skapa bokningen
+					const booking = await createBooking(client, session.metadata, session);
+					await createBookingAddons(client, booking.id, session.metadata);
+					await updateAvailabilityForBooking(client, session.metadata);
 
-				return booking;
-			});
+					return booking;
+				});
 
-			console.log('✅ Booking Complete');
-			return new Response(JSON.stringify({ received: true, message: 'bokning genomförd' }), {
-				status: 200
-			});
-		} catch (error) {
-			console.error('fel vid bokning:', error);
-			throw error;
+				console.log('✅ Booking Complete');
+				console.log(`Webhook behandlad: ${event.type}`);
+				return json({ received: true, message: 'bokning genomförd' }, { status: 200 });
+			} catch (error) {
+				console.error('fel vid bokning:', error);
+				throw error;
+			}
 		}
-	}
 
-	return new Response(JSON.stringify({ received: true }));
+		console.log(`Webhook behandlad: ${event.type}`);
+		return json({ received: true });
+	} catch (error) {
+		console.error('Webhook Error:', error.message);
+		return json({ error: error.message }, { status: 400 });
+	}
 }
 
 async function updateAvailabilityForBooking(client, bookingData) {

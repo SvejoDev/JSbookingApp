@@ -4,13 +4,23 @@
 	import { Card, CardHeader, CardContent, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { Alert } from '$lib/components/ui/alert';
+	import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
+	import { page } from '$app/stores';
 
 	let password = '';
 	let confirmPassword = '';
 	let loading = false;
 	let error = null;
 	let showVerifyForm = false;
+
+	$: error = $page.url.searchParams.get('error');
+
+	$: errorMessage =
+		{
+			missing_booking_id: 'Ingen boknings-ID angiven',
+			booking_not_found: 'Bokningen kunde inte hittas',
+			booking_error: 'Ett fel uppstod vid hämtning av bokningen'
+		}[error] || '';
 
 	onMount(() => {
 		// Check if this is an invitation link
@@ -75,7 +85,8 @@
 			<CardContent>
 				{#if error}
 					<Alert variant="destructive" class="mb-4">
-						{error}
+						<AlertTitle>Ett fel uppstod</AlertTitle>
+						<AlertDescription>{errorMessage}</AlertDescription>
 					</Alert>
 				{/if}
 
