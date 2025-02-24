@@ -333,39 +333,34 @@ const invoiceRequestTemplate = `
 		<div class="section-title">Bokningsinformation</div>
 		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
 		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
-		<p><strong>Startdatum:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
-		<p><strong>Slutdatum:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
+		<p><strong>Datum:</strong> {{booking.start_date}}{{#if booking.end_date}} - {{booking.end_date}}{{/if}}</p>
+		<p><strong>Tid:</strong> {{booking.start_time}} - {{booking.end_time}}</p>
 		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+		{{#if booking.number_of_children}}
 		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
-		<p><strong>Totalt pris:</strong> {{booking.amount_total}} kr</p>
+		{{/if}}
+		<p><strong>Totalt belopp:</strong> {{booking.amount_total}} kr</p>
 	</div>
 
 	<div class="section">
-		<div class="section-title">Kontaktuppgifter</div>
+		<div class="section-title">Fakturainformation</div>
+		<p><strong>Fakturatyp:</strong> {{invoice.invoiceType}}</p>
+		<p><strong>Organisation:</strong> {{invoice.organization}}</p>
+		<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
+		<p><strong>Märkning:</strong> {{invoice.marking}}</p>
+		<p><strong>Adress:</strong> {{invoice.address}}</p>
+		<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
+		<p><strong>Ort:</strong> {{invoice.city}}</p>
+	</div>
+
+	<div class="section">
+		<div class="section-title">Kontaktinformation</div>
 		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
 		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
 		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
 		{{#if booking.customer_comment}}
 		<p><strong>Kommentar:</strong> {{booking.customer_comment}}</p>
 		{{/if}}
-	</div>
-
-	<div class="section">
-		<div class="section-title">Faktureringsinformation</div>
-		<p><strong>Fakturatyp:</strong> {{invoice.invoiceType}}</p>
-		{{#if invoice.invoiceEmail}}
-		<p><strong>Faktura e-post:</strong> {{invoice.invoiceEmail}}</p>
-		{{/if}}
-		{{#if invoice.glnPeppolId}}
-		<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
-		{{/if}}
-		{{#if invoice.marking}}
-		<p><strong>Märkning:</strong> {{invoice.marking}}</p>
-		{{/if}}
-		<p><strong>Organisation:</strong> {{invoice.organization}}</p>
-		<p><strong>Adress:</strong> {{invoice.address}}</p>
-		<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
-		<p><strong>Ort:</strong> {{invoice.city}}</p>
 	</div>
 </body>
 </html>
@@ -639,22 +634,63 @@ async function generateBookingConfirmationEmail(bookingData) {
 	return template({ booking: bookingData });
 }
 
-// Sedan kan vi använda den i sendInvoiceRequest
+// Uppdatera sendInvoiceRequest funktionen
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
-		const template =
-			invoiceData.invoiceType === 'pdf'
-				? pdfInvoiceTemplate(bookingData, invoiceData)
-				: electronicInvoiceTemplate;
+		console.log('Förbereder fakturabegäran med data:', { bookingData, invoiceData });
 
+		// kompilera handlebars template
+		const template = Handlebars.compile(invoiceRequestTemplate);
+
+		// formatera datum och tid
+		const formattedStartDate = new Date(bookingData.start_date).toLocaleDateString('sv-SE');
+		const formattedEndDate = new Date(bookingData.end_date).toLocaleDateString('sv-SE');
+
+		// förbered data för templaten
+		const templateData = {
+			booking: {
+				experience: bookingData.experience,
+				start_date: formattedStartDate,
+				end_date: formattedEndDate,
+				start_time: bookingData.start_time,
+				end_time: bookingData.end_time,
+				number_of_adults: bookingData.number_of_adults,
+				number_of_children: bookingData.number_of_children,
+				amount_total: bookingData.amount_total,
+				startLocation: bookingData.startLocation,
+				booking_name: bookingData.booking_name,
+				booking_lastname: bookingData.booking_lastname,
+				customer_email: bookingData.customer_email,
+				customer_phone: bookingData.customer_phone,
+				customer_comment: bookingData.customer_comment
+			},
+			invoice: {
+				invoiceType: invoiceData.invoiceType,
+				organization: invoiceData.organization,
+				glnPeppolId: invoiceData.glnPeppolId,
+				marking: invoiceData.marking,
+				address: invoiceData.address,
+				postalCode: invoiceData.postalCode,
+				city: invoiceData.city,
+				invoiceEmail: invoiceData.invoiceEmail
+			}
+		};
+
+		console.log('Renderar e-postmall med data:', templateData);
+
+		// rendera html innehåll
+		const htmlContent = template(templateData);
+
+		// skicka e-post
 		await sendEmail({
-			to: process.env.INVOICE_EMAIL, // använd miljövariabel för faktura-email
-			subject: `Fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
-			html: template,
-			type: 'invoice'
+			to: process.env.INVOICE_EMAIL,
+			subject: `Ny fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
+			html: htmlContent
 		});
+
+		console.log('Fakturabegäran skickad framgångsrikt');
 	} catch (error) {
-		console.error('Error in sendInvoiceRequest:', error);
+		console.error('Fel vid sändning av fakturabegäran:', error);
 		throw error;
 	}
 }

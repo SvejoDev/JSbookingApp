@@ -14,14 +14,14 @@ export const load = async ({ url }) => {
 		}
 
 		await transaction(async (client) => {
-			// Hämta bokning med all nödvändig information
+			// Modifiera SQL-frågan för att hantera både booking_id och stripe_session_id
 			const {
 				rows: [bookingData]
 			} = await client.query(
 				`WITH booking_base AS (
 					SELECT b.* 
 					FROM bookings b 
-					WHERE b.id = $1 
+					WHERE ${bookingId ? 'b.id = $1' : 'b.stripe_session_id = $1'}
 					FOR UPDATE
 				)
 				SELECT 
@@ -124,7 +124,9 @@ export const load = async ({ url }) => {
 			);
 
 			if (!bookingData) {
-				console.error(`Ingen bokning hittad med ID: ${bookingId || sessionId}`);
+				console.error(
+					`Ingen bokning hittad med ${bookingId ? 'ID' : 'session ID'}: ${bookingId || sessionId}`
+				);
 				throw redirect(303, '/?error=booking_not_found');
 			}
 
