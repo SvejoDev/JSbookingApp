@@ -113,17 +113,39 @@
 				<div class="price-details">
 					<h2 class="text-xl font-semibold mb-4">Prisdetaljer</h2>
 					<div class="space-y-2">
+						<!-- Grundpris -->
 						<div class="flex justify-between">
-							<span>Totalt (exkl. moms)</span>
-							<span>{formatPrice(booking.subtotal)} kr</span>
+							<span>Vuxna ({booking.number_of_adults} st)</span>
+							<span>{formatPrice(booking.totalAdultsExclVat)} kr</span>
 						</div>
-						<div class="flex justify-between">
-							<span>Moms (25%)</span>
-							<span>{formatPrice(booking.vat)} kr</span>
-						</div>
-						<div class="flex justify-between font-bold">
-							<span>Totalt att betala</span>
-							<span>{formatPrice(booking.total)} kr</span>
+
+						<!-- Tillvalsprodukter -->
+						{#if booking.optional_products?.length > 0}
+							<div class="mt-4 border-t pt-2">
+								<h3 class="font-medium mb-2">Tillvalsprodukter</h3>
+								{#each booking.optional_products as product}
+									<div class="flex justify-between text-sm">
+										<span>{product.name} ({product.quantity} st)</span>
+										<span>{formatPrice(product.total_price / 1.25)} kr</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+
+						<!-- Totaler -->
+						<div class="border-t pt-2 mt-4">
+							<div class="flex justify-between">
+								<span>Totalt (exkl. moms)</span>
+								<span>{formatPrice(booking.subtotal)} kr</span>
+							</div>
+							<div class="flex justify-between">
+								<span>Moms (25%)</span>
+								<span>{formatPrice(booking.vat)} kr</span>
+							</div>
+							<div class="flex justify-between font-bold mt-2">
+								<span>Totalt att betala</span>
+								<span>{formatPrice(booking.total)} kr</span>
+							</div>
 						</div>
 					</div>
 				</div>

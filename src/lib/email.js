@@ -2,6 +2,7 @@ import sgMail from '@sendgrid/mail';
 import dotenv from 'dotenv';
 import Handlebars from 'handlebars';
 import html_to_pdf from 'html-pdf-node';
+import { query } from '$lib/db.js';
 
 import { bookingConfirmationTemplate } from './templates/bookingTemplates.js';
 import { pdfInvoiceTemplate, electronicInvoiceTemplate } from './templates/invoiceTemplates.js';
@@ -9,32 +10,67 @@ import { formatDateTime, formatPrice, formatDate } from './templates/emailTempla
 
 dotenv.config();
 
-// Konfigurera Handlebars helpers
-Handlebars.registerHelper('formatDateTime', formatDateTime);
-Handlebars.registerHelper('formatPrice', formatPrice);
-Handlebars.registerHelper('formatDate', formatDate);
+// registrera alla handlebars helpers först
+Handlebars.registerHelper({
+	formatDateTime: function (date, time) {
+		try {
+			if (!date) return '';
+			const dateObj = new Date(date);
+			const timeStr = time || '00:00';
+			return new Intl.DateTimeFormat('sv-SE', {
+				year: 'numeric',
+				month: 'long',
+				day: 'numeric',
+				hour: 'numeric',
+				minute: 'numeric'
+			}).format(dateObj);
+		} catch (error) {
+			console.error('Fel vid datumformatering:', error);
+			return '';
+		}
+	},
 
-// Lägg till jämförelse-helpers
-Handlebars.registerHelper('gt', function (a, b) {
-	return a > b;
-});
-Handlebars.registerHelper('gte', function (a, b) {
-	return a >= b;
-});
-Handlebars.registerHelper('lt', function (a, b) {
-	return a < b;
-});
-Handlebars.registerHelper('lte', function (a, b) {
-	return a <= b;
-});
-Handlebars.registerHelper('eq', function (a, b) {
-	return a === b;
+	formatPrice: function (price) {
+		try {
+			return new Intl.NumberFormat('sv-SE', {
+				style: 'currency',
+				currency: 'SEK',
+				minimumFractionDigits: 0,
+				maximumFractionDigits: 0
+			}).format(price || 0);
+		} catch (error) {
+			console.error('Fel vid prisformatering:', error);
+			return '0 kr';
+		}
+	},
+
+	formatDate: function (date) {
+		try {
+			if (!date) return '';
+			return new Intl.DateTimeFormat('sv-SE', {
+				year: 'numeric',
+				month: 'long',
+				day: 'numeric'
+			}).format(new Date(date));
+		} catch (error) {
+			console.error('Fel vid datumformatering:', error);
+			return '';
+		}
+	},
+
+	multiply: function (a, b) {
+		return (Number(a) || 0) * (Number(b) || 0);
+	},
+
+	eq: function (a, b) {
+		return a === b;
+	}
 });
 
 // e-post konfiguration
 const EMAIL_CONFIG = {
 	FROM: {
-		email: 'info@stisses.se',
+		email: process.env.SENDGRID_FROM_EMAIL || 'info@stisses.se',
 		name: 'Stisses'
 	},
 	INVOICE_RECIPIENTS: ['johan.svensson@svejo.se', 'info@stisses.se']
@@ -49,204 +85,217 @@ if (!apiKey) {
 // konfigurera sendgrid
 sgMail.setApiKey(apiKey);
 
-// formatera pris med två decimaler
-function formatPrice(price) {
-	return typeof price === 'number' ? price.toFixed(2) : '0.00';
-}
+// lägg till denna hjälpfunktion för att formatera priser
+Handlebars.registerHelper('formatPrice', function (price) {
+	return new Intl.NumberFormat('sv-SE', {
+		style: 'currency',
+		currency: 'SEK',
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 0
+	}).format(price || 0);
+});
 
-// html-mall för både e-post och pdf
+// uppdatera bokningsbekräftelsemallen
 const bookingTemplate = `
 <!DOCTYPE html>
 <html>
 <head>
-	<meta charset="utf-8">
 	<style>
+		/* stilar för en tydligare och mer strukturerad layout */
 		body {
 			font-family: Arial, sans-serif;
-			max-width: 800px;
+			line-height: 1.6;
+			color: #333;
+			max-width: 600px;
 			margin: 0 auto;
 			padding: 20px;
 		}
-		.logo {
-			text-align: center;
-			padding: 20px;
-			background-color: #000000;
-		}
-		.logo img {
-			height: 80px;
-		}
 		.header {
-			text-align: center;
-			margin: 20px 0;
-		}
-		.booking-details {
-			background-color: #f5f5f5;
+			background-color: #f8f9fa;
 			padding: 20px;
+			margin-bottom: 30px;
 			border-radius: 5px;
-			margin: 20px 0;
 		}
-		.products-table {
+		.section {
+			margin-bottom: 30px;
+			border-bottom: 1px solid #eee;
+			padding-bottom: 20px;
+		}
+		.details-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 10px;
+			margin-bottom: 20px;
+		}
+		.detail-item {
+			margin-bottom: 10px;
+		}
+		.detail-label {
+			font-weight: bold;
+			color: #666;
+		}
+		.price-table {
 			width: 100%;
 			border-collapse: collapse;
-			margin: 20px 0;
+			margin-bottom: 20px;
 		}
-		.products-table th, .products-table td {
-			padding: 8px;
+		.price-table th, .price-table td {
+			padding: 10px;
+			border-bottom: 1px solid #eee;
 			text-align: left;
-			border-bottom: 1px solid #ddd;
 		}
-		.products-table th {
-			background-color: #f5f5f5;
-		}
-		.total-section {
-			margin-top: 20px;
-			border-top: 1px solid #ddd;
-			padding-top: 20px;
-		}
-		.total-row {
-			display: flex;
-			justify-content: space-between;
-			margin: 5px 0;
-		}
-		.bold {
+		.total-price {
+			font-size: 1.2em;
 			font-weight: bold;
+			text-align: right;
+			padding: 10px;
+			background-color: #f8f9fa;
 		}
 	</style>
 </head>
 <body>
-	<div class="logo">
-		<img src="https://stisses.se/Logga.svg" alt="Stisses" />
-	</div>
-	
 	<div class="header">
-		<h1>Bekräftelse & Kvitto</h1>
-		<p>Tack för din bokning!</p>
+		<h2>Bokningsbekräftelse - Stisses</h2>
+		<p>Bokningsnummer: {{booking.id}}</p>
+		<p>Skapades: {{formatDateTime booking.date_time_created}}</p>
 	</div>
 
-	<div class="booking-details">
-		<h2>Din bokning #{{booking.id}}</h2>
-		<p><strong>Skapades:</strong> {{formatDate booking.date_time_created}}</p>
-		<p><strong>Kund:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
-		{{#if booking.startLocation}}
-			<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
-		{{/if}}
-		{{#if booking.customer_comment}}
-			<p><strong>Meddelande:</strong> {{booking.customer_comment}}</p>
-		{{/if}}
-		
-		<p><strong>Start:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
-		<p><strong>Slut:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
+	<div class="section">
+		<h3>Bokningsdetaljer</h3>
+		<div class="details-grid">
+			<div class="detail-item">
+				<div class="detail-label">Upplevelse</div>
+				<div>{{booking.experience}}</div>
+			</div>
+			<div class="detail-item">
+				<div class="detail-label">Datum</div>
+				<div>{{formatDate booking.start_date}}</div>
+			</div>
+			<div class="detail-item">
+				<div class="detail-label">Tid</div>
+				<div>{{booking.start_time}} - {{booking.end_time}}</div>
+			</div>
+			<div class="detail-item">
+				<div class="detail-label">Startplats</div>
+				<div>{{booking.startLocation}}</div>
+			</div>
+		</div>
 	</div>
 
-	<table class="products-table">
-		<thead>
-			<tr>
-				<th>Produkt</th>
-				<th>Antal</th>
-				<th>Á Pris exkl. moms</th>
-				<th>Totalt exkl. moms</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td>{{booking.experience}}</td>
-				<td>1</td>
-				<td>0 kr</td>
-				<td>0 kr</td>
-			</tr>
-			
-			{{#each booking.addons}}
-				{{#if (gt amount 0)}}
-					<tr>
-						<td>{{name}}</td>
-						<td>{{amount}}</td>
-						<td>0 kr</td>
-						<td>0 kr</td>
-					</tr>
-				{{/if}}
-			{{/each}}
-			
-			<tr>
-				<td>Antal vuxna</td>
-				<td>{{booking.number_of_adults}}</td>
-				<td>{{formatPrice booking.adultPriceExclVat}} kr</td>
-				<td>{{formatPrice booking.totalAdultsExclVat}} kr</td>
-			</tr>
-			
-			{{#if (gt booking.number_of_children 0)}}
+	<div class="section">
+		<h3>Deltagare och utrustning</h3>
+		<table class="price-table">
+			<thead>
 				<tr>
-					<td>Antal barn</td>
-					<td>{{booking.number_of_children}}</td>
-					<td>0 kr</td>
-					<td>0 kr</td>
+					<th>Beskrivning</th>
+					<th>Antal</th>
+					<th>Pris/st</th>
+					<th>Totalt</th>
 				</tr>
-			{{/if}}
-		</tbody>
-	</table>
-
-	<div class="total-section">
-		<div class="total-row">
-			<span>Totalt (exkl. moms)</span>
-			<span>{{formatPrice booking.subtotal}} kr</span>
-		</div>
-		<div class="total-row">
-			<span>Moms (25%)</span>
-			<span>{{formatPrice booking.vat}} kr</span>
-		</div>
-		<div class="total-row bold">
-			<span>Totalt pris</span>
-			<span>{{formatPrice booking.total}} kr</span>
-		</div>
-	</div>
-
-	<div class="booking-details">
-		<h2>Din bokningsinformation</h2>
-		<p><strong>Bokningsnummer:</strong> #{{booking.id}}</p>
-		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
-		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
-		<p><strong>Datum:</strong> {{formatDateTime booking.start_date booking.start_time}}</p>
-		{{#if booking.end_date}}
-		<p><strong>Slutdatum:</strong> {{formatDateTime booking.end_date booking.end_time}}</p>
-		{{/if}}
-		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
-		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
-
-		{{#if booking.optional_products.length}}
-		<h3>Tillvalsprodukter</h3>
-		<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
-			<tr style="border-bottom: 1px solid #ddd;">
-				<th style="text-align: left; padding: 5px;">Produkt</th>
-				<th style="text-align: right; padding: 5px;">Antal</th>
-				<th style="text-align: right; padding: 5px;">Totalt</th>
-			</tr>
-			{{#each booking.optional_products}}
-			<tr style="border-bottom: 1px solid #eee;">
-				<td style="padding: 5px;">{{name}}</td>
-				<td style="text-align: right; padding: 5px;">{{quantity}}</td>
-				<td style="text-align: right; padding: 5px;">{{formatPrice total_price}} kr</td>
-			</tr>
-			{{/each}}
+			</thead>
+			<tbody>
+				<tr>
+					<td>Vuxna</td>
+					<td>{{booking.number_of_adults}}</td>
+					<td>{{formatPrice booking.price_per_adult}}</td>
+					<td>{{formatPrice (multiply booking.number_of_adults booking.price_per_adult)}}</td>
+				</tr>
+				{{#if booking.number_of_children}}
+				<tr>
+					<td>Barn</td>
+					<td>{{booking.number_of_children}}</td>
+					<td>{{formatPrice booking.price_per_child}}</td>
+					<td>{{formatPrice (multiply booking.number_of_children booking.price_per_child)}}</td>
+				</tr>
+				{{/if}}
+				{{#if booking.amount_canoes}}
+				<tr>
+					<td>Kanadensare</td>
+					<td>{{booking.amount_canoes}}</td>
+					<td>-</td>
+					<td>Ingår</td>
+				</tr>
+				{{/if}}
+				{{#if booking.amount_kayak}}
+				<tr>
+					<td>Kajaker</td>
+					<td>{{booking.amount_kayak}}</td>
+					<td>-</td>
+					<td>Ingår</td>
+				</tr>
+				{{/if}}
+				{{#if booking.amount_sup}}
+				<tr>
+					<td>SUP</td>
+					<td>{{booking.amount_sup}}</td>
+					<td>-</td>
+					<td>Ingår</td>
+				</tr>
+				{{/if}}
+			</tbody>
 		</table>
-		{{/if}}
-
-		<p><strong>Totalt belopp att betala:</strong> {{booking.amount_total}} kr</p>
 	</div>
 
-	<div class="contact-details">
-		<h2>Dina uppgifter</h2>
-		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
-		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
-		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
-		{{#if booking.customer_comment}}
-		<p><strong>Meddelande:</strong> {{booking.customer_comment}}</p>
-		{{/if}}
+	{{#if booking.optional_products.length}}
+	<div class="section">
+		<h3>Tillvalsprodukter</h3>
+		<table class="price-table">
+			<thead>
+				<tr>
+					<th>Produkt</th>
+					<th>Antal</th>
+					<th>Pris/st</th>
+					<th>Totalt</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{#each booking.optional_products}}
+				<tr>
+					<td>{{name}}</td>
+					<td>{{quantity}}</td>
+					<td>{{formatPrice price}}</td>
+					<td>{{formatPrice total_price}}</td>
+				</tr>
+				{{/each}}
+			</tbody>
+		</table>
+	</div>
+	{{/if}}
+
+	<div class="total-price">
+		Totalt att betala: {{formatPrice booking.amount_total}}
 	</div>
 
-	<div class="footer">
-		<p>Om du har några frågor, kontakta oss gärna på:</p>
-		<p>E-post: info@stisses.se</p>
-		<p>Telefon: 0730-540 540</p>
+	<div class="section">
+		<h3>Kontaktinformation</h3>
+		<div class="details-grid">
+			<div class="detail-item">
+				<div class="detail-label">Namn</div>
+				<div>{{booking.booking_name}} {{booking.booking_lastname}}</div>
+			</div>
+			<div class="detail-item">
+				<div class="detail-label">E-post</div>
+				<div>{{booking.customer_email}}</div>
+			</div>
+			<div class="detail-item">
+				<div class="detail-label">Telefon</div>
+				<div>{{booking.customer_phone}}</div>
+			</div>
+			{{#if booking.customer_comment}}
+			<div class="detail-item">
+				<div class="detail-label">Meddelande</div>
+				<div>{{booking.customer_comment}}</div>
+			</div>
+			{{/if}}
+		</div>
 	</div>
+
+	{{#if booking.payment_method}}
+	<div class="section">
+		<h3>Betalningsinformation</h3>
+		<p>Betalningsmetod: {{#if (eq booking.payment_method "invoice")}}Faktura{{else}}Kortbetalning{{/if}}</p>
+	</div>
+	{{/if}}
 </body>
 </html>
 `;
@@ -485,21 +534,18 @@ async function generatePDF(booking, template = bookingTemplate) {
 }
 
 // Definiera sendEmail funktionen
-async function sendEmail({ to, subject, html, type = 'standard' }) {
+async function sendEmail({ to, subject, html, type = 'booking' }) {
 	try {
 		console.log('Attempting to send email:', {
 			to,
 			subject,
 			type,
-			fromEmail: process.env.SENDGRID_FROM_EMAIL
+			fromEmail: EMAIL_CONFIG.FROM.email
 		});
 
 		const msg = {
 			to: type === 'invoice' ? process.env.INVOICE_EMAIL : to,
-			from: {
-				email: process.env.SENDGRID_FROM_EMAIL,
-				name: 'Stisses Kanotuthyrning'
-			},
+			from: EMAIL_CONFIG.FROM,
 			subject,
 			html
 		};
@@ -528,11 +574,29 @@ async function sendEmail({ to, subject, html, type = 'standard' }) {
 	}
 }
 
+// uppdatera sendBookingConfirmation funktionen
 export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
 	try {
-		if (!bookingData.customer_email) {
-			throw new Error('kundens e-postadress saknas');
-		}
+		console.log('Förbereder bokningsbekräftelse med data:', bookingData);
+
+		// Hämta startplatsens information
+		const {
+			rows: [location]
+		} = await query('SELECT sl.price, sl.location as name FROM start_locations sl WHERE id = $1', [
+			bookingData.startlocation
+		]);
+
+		// Berika bokningsdatan
+		const enrichedBookingData = {
+			...bookingData,
+			price_per_adult: location?.price || 0,
+			startLocation: location?.name || 'Ej angiven',
+			date_time_created: bookingData.date_time_created || new Date().toISOString(),
+			// Säkerställ att amount_total är ett nummer
+			amount_total: Number(bookingData.amount_total) || 0
+		};
+
+		console.log('Berikad bokningsdata:', enrichedBookingData);
 
 		// välj rätt mall baserat på bokningstyp
 		const template = Handlebars.compile(
@@ -541,10 +605,11 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 
 		// kompilera template med all bokningsdata
 		const html = template({
-			booking: bookingData,
+			booking: enrichedBookingData,
 			invoice: isInvoiceBooking ? bookingData : null
 		});
 
+		// skicka e-postmeddelandet
 		await sendEmail({
 			to: bookingData.customer_email,
 			subject: 'Bokningsbekräftelse - Stisses',
@@ -552,11 +617,26 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			type: 'booking'
 		});
 
-		console.log('✉️ bokningsbekräftelse skickad till:', bookingData.customer_email);
+		console.log('✉️ Bokningsbekräftelse skickad till:', bookingData.customer_email);
 	} catch (error) {
-		console.error('fel vid skickande av bokningsbekräftelse:', error);
+		console.error('Fel vid skickande av bokningsbekräftelse:', error);
 		throw error;
 	}
+}
+
+// hjälpfunktion för att generera e-postinnehållet
+async function generateBookingConfirmationEmail(bookingData) {
+	// registrera handlebars helpers
+	Handlebars.registerHelper('multiply', function (a, b) {
+		return (a || 0) * (b || 0);
+	});
+
+	Handlebars.registerHelper('eq', function (a, b) {
+		return a === b;
+	});
+
+	const template = Handlebars.compile(bookingTemplate);
+	return template({ booking: bookingData });
 }
 
 // Sedan kan vi använda den i sendInvoiceRequest

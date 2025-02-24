@@ -248,12 +248,16 @@ export async function POST({ request }) {
 				bookingId,
 				url: `/success?booking_id=${bookingId}&type=invoice`
 			});
-		} catch (emailError) {
-			console.error('❌ Fel vid skickande av e-post:', {
-				error: emailError.message,
-				details: emailError.response?.body
-			});
-			throw emailError;
+		} catch (error) {
+			console.error('Fel i handle-invoice:', error);
+			return json(
+				{
+					error: 'Ett fel uppstod vid hantering av fakturan',
+					details: error.message,
+					stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+				},
+				{ status: 500 }
+			);
 		}
 	} catch (error) {
 		console.error('Error in handle-invoice:', error);
