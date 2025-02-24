@@ -12,11 +12,10 @@ export async function POST({ request }) {
 		});
 
 		// Spara addons och optional products separat
-		const originalAddons = { ...bookingData.addons };
 		const optionalProducts = bookingData.optional_products || [];
 
 		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
-		console.log('🎁 Sparade addons:', originalAddons);
+		console.log('🎁 Sparade addons:', bookingData.addons);
 		console.log('Received optional products:', optionalProducts);
 
 		// Beräkna slots med säker konvertering
@@ -102,9 +101,9 @@ export async function POST({ request }) {
 			safeBookingData.total_slots,
 			safeBookingData.payment_method,
 			false,
-			parseInt(originalAddons.amount_canoes) || 0,
-			parseInt(originalAddons.amount_kayak) || 0,
-			parseInt(originalAddons.amount_sup) || 0
+			parseInt(bookingData.addons.amount_canoes) || 0,
+			parseInt(bookingData.addons.amount_kayak) || 0,
+			parseInt(bookingData.addons.amount_sup) || 0
 		];
 
 		// Hämta alla addons från databasen
@@ -117,10 +116,10 @@ export async function POST({ request }) {
 		// Skapa booking-objektet med addons inkluderade
 		const allColumns = [...baseColumns, ...addons.map((addon) => addon.column_name)];
 
-		// Använd originalAddons för att sätta värdena
+		// Använd bookingData.addons för att sätta värdena
 		const allValues = [
 			...baseValues,
-			...addons.map((addon) => parseInt(originalAddons?.[addon.column_name] || 0))
+			...addons.map((addon) => parseInt(bookingData.addons[addon.column_name] || 0))
 		];
 
 		console.log('Inserting booking with columns:', allColumns);
@@ -160,31 +159,43 @@ export async function POST({ request }) {
 				safeBookingData.total_slots,
 				safeBookingData.payment_method,
 				false,
-				parseInt(originalAddons.amount_canoes) || 0,
-				parseInt(originalAddons.amount_kayak) || 0,
-				parseInt(originalAddons.amount_sup) || 0
+				parseInt(bookingData.addons.amount_canoes) || 0,
+				parseInt(bookingData.addons.amount_kayak) || 0,
+				parseInt(bookingData.addons.amount_sup) || 0
 			]
 		);
 
 		const bookingId = bookingResult.rows[0].id;
 
+		// Efter att bokningen har sparats, uppdatera tillgängligheten
+		await updateAvailability(bookingData);
+
 		// Spara tillvalsprodukter
 		if (optionalProducts.length > 0) {
-			console.log('Saving optional products:', optionalProducts);
+			console.log('Sparar tillvalsprodukter:', optionalProducts);
 
 			for (const product of optionalProducts) {
-				await query(
-					`INSERT INTO booking_optional_products 
-					(booking_id, optional_product_id, quantity, price_per_unit, total_price)
-					VALUES ($1, $2, $3, $4, $5)`,
-					[
-						bookingId,
-						parseInt(product.id),
-						parseInt(product.quantity) || 0,
-						parseInt(product.price) || 0,
-						parseInt(product.total_price) || 0
-					]
-				);
+				try {
+					await query(
+						`INSERT INTO booking_optional_products 
+						 (booking_id, optional_product_id, quantity, price_per_unit, total_price)
+						 VALUES ($1, $2, $3, $4, $5)`,
+						[
+							bookingId,
+							parseInt(product.id),
+							parseInt(product.quantity),
+							parseInt(product.price),
+							parseInt(product.total_price)
+						]
+					);
+					console.log(`✅ Sparat tillvalsprodukt: ${product.name}`);
+				} catch (error) {
+					console.error('Fel vid sparande av tillvalsprodukt:', {
+						product,
+						error: error.message
+					});
+					throw error;
+				}
 			}
 		}
 
@@ -218,10 +229,10 @@ export async function POST({ request }) {
 
 		// Skicka både fakturabegäran och bokningsbekräftelse
 		try {
-			await sendInvoiceRequest(safeBookingData, invoiceData);
+			await sendInvoiceRequest({ ...safeBookingData, id: bookingId }, invoiceData);
 			console.log('✅ Fakturabegäran skickad framgångsrikt');
 
-			await sendBookingConfirmation(safeBookingData, true);
+			await sendBookingConfirmation({ ...safeBookingData, id: bookingId });
 			console.log('✅ Bokningsbekräftelse skickad framgångsrikt');
 
 			// Uppdatera endast confirmation_sent
@@ -276,40 +287,38 @@ function calculateBasePrice(bookingData) {
 	return total;
 }
 
-// Uppdaterad updateAvailability funktion
+// Uppdatera updateAvailability funktionen
 async function updateAvailability(bookingData) {
 	try {
 		console.log('🎯 Starting updateAvailability with data:', {
 			bookingData: JSON.stringify(bookingData, null, 2),
-			originalAddons: bookingData.addons // Logga originalvärdena
+			addons: bookingData.addons
 		});
 
 		const { rows: addons } = await query(
-			'SELECT name, availability_table_name, column_name FROM addons'
+			'SELECT id, name, column_name, availability_table_name FROM addons'
 		);
 
+		const startDate = new Date(bookingData.start_date);
+		const endDate = new Date(bookingData.end_date || bookingData.start_date);
+		const isOvernight = bookingData.booking_type === 'overnight';
+
 		for (const addon of addons) {
-			// Använd originalvärdet direkt från bookingData.addons
-			const amount = parseInt(bookingData.addons?.[addon.column_name] || 0);
+			const amount = parseInt(bookingData.addons[addon.column_name]) || 0;
 
 			console.log(`🎲 Processing ${addon.name}:`, {
 				amount,
-				originalValue: bookingData.addons?.[addon.column_name],
 				columnName: addon.column_name
 			});
 
 			if (amount > 0) {
-				const startDate = new Date(bookingData.start_date);
-				const endDate = new Date(bookingData.end_date || bookingData.start_date);
-				const isOvernight = bookingData.booking_type === 'overnight';
-
 				for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
 					const dateStr = date.toISOString().split('T')[0];
 					const isFirstDay = date.getTime() === startDate.getTime();
 					const isLastDay = date.getTime() === endDate.getTime();
 					const isMiddleDay = !isFirstDay && !isLastDay;
 
-					// beräkna start- och sluttider för denna dag
+					// Beräkna start- och sluttider för denna dag
 					let startMinutes, endMinutes;
 
 					if (isOvernight) {
@@ -337,19 +346,16 @@ async function updateAvailability(bookingData) {
 						endMinutes
 					});
 
-					// skapa rad om den inte finns
+					// Skapa rad om den inte finns
 					const { rows } = await query(
-						`SELECT date FROM ${addon.availability_table_name} WHERE date = $1`,
+						`INSERT INTO ${addon.availability_table_name} (date) 
+						 VALUES ($1) 
+						 ON CONFLICT (date) DO NOTHING 
+						 RETURNING date`,
 						[dateStr]
 					);
 
-					if (rows.length === 0) {
-						await query(`INSERT INTO ${addon.availability_table_name} (date) VALUES ($1)`, [
-							dateStr
-						]);
-					}
-
-					// uppdatera slots för denna dag
+					// Uppdatera slots för denna dag
 					const slots = [];
 					for (let minutes = startMinutes; minutes < endMinutes; minutes += 15) {
 						const slotMinutes = Math.floor(minutes / 15) * 15;
@@ -357,12 +363,14 @@ async function updateAvailability(bookingData) {
 					}
 
 					if (slots.length > 0) {
+						console.log(`Uppdaterar tillgänglighet för ${addon.name} på datum ${dateStr}`);
 						await query(
 							`UPDATE ${addon.availability_table_name}
 							 SET ${slots.join(', ')}
 							 WHERE date = $1`,
 							[dateStr]
 						);
+						console.log(`✅ Tillgänglighet uppdaterad för ${addon.name}`);
 					}
 				}
 			}

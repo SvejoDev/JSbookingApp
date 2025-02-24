@@ -535,61 +535,49 @@
 		try {
 			isSubmittingInvoice = true;
 
-			// Formatera tillvalsprodukter för backend
-			const formattedOptionalProducts = prepareOptionalProductsForSubmission();
-			console.log('Formatted optional products:', formattedOptionalProducts);
-
-			const bookingData = {
-				experience_id: data.experience.id,
-				experience: data.experience.name,
-				startLocation: selectedStartLocationName,
-				start_date: startDate,
-				start_time: startTime,
-				end_date: returnDate,
-				end_time: returnTime,
-				number_of_adults: numAdults,
-				number_of_children: numChildren,
-				amount_total: totalPrice + optionalProductsTotal, // Uppdatera totalpriset
-				booking_name: userName,
-				booking_lastname: userLastname,
-				customer_email: userEmail,
-				customer_phone: userPhone,
-				customer_comment: userComment,
-				selectedStartLocation: selectedStartLocation,
-				addons: selectedAddons,
-				optional_products: formattedOptionalProducts, // Lägg till tillvalsprodukterna
-				payment_method: 'invoice'
-			};
-
-			console.log('Sending booking data:', bookingData);
-
 			const response = await fetch('/api/handle-invoice', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					bookingData,
+					bookingData: {
+						experience_id: data.experience.id,
+						experience: data.experience.name,
+						startLocation: selectedStartLocationName,
+						start_date: startDate,
+						start_time: startTime,
+						end_date: returnDate,
+						end_time: returnTime,
+						number_of_adults: numAdults,
+						number_of_children: numChildren,
+						amount_total: totalPrice + optionalProductsTotal, // Uppdatera totalpriset
+						booking_name: userName,
+						booking_lastname: userLastname,
+						customer_email: userEmail,
+						customer_phone: userPhone,
+						customer_comment: userComment,
+						selectedStartLocation: selectedStartLocation,
+						addons: selectedAddons,
+						optional_products: prepareOptionalProductsForSubmission(), // Lägg till tillvalsprodukterna
+						payment_method: 'invoice'
+					},
 					invoiceData
 				})
 			});
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				throw new Error(errorData.error || 'Failed to submit invoice booking');
+				throw new Error(errorData.error || 'Failed to process invoice request');
 			}
 
-			const result = await response.json();
+			const { bookingId } = await response.json();
 
-			if (!result.url) {
-				throw new Error('Ingen checkout-URL returnerades');
-			}
-
-			// Använd goto istället för window.location för bättre hantering
-			window.location.href = result.url;
+			// Omdirigera till success-sidan med booking_id
+			window.location.href = `/success?booking_id=${bookingId}`;
 		} catch (error) {
-			console.error('Error submitting invoice booking:', error);
-			alert('Ett fel uppstod vid bokningen. Vänligen försök igen.');
+			console.error('Error submitting invoice:', error);
+			alert('Ett fel uppstod vid hantering av fakturan. Vänligen försök igen.');
 		} finally {
 			isSubmittingInvoice = false;
 		}

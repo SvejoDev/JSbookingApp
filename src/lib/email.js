@@ -9,9 +9,6 @@ import { formatDateTime, formatPrice, formatDate } from './templates/emailTempla
 
 dotenv.config();
 
-// Lägg till debug-loggning för att se om API-nyckeln läses in korrekt
-console.log('SendGrid API Key length:', process.env.SENDGRID_API_KEY?.length || 0);
-
 // Konfigurera Handlebars helpers
 Handlebars.registerHelper('formatDateTime', formatDateTime);
 Handlebars.registerHelper('formatPrice', formatPrice);

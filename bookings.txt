@@ -1,0 +1,40 @@
+-- public.bookings definition
+
+-- Drop table
+
+-- DROP TABLE public.bookings;
+
+CREATE TABLE public.bookings (
+	id serial4 NOT NULL,
+	experience_id int4 NULL,
+	start_date date NULL,
+	start_time time NULL,
+	end_date date NULL,
+	end_time time NULL,
+	number_of_adults int4 NULL,
+	number_of_children int4 NULL,
+	amount_total int4 NULL,
+	startlocation int4 NULL,
+	customer_comment text NULL,
+	amount_canoes int4 NULL,
+	amount_kayak int4 NULL,
+	amount_sup int4 NULL,
+	booking_name varchar(255) NULL,
+	booking_lastname varchar(255) NULL,
+	customer_email varchar(255) NULL,
+	status varchar(50) NULL,
+	stripe_session_id text NULL,
+	experience text NULL,
+	date_time_created timestamptz DEFAULT now() NULL,
+	booking_status varchar(20) DEFAULT 'pending'::character varying NULL,
+	start_slot int4 NULL,
+	end_slot int4 NULL,
+	total_slots int4 NULL,
+	booking_type varchar(20) NULL,
+	payment_method varchar(20) NULL,
+	customer_phone varchar(20) NULL,
+	confirmation_sent bool DEFAULT false NULL,
+	CONSTRAINT bookings_booking_status_check CHECK (((booking_status)::text = ANY (ARRAY[('pending'::character varying)::text, ('started'::character varying)::text, ('completed'::character varying)::text]))),
+	CONSTRAINT bookings_payment_method_check CHECK (((payment_method)::text = ANY (ARRAY[('stripe'::character varying)::text, ('invoice'::character varying)::text]))),
+	CONSTRAINT bookings_pkey PRIMARY KEY (id)
+);

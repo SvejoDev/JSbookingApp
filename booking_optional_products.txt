@@ -1,0 +1,21 @@
+-- public.booking_optional_products definition
+
+-- Drop table
+
+-- DROP TABLE public.booking_optional_products;
+
+CREATE TABLE public.booking_optional_products (
+	id serial4 NOT NULL,
+	booking_id int4 NOT NULL,
+	optional_product_id int4 NOT NULL,
+	quantity int4 NOT NULL,
+	price_per_unit int4 NOT NULL,
+	total_price int4 NOT NULL,
+	CONSTRAINT booking_optional_products_pkey PRIMARY KEY (id)
+);
+
+
+-- public.booking_optional_products foreign keys
+
+ALTER TABLE public.booking_optional_products ADD CONSTRAINT booking_optional_products_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id) ON DELETE CASCADE;
+ALTER TABLE public.booking_optional_products ADD CONSTRAINT booking_optional_products_optional_product_id_fkey FOREIGN KEY (optional_product_id) REFERENCES public.optional_products(id);

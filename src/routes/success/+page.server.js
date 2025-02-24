@@ -13,6 +13,25 @@ export const load = async ({ url }) => {
 			throw redirect(303, '/');
 		}
 
+		// Om vi har ett booking_id, använd det (fakturabetalning)
+		if (bookingId) {
+			const bookingResult = await query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
+
+			if (bookingResult.rows.length === 0) {
+				throw new Error('Bokning hittades inte');
+			}
+
+			return {
+				booking: bookingResult.rows[0],
+				paymentType: 'invoice'
+			};
+		}
+
+		// Annars använd session_id (kortbetalning)
+		if (!sessionId) {
+			throw redirect(303, '/');
+		}
+
 		await transaction(async (client) => {
 			if (bookingType === 'invoice') {
 				// Hämta bokning först
