@@ -614,6 +614,23 @@ CREATE TABLE public.sup_availability (
 );
 
 
+-- public.system_settings definition
+
+-- Drop table
+
+-- DROP TABLE public.system_settings;
+
+CREATE TABLE public.system_settings (
+	id serial4 NOT NULL,
+	setting_key varchar(50) NOT NULL,
+	setting_value varchar(255) NOT NULL,
+	description text NULL,
+	updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT system_settings_pkey PRIMARY KEY (id),
+	CONSTRAINT system_settings_setting_key_key UNIQUE (setting_key)
+);
+
+
 -- public.booking_addons definition
 
 -- Drop table
@@ -689,3 +706,23 @@ CREATE TABLE public.invoice_details (
 	CONSTRAINT invoice_details_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_invoice_details_booking_id ON public.invoice_details USING btree (booking_id);
+
+
+-- public.rebooking_history definition
+
+-- Drop table
+
+-- DROP TABLE public.rebooking_history;
+
+CREATE TABLE public.rebooking_history (
+	id serial4 NOT NULL,
+	booking_id int4 NOT NULL,
+	previous_start_date date NOT NULL,
+	previous_start_time time NOT NULL,
+	new_start_date date NOT NULL,
+	new_start_time time NOT NULL,
+	changed_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+	changed_by varchar(255) NOT NULL,
+	CONSTRAINT rebooking_history_pkey PRIMARY KEY (id),
+	CONSTRAINT rebooking_history_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id)
+);

@@ -20,6 +20,13 @@ export async function POST({ request }) {
 
 		const totalPrice = parseInt(data.amount_total) + optionalProductsTotal;
 
+		// Konvertera addons-objektet till en JSON-sträng
+		const metadata = {
+			...data,
+			addons: JSON.stringify(data.addons),
+			optional_products: JSON.stringify(data.optional_products || [])
+		};
+
 		// Skapa Stripe checkout session
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ['card'],
@@ -31,7 +38,7 @@ export async function POST({ request }) {
 							name: `${data.experience} - ${data.number_of_adults} vuxna`,
 							description: `Datum: ${data.start_date}, Tid: ${data.start_time}`
 						},
-						unit_amount: totalPrice * 100 // Stripe använder minsta valutaenhet (öre)
+						unit_amount: totalPrice * 100
 					},
 					quantity: 1
 				}
@@ -39,32 +46,13 @@ export async function POST({ request }) {
 			mode: 'payment',
 			success_url: `${data.domain}/success?session_id={CHECKOUT_SESSION_ID}`,
 			cancel_url: `${data.domain}/booking/${data.experience_id}`,
-			metadata: {
-				experience_id: data.experience_id,
-				experience: data.experience,
-				start_date: data.start_date,
-				end_date: data.end_date || data.start_date,
-				start_time: data.start_time,
-				end_time: data.end_time,
-				number_of_adults: data.number_of_adults,
-				number_of_children: data.number_of_children,
-				booking_name: data.booking_name,
-				booking_lastname: data.booking_lastname,
-				customer_email: data.customer_email,
-				customer_phone: data.customer_phone,
-				customer_comment: data.customer_comment || '',
-				startlocation: data.selectedStartLocation,
-				amount_canoes: data.addons?.amount_canoes || 0,
-				amount_kayak: data.addons?.amount_kayak || 0,
-				amount_sup: data.addons?.amount_sup || 0,
-				optional_products: JSON.stringify(data.optional_products || [])
-			}
+			metadata
 		});
 
 		return json({ url: session.url });
 	} catch (error) {
-		console.error('Error creating checkout session:', error);
-		return json({ error: error.message }, { status: 400 });
+		console.error('Fel vid skapande av checkout session:', error);
+		return json({ error: error.message }, { status: 500 });
 	}
 }
 

@@ -14,18 +14,18 @@ export const load = async ({ url }) => {
 		}
 
 		await transaction(async (client) => {
-			// Modifiera SQL-frågan för att hantera både booking_id och stripe_session_id
 			const {
 				rows: [bookingData]
 			} = await client.query(
 				`WITH booking_base AS (
-					SELECT b.* 
+					SELECT b.*, e.name as experience_name 
 					FROM bookings b 
+					LEFT JOIN experiences e ON b.experience_id = e.id
 					WHERE ${bookingId ? 'b.id = $1' : 'b.stripe_session_id = $1'}
-					FOR UPDATE
 				)
 				SELECT 
 					b.*,
+					b.experience_name,
 					b.confirmation_sent,
 					sl.location as startlocation_name,
 					sl.price as adult_price,
@@ -40,9 +40,10 @@ export const load = async ({ url }) => {
 					COALESCE(
 						json_agg(
 							DISTINCT jsonb_build_object(
+								'id', op.id,
 								'name', op.name,
 								'quantity', bop.quantity,
-								'price', op.price,
+								'price', bop.price_per_unit,
 								'total_price', bop.total_price
 							)
 						) FILTER (WHERE op.id IS NOT NULL),
@@ -80,6 +81,7 @@ export const load = async ({ url }) => {
 					b.id, 
 					b.experience_id,
 					b.experience,
+					b.experience_name,
 					b.start_date,
 					b.start_time,
 					b.end_date,
@@ -117,37 +119,31 @@ export const load = async ({ url }) => {
 					id.postal_code,
 					id.city,
 					id.id,
-					id.booking_id,
-					id.created_at,
-					id.updated_at`,
+					id.booking_id`,
 				[bookingId || sessionId]
 			);
 
 			if (!bookingData) {
-				console.error(
-					`Ingen bokning hittad med ${bookingId ? 'ID' : 'session ID'}: ${bookingId || sessionId}`
-				);
+				console.error('Bokning hittades inte');
 				throw redirect(303, '/?error=booking_not_found');
 			}
 
-			// Beräkna priser
-			const adultPrice = bookingData.adult_price || 0;
-			const adultPriceExclVat = Math.round(adultPrice / 1.25);
-			const totalAdultsExclVat = adultPriceExclVat * bookingData.number_of_adults;
-
-			// Beräkna totalpris för tillvalsprodukter
-			const optionalProductsTotal = bookingData.optional_products.reduce(
+			// Beräkna totaler inklusive optional products
+			const optionalProductsTotal = (bookingData.optional_products || []).reduce(
 				(sum, product) => sum + (product.total_price || 0),
 				0
 			);
 
-			// Beräkna totaler
-			const subtotal = Math.round(totalAdultsExclVat + optionalProductsTotal / 1.25);
-			const vat = Math.round(subtotal * 0.25);
-			const total = subtotal + vat;
+			const total = (bookingData.amount_total || 0) + optionalProductsTotal;
+			const subtotal = Math.round(total / 1.25);
+			const vat = total - subtotal;
 
 			booking = {
 				...bookingData,
+				experience: bookingData.experience_name,
+				id: bookingData.id,
+				customer_email: bookingData.customer_email,
+				payment_method: 'stripe',
 				invoiceType: bookingData.invoice_type,
 				invoiceEmail: bookingData.invoice_email || '',
 				glnPeppolId: bookingData.gln_peppol_id || '',
@@ -157,15 +153,14 @@ export const load = async ({ url }) => {
 				postalCode: bookingData.postal_code || '',
 				city: bookingData.city || '',
 				startLocationName: bookingData.startlocation_name,
-				adultPrice,
-				adultPriceExclVat,
-				totalAdultsExclVat,
+				adultPrice: bookingData.adult_price,
+				adultPriceExclVat: Math.round(bookingData.adult_price / 1.25),
+				totalAdultsExclVat: subtotal,
 				subtotal,
 				vat,
 				total,
-				addons: bookingData.addons_info || [],
 				optional_products: bookingData.optional_products || [],
-				customer_email: bookingData.customer_email,
+				addons: bookingData.addons_info || [],
 				confirmation_sent: bookingData.confirmation_sent
 			};
 
@@ -174,24 +169,28 @@ export const load = async ({ url }) => {
 				processed: booking.invoiceEmail
 			});
 
+			console.log('Start location debug:', {
+				id: bookingData.startlocation,
+				name: bookingData.startlocation_name
+			});
+
 			if (!bookingData.confirmation_sent) {
-				// Uppdatera först
 				await client.query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [
-					bookingId || sessionId
+					bookingData.id
 				]);
 
-				// Skicka sedan mejl
-				await sendBookingConfirmation(booking, true);
+				console.log('Skickar bokningsbekräftelse med data:', booking);
+
+				await sendBookingConfirmation(booking, false);
 			}
 		});
 
 		return {
 			booking,
-			isInvoiceBooking: booking.payment_method === 'invoice'
+			isInvoiceBooking: false
 		};
 	} catch (error) {
 		if (error instanceof redirect) throw error;
-		console.error('Fel vid hämtning av bokning:', error);
-		throw redirect(303, '/?error=booking_error');
+		console.error('Fel i success-sidan:', error);
 	}
 };

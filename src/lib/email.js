@@ -569,50 +569,47 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 	}
 }
 
-// uppdatera sendBookingConfirmation funktionen
-export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
+// Modifiera sendBookingConfirmation för att hantera både faktura och kortbetalning
+export async function sendBookingConfirmation(booking, isInvoiceBooking = false) {
+	// Lägg till detaljerad loggning
+	console.log('sendBookingConfirmation - Inkommande bokningsdata:', {
+		id: booking.id,
+		experience: booking.experience,
+		start_date: booking.start_date,
+		start_time: booking.start_time,
+		end_time: booking.end_time,
+		number_of_adults: booking.number_of_adults,
+		customer_email: booking.customer_email,
+		booking_name: booking.booking_name,
+		startLocationName: booking.startLocationName,
+		adultPrice: booking.adultPrice,
+		total: booking.total,
+		addons: booking.addons
+	});
+
+	// Kompilera mallen
+	const template = Handlebars.compile(bookingConfirmationTemplate);
+
+	// Logga data innan den skickas till mallen
+	console.log('Data som skickas till Handlebars-mallen:', booking);
+
+	// Generera HTML
+	const html = template(booking);
+
+	// Logga genererad HTML
+	console.log('Genererad HTML för bokningsbekräftelse:', html);
+
+	const msg = {
+		to: booking.customer_email,
+		from: process.env.SENDGRID_FROM_EMAIL,
+		subject: 'Bokningsbekräftelse - Stisses',
+		html: html
+	};
+
 	try {
-		console.log('Förbereder bokningsbekräftelse med data:', bookingData);
-
-		// Hämta startplatsens information
-		const {
-			rows: [location]
-		} = await query('SELECT sl.price, sl.location as name FROM start_locations sl WHERE id = $1', [
-			bookingData.startlocation
-		]);
-
-		// Berika bokningsdatan
-		const enrichedBookingData = {
-			...bookingData,
-			price_per_adult: location?.price || 0,
-			startLocation: location?.name || 'Ej angiven',
-			date_time_created: bookingData.date_time_created || new Date().toISOString(),
-			// Säkerställ att amount_total är ett nummer
-			amount_total: Number(bookingData.amount_total) || 0
-		};
-
-		console.log('Berikad bokningsdata:', enrichedBookingData);
-
-		// välj rätt mall baserat på bokningstyp
-		const template = Handlebars.compile(
-			isInvoiceBooking ? invoiceBookingTemplate : bookingTemplate
-		);
-
-		// kompilera template med all bokningsdata
-		const html = template({
-			booking: enrichedBookingData,
-			invoice: isInvoiceBooking ? bookingData : null
-		});
-
-		// skicka e-postmeddelandet
-		await sendEmail({
-			to: bookingData.customer_email,
-			subject: 'Bokningsbekräftelse - Stisses',
-			html,
-			type: 'booking'
-		});
-
-		console.log('✉️ Bokningsbekräftelse skickad till:', bookingData.customer_email);
+		const response = await sgMail.send(msg);
+		console.log('SendGrid svar:', response[0].statusCode);
+		return response;
 	} catch (error) {
 		console.error('Fel vid skickande av bokningsbekräftelse:', error);
 		throw error;
@@ -698,3 +695,55 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 // Exportera både sendEmail och sendInvoiceRequest
 export { sendEmail };
 export { sendInvoiceRequest };
+
+export async function sendRebookingConfirmation(bookingId) {
+	const {
+		rows: [booking]
+	} = await query(
+		`
+		SELECT 
+			b.*,
+			rh.previous_start_date,
+			rh.previous_start_time
+		FROM bookings b
+		JOIN rebooking_history rh ON rh.booking_id = b.id
+		WHERE b.id = $1
+		ORDER BY rh.changed_at DESC
+		LIMIT 1
+	`,
+		[bookingId]
+	);
+
+	// Använd befintlig bokningsbekräftelsemall men lägg till ombokningsmärkning
+	const templateData = {
+		...booking,
+		is_rebooking: true,
+		previous_date: booking.previous_start_date,
+		previous_time: booking.previous_start_time
+	};
+
+	await sendBookingConfirmation(templateData);
+}
+
+// Lägg till hjälpfunktioner
+Handlebars.registerHelper('multiply', function (a, b) {
+	return a * b;
+});
+
+Handlebars.registerHelper('formatDateTime', function (date) {
+	if (!date) return '';
+	// Konvertera till Date-objekt om det inte redan är det
+	const d = typeof date === 'string' ? new Date(date) : date;
+	return new Intl.DateTimeFormat('sv-SE', {
+		year: 'numeric',
+		month: 'long',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	}).format(d);
+});
+
+Handlebars.registerHelper('formatPrice', function (price) {
+	if (!price) return '0';
+	return new Intl.NumberFormat('sv-SE').format(price);
+});

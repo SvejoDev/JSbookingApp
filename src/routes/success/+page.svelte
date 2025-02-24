@@ -230,6 +230,21 @@
 					</div>
 				{/if}
 
+				<!-- Lägg till efter addons-sektionen -->
+				{#if booking.optional_products && booking.optional_products.length > 0}
+					<div class="mt-4">
+						<h4 class="font-semibold mb-2">Tillvalsprodukter</h4>
+						<div class="space-y-2">
+							{#each booking.optional_products as product}
+								<div class="flex justify-between">
+									<span>{product.name}:</span>
+									<span>{product.quantity} st ({formatPrice(product.price)} kr/st)</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
 				<!-- Kontaktinformation och övrig information... -->
 			</div>
 		</CardContent>

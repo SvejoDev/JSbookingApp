@@ -17,11 +17,15 @@ export async function POST({ request }) {
 		console.log(`Webhook mottagen: ${event.type} vid ${new Date().toISOString()}`);
 
 		if (event.type === 'checkout.session.completed') {
-			const session = event.data.object;
-			console.log('Session metadata:', session.metadata);
-			console.log('Session ID:', session.id);
-
 			try {
+				const session = event.data.object;
+				console.log('Webhook metadata:', session.metadata);
+				console.log('Webhook session:', {
+					id: session.id,
+					amount_total: session.amount_total,
+					customer_email: session.customer_email
+				});
+
 				await transaction(async (client) => {
 					// Hämta experience_type först
 					const {
@@ -73,6 +77,15 @@ export async function POST({ request }) {
 					await createBookingAddons(client, booking.id, session.metadata);
 					await updateAvailabilityForBooking(client, session.metadata);
 
+					console.log('Optional products från metadata:', session.metadata.optional_products);
+					try {
+						const optionalProducts = JSON.parse(session.metadata.optional_products);
+						console.log('Parsade optional products:', optionalProducts);
+					} catch (error) {
+						console.error('Fel vid parsing av optional products:', error);
+					}
+
+					console.log('Booking created successfully:', booking);
 					return booking;
 				});
 
@@ -80,7 +93,13 @@ export async function POST({ request }) {
 				console.log(`Webhook behandlad: ${event.type}`);
 				return json({ received: true, message: 'bokning genomförd' }, { status: 200 });
 			} catch (error) {
-				console.error('fel vid bokning:', error);
+				console.error('Detaljerat bokningsfel:', {
+					error: error.message,
+					code: error.code,
+					detail: error.detail,
+					table: error.table,
+					column: error.column
+				});
 				throw error;
 			}
 		}
@@ -244,79 +263,107 @@ function formatMinutes(minutes) {
 }
 
 async function createBooking(client, metadata, session) {
-	// säkerställ att alla numeriska värden är giltiga integers
-	const numberOfAdults = parseInt(metadata.number_of_adults) || 0;
-	const numberOfChildren = parseInt(metadata.number_of_children) || 0;
-	const amountCanoes = parseInt(metadata.amount_canoes) || 0;
-	const amountKayak = parseInt(metadata.amount_kayak) || 0;
-	const amountSup = parseInt(metadata.amount_sup) || 0;
+	// Parse addons och optional products från metadata
+	const addons = JSON.parse(metadata.addons || '{}');
+	const optionalProducts = JSON.parse(metadata.optional_products || '[]');
 
-	// beräkna slots baserat på start- och sluttid
-	const startSlot = timeToSlot(metadata.start_time);
-	const endSlot = timeToSlot(metadata.end_time);
-	const totalSlots = calculateTotalSlots(startSlot, endSlot, metadata.booking_type === 'overnight');
+	console.log('Parsed addons:', addons);
+	console.log('Parsed optional products:', optionalProducts);
 
-	const {
-		rows: [booking]
-	} = await client.query(
+	// Säkerställ att startlocation är ett giltigt nummer
+	const startLocation = parseInt(metadata.selectedStartLocation) || null;
+	console.log('Start location being saved:', startLocation);
+
+	// Skapa bokningen först
+	const booking = await client.query(
 		`INSERT INTO bookings (
 			experience_id,
+			experience,
 			start_date,
 			end_date,
 			start_time,
 			end_time,
 			number_of_adults,
 			number_of_children,
+			amount_total,
+			startlocation,
 			booking_name,
 			booking_lastname,
 			customer_email,
 			customer_phone,
 			customer_comment,
 			status,
-			booking_type,
-			startlocation,
-			amount_canoes,
-			amount_kayak,
-			amount_sup,
 			stripe_session_id,
-			experience,
-			amount_total,
+			booking_type,
+			payment_method,
 			start_slot,
 			end_slot,
 			total_slots,
-			confirmation_sent
+			amount_canoes,
+			amount_kayak,
+			amount_sup
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING *`,
 		[
-			metadata.experience_id,
+			parseInt(metadata.experience_id),
+			metadata.experience,
 			metadata.start_date,
 			metadata.end_date,
 			metadata.start_time,
 			metadata.end_time,
-			numberOfAdults,
-			numberOfChildren,
+			parseInt(metadata.number_of_adults),
+			parseInt(metadata.number_of_children),
+			parseInt(metadata.amount_total),
+			startLocation,
 			metadata.booking_name,
 			metadata.booking_lastname,
 			metadata.customer_email,
 			metadata.customer_phone,
-			metadata.customer_comment,
+			metadata.customer_comment || '',
 			'confirmed',
-			metadata.booking_type,
-			metadata.selectedStartLocation,
-			amountCanoes,
-			amountKayak,
-			amountSup,
 			session.id,
-			metadata.experience,
-			session.amount_total / 100, // konvertera från ören till kronor
-			startSlot,
-			endSlot,
-			totalSlots,
-			false // sätt confirmation_sent till false när bokningen skapas
+			metadata.booking_type,
+			'stripe',
+			parseInt(timeToSlot(metadata.start_time)),
+			parseInt(timeToSlot(metadata.end_time)),
+			calculateTotalSlots(
+				parseInt(timeToSlot(metadata.start_time)),
+				parseInt(timeToSlot(metadata.end_time)),
+				metadata.booking_type === 'overnight'
+			),
+			parseInt(addons.amount_canoes) || 0,
+			parseInt(addons.amount_kayak) || 0,
+			parseInt(addons.amount_sup) || 0
 		]
 	);
 
-	return booking;
+	const bookingId = booking.rows[0].id;
+
+	// Spara optional products
+	if (optionalProducts.length > 0) {
+		for (const product of optionalProducts) {
+			try {
+				await client.query(
+					`INSERT INTO booking_optional_products 
+					 (booking_id, optional_product_id, quantity, price_per_unit, total_price)
+					 VALUES ($1, $2, $3, $4, $5)`,
+					[
+						bookingId,
+						parseInt(product.id),
+						parseInt(product.quantity),
+						parseInt(product.price),
+						parseInt(product.total_price)
+					]
+				);
+				console.log(`✅ Sparat tillvalsprodukt för bokning ${bookingId}:`, product.name);
+			} catch (error) {
+				console.error('Fel vid sparande av tillvalsprodukt:', error);
+				throw error;
+			}
+		}
+	}
+
+	return booking.rows[0];
 }
 
 async function createBookingAddons(client, bookingId, metadata) {
