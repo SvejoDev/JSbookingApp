@@ -705,6 +705,34 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			}
 		}
 
+		// Hämta fakturauppgifter om det är en fakturabetald bokning
+		let invoiceDetails = bookingData.invoice_details || {};
+
+		// Om vi inte har invoice_details men har ett bookingId, försök hämta från databasen
+		if (
+			bookingData.payment_method === 'invoice' &&
+			bookingData.id &&
+			Object.keys(invoiceDetails).length === 0
+		) {
+			try {
+				const { rows } = await query(
+					`SELECT 
+						invoice_type, invoice_email, gln_peppol_id, marking, 
+						organization, address, postal_code, city 
+					FROM invoice_details 
+					WHERE booking_id = $1`,
+					[bookingData.id]
+				);
+
+				if (rows.length > 0) {
+					invoiceDetails = rows[0];
+					console.log('Hämtade fakturauppgifter från databasen:', invoiceDetails);
+				}
+			} catch (error) {
+				console.error('Fel vid hämtning av fakturauppgifter:', error);
+			}
+		}
+
 		// skapa en berikad version av bokningsdatan
 		const enrichedBookingData = {
 			...bookingData,
@@ -733,7 +761,10 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			addons: addonsArray,
 
 			// Säkerställ att payment_method finns
-			payment_method: bookingData.payment_method || 'card'
+			payment_method: bookingData.payment_method || 'card',
+
+			// Lägg till fakturauppgifter
+			invoice_details: invoiceDetails
 		};
 
 		// Lägg till loggning för att se exakta värden
@@ -749,6 +780,18 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 
 		console.log('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
 		console.log('Addons efter konvertering:', JSON.stringify(enrichedBookingData.addons, null, 2));
+		console.log('Invoice details:', JSON.stringify(enrichedBookingData.invoice_details, null, 2));
+
+		// Registrera Handlebars-hjälpfunktioner
+		Handlebars.registerHelper('eq', function (a, b, options) {
+			return a === b ? options.fn(this) : options.options.inverse(this);
+		});
+
+		Handlebars.registerHelper('formatPaymentMethod', function (method) {
+			if (method === 'invoice') return 'Faktura';
+			if (method === 'card' || method === 'stripe') return 'Kortbetalning';
+			return method || 'Okänd';
+		});
 
 		// kompilera mallen med handlebars
 		const template = Handlebars.compile(bookingConfirmationTemplate);
@@ -775,7 +818,8 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			rawData: bookingData,
 			formattedData: enrichedBookingData,
 			addons: enrichedBookingData.addons,
-			optionalProducts: bookingData.optional_products
+			optionalProducts: bookingData.optional_products,
+			invoiceDetails: enrichedBookingData.invoice_details
 		});
 	} catch (error) {
 		console.error('Detaljerat fel i sendBookingConfirmation:', error);
