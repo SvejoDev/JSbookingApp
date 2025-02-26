@@ -660,31 +660,48 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			'booking_lastname'
 		];
 
-		const missingFields = requiredFields.filter((field) => !bookingData[field]);
-		if (missingFields.length > 0) {
-			console.warn('saknade obligatoriska fält i bokningsdata:', missingFields);
+		// kontrollera att alla nödvändiga fält finns
+		for (const field of requiredFields) {
+			if (bookingData[field] === undefined) {
+				console.warn(`Varning: Fältet ${field} saknas i bokningsdata`);
+			}
 		}
 
-		// standardisera startlocation-fälten
-		let startLocationId = bookingData.startlocation;
-		let startLocationName = bookingData.startlocation_name || bookingData.startLocationName;
+		// hämta startplatsnamn om det finns ett startlocation-id
+		let startLocationName = '';
+		let startLocationId = bookingData.startlocation || bookingData.selectedStartLocation;
 
-		// hämta startplatsinfo om id finns men namn saknas
-		if (startLocationId && !startLocationName) {
+		if (startLocationId) {
 			try {
 				const {
 					rows: [location]
-				} = await query(
-					'SELECT sl.price, sl.location as name FROM start_locations sl WHERE id = $1',
-					[startLocationId]
-				);
-
+				} = await query('SELECT location FROM start_locations WHERE id = $1', [startLocationId]);
 				if (location) {
-					startLocationName = location.name;
-					bookingData.adultPrice = bookingData.adultPrice || location.price || 0;
+					startLocationName = location.location;
 				}
-			} catch (locError) {
-				console.error('fel vid hämtning av startplats:', locError);
+			} catch (error) {
+				console.error('Fel vid hämtning av startplats:', error);
+			}
+		}
+
+		// Konvertera addons-objekt till array om det behövs
+		let addonsArray = [];
+		if (bookingData.addons) {
+			if (Array.isArray(bookingData.addons)) {
+				// Om det redan är en array, använd den
+				addonsArray = bookingData.addons;
+			} else if (typeof bookingData.addons === 'object') {
+				// Konvertera från objekt till array
+				addonsArray = Object.entries(bookingData.addons)
+					.filter(([key, value]) => value > 0 && key.startsWith('amount_'))
+					.map(([key, value]) => {
+						// Extrahera namnet från nyckeln (t.ex. amount_canoes -> canoes)
+						const name = key.replace('amount_', '');
+						return {
+							name: name.charAt(0).toUpperCase() + name.slice(1), // Första bokstaven stor
+							amount: value
+						};
+					});
 			}
 		}
 
@@ -712,18 +729,11 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 					)
 				: 0,
 
-			// Säkerställ att payment_method finns och är korrekt
-			payment_method: bookingData.payment_method || (isInvoiceBooking ? 'invoice' : 'card'),
+			// Använd den konverterade addons-arrayen
+			addons: addonsArray,
 
-			// lägg till priser och summering med de nya priskolumnerna
-			summary: {
-				subtotal: bookingData.amount_total_exc_vat || 0,
-				vat:
-					bookingData.amount_total_inc_vat && bookingData.amount_total_exc_vat
-						? bookingData.amount_total_inc_vat - bookingData.amount_total_exc_vat
-						: 0,
-				total: bookingData.amount_total_inc_vat || 0
-			}
+			// Säkerställ att payment_method finns
+			payment_method: bookingData.payment_method || 'card'
 		};
 
 		// Lägg till loggning för att se exakta värden
@@ -738,6 +748,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		});
 
 		console.log('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
+		console.log('Addons efter konvertering:', JSON.stringify(enrichedBookingData.addons, null, 2));
 
 		// kompilera mallen med handlebars
 		const template = Handlebars.compile(bookingConfirmationTemplate);
@@ -745,11 +756,9 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			booking: enrichedBookingData
 		});
 
-		// logga html för felsökning
-		console.log(
-			'Genererad HTML för bokningsbekräftelse (första 500 tecken):',
-			html.substring(0, 500) + '...'
-		);
+		// logga hela html för felsökning
+		console.log('HELA HTML FÖR BOKNINGSBEKRÄFTELSE:');
+		console.log(html);
 
 		// skicka e-post
 		await sendEmail({
@@ -765,7 +774,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		console.log('Booking data för e-post:', {
 			rawData: bookingData,
 			formattedData: enrichedBookingData,
-			addons: bookingData.addons_info,
+			addons: enrichedBookingData.addons,
 			optionalProducts: bookingData.optional_products
 		});
 	} catch (error) {
