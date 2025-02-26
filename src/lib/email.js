@@ -905,6 +905,5 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 	}
 }
 
-// Exportera både sendEmail och sendInvoiceRequest
-export { sendEmail };
-export { sendInvoiceRequest };
+// Samla alla exporter i ett uttryck
+export { sendEmail, generatePDF };
