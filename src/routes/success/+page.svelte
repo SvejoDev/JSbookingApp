@@ -1,6 +1,6 @@
 <script>
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
-import { logger } from '$lib/utils/logger';
+	import { logger } from '$lib/utils/logger';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { ArrowLeft } from 'lucide-svelte';
@@ -262,9 +262,7 @@ import { logger } from '$lib/utils/logger';
 						<!-- Vuxna -->
 						<div class="flex justify-between">
 							<span>Vuxna ({booking.number_of_adults} st):</span>
-							<span
-								>{formatPrice(booking.subtotal - (booking.optional_products_total || 0))} kr</span
-							>
+							<span>{formatPrice(booking.basePrice)} kr</span>
 						</div>
 
 						<!-- Tillvalsprodukter total (om det finns) -->

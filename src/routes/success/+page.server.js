@@ -63,6 +63,21 @@ export const load = async ({ url }) => {
 					(sum, product) => sum + parseInt(product.total_price || 0),
 					0
 				);
+			} else {
+				rows[0].optional_products = [];
+				rows[0].optional_products_total = 0;
+			}
+
+			// hämta startplatsens namn
+			if (rows[0].startlocation) {
+				const { rows: locationRows } = await client.query(
+					'SELECT location FROM start_locations WHERE id = $1',
+					[rows[0].startlocation]
+				);
+
+				if (locationRows.length > 0) {
+					rows[0].startLocationName = locationRows[0].location;
+				}
 			}
 
 			return rows[0];
@@ -71,8 +86,31 @@ export const load = async ({ url }) => {
 		// beräkna ytterligare information för visning
 		const isInvoiceBooking = booking.payment_method === 'invoice';
 
+		// beräkna prisdetaljer
+		const amountTotalExcVat = parseInt(booking.amount_total_exc_vat) || 0;
+		const amountTotalIncVat = parseInt(booking.amount_total_inc_vat) || 0;
+		const optionalProductsTotal = parseInt(booking.optional_products_total) || 0;
+
+		// beräkna delsumma (exkl. moms)
+		const subtotal = amountTotalExcVat;
+
+		// beräkna moms
+		const vat = amountTotalIncVat - amountTotalExcVat;
+
+		// beräkna totalt
+		const total = amountTotalIncVat;
+
+		// beräkna grundpris (exkl. tillvalsprodukter)
+		const basePrice = subtotal - optionalProductsTotal;
+
 		return {
-			booking,
+			booking: {
+				...booking,
+				subtotal,
+				vat,
+				total,
+				basePrice
+			},
 			isInvoiceBooking
 		};
 	} catch (err) {
