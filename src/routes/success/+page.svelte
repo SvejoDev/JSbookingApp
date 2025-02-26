@@ -12,8 +12,16 @@
 
 	// Price formatting
 	const formatPrice = (price) => {
-		if (typeof price === 'number' && !isNaN(price)) {
-			return price.toFixed(2);
+		if (price === null || price === undefined) return '0.00';
+
+		// Konvertera till nummer om det är en sträng
+		const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+
+		if (typeof numPrice === 'number' && !isNaN(numPrice)) {
+			return new Intl.NumberFormat('sv-SE', {
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2
+			}).format(numPrice);
 		}
 		return '0.00';
 	};
@@ -109,46 +117,65 @@
 					</div>
 				</div>
 
-				<!-- Prisdetaljer -->
-				<div class="price-details">
-					<h2 class="text-xl font-semibold mb-4">Prisdetaljer</h2>
-					<div class="space-y-2">
-						<!-- Grundpris -->
-						<div class="flex justify-between">
-							<span>Vuxna ({booking.number_of_adults} st)</span>
-							<span>{formatPrice(booking.totalAdultsExclVat)} kr</span>
-						</div>
-
-						<!-- Tillvalsprodukter -->
-						{#if booking.optional_products?.length > 0}
-							<div class="mt-4 border-t pt-2">
-								<h3 class="font-medium mb-2">Tillvalsprodukter</h3>
-								{#each booking.optional_products as product}
-									<div class="flex justify-between text-sm">
-										<span>{product.name} ({product.quantity} st)</span>
-										<span>{formatPrice(product.total_price / 1.25)} kr</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-
-						<!-- Totaler -->
-						<div class="border-t pt-2 mt-4">
+				<!-- Fakturauppgifter -->
+				{#if booking.payment_method === 'invoice' && booking.invoice_details && Object.keys(booking.invoice_details).length > 0}
+					<div class="mt-6 border-t pt-4">
+						<h3 class="text-lg font-medium mb-2">Fakturauppgifter</h3>
+						<div class="space-y-2">
 							<div class="flex justify-between">
-								<span>Totalt (exkl. moms)</span>
-								<span>{formatPrice(booking.subtotal)} kr</span>
+								<span>Organisation:</span>
+								<span>{booking.invoice_details.organization || 'Ej angiven'}</span>
 							</div>
 							<div class="flex justify-between">
-								<span>Moms (25%)</span>
-								<span>{formatPrice(booking.vat)} kr</span>
+								<span>Adress:</span>
+								<span>{booking.invoice_details.address || 'Ej angiven'}</span>
 							</div>
-							<div class="flex justify-between font-bold mt-2">
-								<span>Totalt att betala</span>
-								<span>{formatPrice(booking.total)} kr</span>
+							<div class="flex justify-between">
+								<span>Postnummer:</span>
+								<span>{booking.invoice_details.postal_code || 'Ej angivet'}</span>
+							</div>
+							<div class="flex justify-between">
+								<span>Ort:</span>
+								<span>{booking.invoice_details.city || 'Ej angiven'}</span>
+							</div>
+							{#if booking.invoice_details.marking}
+								<div class="flex justify-between">
+									<span>Märkning:</span>
+									<span>{booking.invoice_details.marking}</span>
+								</div>
+							{/if}
+							{#if booking.invoice_details.invoice_type === 'electronic' && booking.invoice_details.gln_peppol_id}
+								<div class="flex justify-between">
+									<span>GLN/PEPPOL-ID:</span>
+									<span>{booking.invoice_details.gln_peppol_id}</span>
+								</div>
+							{/if}
+							<div class="flex justify-between">
+								<span>Faktura skickas till:</span>
+								<span
+									>{booking.invoice_details.invoice_email ||
+										booking.customer_email ||
+										'Ej angiven'}</span
+								>
 							</div>
 						</div>
 					</div>
-				</div>
+				{/if}
+
+				<!-- Tillvalsprodukter - Flyttad utanför isInvoiceBooking-blocket -->
+				{#if booking.optional_products && booking.optional_products.length > 0}
+					<div class="mt-4">
+						<h4 class="font-semibold mb-2">Tillvalsprodukter</h4>
+						<div class="space-y-2">
+							{#each booking.optional_products as product}
+								<div class="flex justify-between">
+									<span>{product.name} ({product.quantity} st):</span>
+									<span>{formatPrice(product.total_price)} kr</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				{#if isInvoiceBooking}
 					<div class="mt-6 bg-yellow-50 p-4 rounded-lg">
@@ -230,7 +257,45 @@
 					</div>
 				{/if}
 
-				<!-- Kontaktinformation och övrig information... -->
+				<!-- Prisdetaljer - Flyttad längst ner -->
+				<div class="price-details mt-6">
+					<h3 class="text-lg font-medium mb-2">Prisdetaljer</h3>
+					<div class="space-y-2">
+						<!-- Vuxna -->
+						<div class="flex justify-between">
+							<span>Vuxna ({booking.number_of_adults} st):</span>
+							<span
+								>{formatPrice(booking.subtotal - (booking.optional_products_total || 0))} kr</span
+							>
+						</div>
+
+						<!-- Tillvalsprodukter total (om det finns) -->
+						{#if booking.optional_products && booking.optional_products.length > 0}
+							<div class="flex justify-between">
+								<span>Tillvalsprodukter:</span>
+								<span>{formatPrice(booking.optional_products_total)} kr</span>
+							</div>
+						{/if}
+
+						<!-- Delsumma -->
+						<div class="flex justify-between border-t pt-2">
+							<span>Delsumma:</span>
+							<span>{formatPrice(booking.subtotal)} kr</span>
+						</div>
+
+						<!-- Moms -->
+						<div class="flex justify-between">
+							<span>Moms (25%):</span>
+							<span>{formatPrice(booking.vat)} kr</span>
+						</div>
+
+						<!-- Totalt -->
+						<div class="flex justify-between font-bold border-t pt-2">
+							<span>Totalt att betala:</span>
+							<span>{formatPrice(booking.total)} kr</span>
+						</div>
+					</div>
+				</div>
 			</div>
 		</CardContent>
 	</Card>

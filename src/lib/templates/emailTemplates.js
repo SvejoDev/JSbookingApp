@@ -17,7 +17,19 @@ export function formatDateTime(date, time) {
 }
 
 export function formatPrice(price) {
-	return typeof price === 'number' ? price.toFixed(2) : '0.00';
+	if (price === null || price === undefined) return '0';
+
+	// Konvertera till nummer om det är en sträng
+	const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+
+	if (typeof numPrice === 'number' && !isNaN(numPrice)) {
+		// Använd samma formatering som i success-sidan
+		return new Intl.NumberFormat('sv-SE', {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2
+		}).format(numPrice);
+	}
+	return '0.00';
 }
 
 export function formatOptionalProducts(optionalProducts) {

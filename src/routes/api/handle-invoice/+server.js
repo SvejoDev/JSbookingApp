@@ -28,20 +28,59 @@ export async function POST({ request }) {
 		// Säkerställ att selectedStartLocation är ett nummer
 		const startLocation = parseInt(bookingData.selectedStartLocation) || null;
 
-		// Beräkna totalpris inklusive tillvalsprodukter
-		const optionalProductsTotal = optionalProducts.reduce(
-			(sum, product) => sum + (parseInt(product.total_price) || 0),
-			0
-		);
+		// Beräkna momssats (25% är standard i Sverige)
+		const vatRate = 0.25;
 
-		const totalPrice = parseInt(bookingData.amount_total) + optionalProductsTotal;
+		// Beräkna priser med och utan moms
+		let totalPriceIncVat = 0;
+		let totalPriceExcVat = 0;
+
+		// Om bookingData.amount_total finns, använd det som inklusive moms
+		if (bookingData.amount_total) {
+			totalPriceIncVat = parseInt(bookingData.amount_total) || 0;
+			totalPriceExcVat = Math.round(totalPriceIncVat / (1 + vatRate));
+		} else {
+			// Annars beräkna från grundpriset och addons
+			// Grundpris för vuxna och barn
+			const adultPrice = 500; // Ersätt med faktiskt pris från din databas
+			const childPrice = 250; // Ersätt med faktiskt pris från din databas
+
+			const basePrice =
+				(parseInt(bookingData.number_of_adults) || 0) * adultPrice +
+				(parseInt(bookingData.number_of_children) || 0) * childPrice;
+
+			// Lägg till pris för addons
+			const addonsPrice =
+				(parseInt(bookingData.addons.amount_canoes) || 0) * 200 +
+				(parseInt(bookingData.addons.amount_kayak) || 0) * 250 +
+				(parseInt(bookingData.addons.amount_sup) || 0) * 300;
+
+			// Lägg till pris för optional products
+			const optionalProductsPrice = (bookingData.optional_products || []).reduce(
+				(sum, product) => sum + parseInt(product.total_price || 0),
+				0
+			);
+
+			// Beräkna totalpris inklusive moms
+			totalPriceIncVat = basePrice + addonsPrice + optionalProductsPrice;
+
+			// Beräkna pris exklusive moms
+			totalPriceExcVat = Math.round(totalPriceIncVat / (1 + vatRate));
+		}
+
+		// Kontrollera att värdena är giltiga tal
+		totalPriceIncVat = isNaN(totalPriceIncVat) ? 0 : totalPriceIncVat;
+		totalPriceExcVat = isNaN(totalPriceExcVat) ? 0 : totalPriceExcVat;
+
+		console.log('Beräknade priser:', { totalPriceExcVat, totalPriceIncVat });
 
 		// Säkerställ att alla numeriska värden är giltiga
 		const safeBookingData = {
 			...bookingData,
 			number_of_adults: parseInt(bookingData.number_of_adults) || 0,
 			number_of_children: parseInt(bookingData.number_of_children) || 0,
-			amount_total: parseInt(bookingData.amount_total) || 0,
+			amount_total_exc_vat: totalPriceExcVat,
+			amount_total_inc_vat: totalPriceIncVat,
 			start_slot: parseInt(startSlot) || 0,
 			end_slot: parseInt(endSlot) || 0,
 			total_slots: parseInt(totalSlots) || 0,
@@ -58,7 +97,8 @@ export async function POST({ request }) {
 			'end_time',
 			'number_of_adults',
 			'number_of_children',
-			'amount_total',
+			'amount_total_exc_vat',
+			'amount_total_inc_vat',
 			'booking_name',
 			'booking_lastname',
 			'customer_email',
@@ -87,7 +127,8 @@ export async function POST({ request }) {
 			safeBookingData.end_time,
 			safeBookingData.number_of_adults,
 			safeBookingData.number_of_children,
-			safeBookingData.amount_total,
+			safeBookingData.amount_total_exc_vat,
+			safeBookingData.amount_total_inc_vat,
 			safeBookingData.booking_name,
 			safeBookingData.booking_lastname,
 			safeBookingData.customer_email,
@@ -130,11 +171,11 @@ export async function POST({ request }) {
 			`INSERT INTO bookings (
 				experience_id, experience, start_date, end_date,
 				start_time, end_time, number_of_adults, number_of_children,
-				amount_total, booking_name, booking_lastname, customer_email,
-				customer_phone, customer_comment, booking_type, startlocation,
-				status, start_slot, end_slot, total_slots, payment_method,
+				amount_total_exc_vat, amount_total_inc_vat, booking_name,
+				booking_lastname, customer_email, customer_phone, customer_comment, booking_type,
+				startlocation, status, start_slot, end_slot, total_slots, payment_method,
 				confirmation_sent, amount_canoes, amount_kayak, amount_sup
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 			RETURNING id`,
 			[
 				parseInt(safeBookingData.experience_id) || null,
@@ -145,7 +186,8 @@ export async function POST({ request }) {
 				safeBookingData.end_time,
 				safeBookingData.number_of_adults,
 				safeBookingData.number_of_children,
-				totalPrice,
+				safeBookingData.amount_total_exc_vat,
+				safeBookingData.amount_total_inc_vat,
 				safeBookingData.booking_name,
 				safeBookingData.booking_lastname,
 				safeBookingData.customer_email,
@@ -199,25 +241,42 @@ export async function POST({ request }) {
 			}
 		}
 
-		// Spara fakturainformation om det är en fakturabetaling
-		if (safeBookingData.payment_method === 'invoice') {
-			await query(
-				`INSERT INTO invoice_details (
-					booking_id, invoice_type, invoice_email, gln_peppol_id,
-					marking, organization, address, postal_code, city
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-				[
-					bookingId,
-					invoiceData.invoiceType,
-					invoiceData.invoiceEmail,
-					invoiceData.glnPeppolId || '',
-					invoiceData.marking || '',
-					invoiceData.organization,
-					invoiceData.address,
-					invoiceData.postalCode,
-					invoiceData.city
-				]
-			);
+		// Spara fakturauppgifter i invoice_details-tabellen
+		if (invoiceData) {
+			try {
+				console.log('Sparar fakturauppgifter:', invoiceData);
+
+				const invoiceResult = await query(
+					`INSERT INTO invoice_details (
+						booking_id, 
+						invoice_type, 
+						invoice_email, 
+						gln_peppol_id, 
+						marking, 
+						organization, 
+						address, 
+						postal_code, 
+						city
+					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+					RETURNING id`,
+					[
+						bookingId,
+						invoiceData.invoiceType,
+						invoiceData.invoiceEmail,
+						invoiceData.glnPeppolId || '',
+						invoiceData.marking || '',
+						invoiceData.organization,
+						invoiceData.address,
+						invoiceData.postalCode,
+						invoiceData.city
+					]
+				);
+
+				console.log('✅ Fakturauppgifter sparade med ID:', invoiceResult.rows[0].id);
+			} catch (error) {
+				console.error('Fel vid sparande av fakturauppgifter:', error);
+				// Fortsätt processen även om fakturauppgifterna inte kunde sparas
+			}
 		}
 
 		// Lägg till extra loggning före e-postutskick

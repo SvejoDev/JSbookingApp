@@ -30,40 +30,43 @@ Handlebars.registerHelper({
 		}
 	},
 
-	formatPrice: function (price) {
-		try {
-			return new Intl.NumberFormat('sv-SE', {
-				style: 'currency',
-				currency: 'SEK',
-				minimumFractionDigits: 0,
-				maximumFractionDigits: 0
-			}).format(price || 0);
-		} catch (error) {
-			console.error('Fel vid prisformatering:', error);
-			return '0 kr';
-		}
-	},
-
 	formatDate: function (date) {
+		if (!date) return '';
 		try {
-			if (!date) return '';
-			return new Intl.DateTimeFormat('sv-SE', {
+			const dateObj = new Date(date);
+			return dateObj.toLocaleDateString('sv-SE', {
 				year: 'numeric',
 				month: 'long',
 				day: 'numeric'
-			}).format(new Date(date));
+			});
 		} catch (error) {
 			console.error('Fel vid datumformatering:', error);
 			return '';
 		}
 	},
 
-	multiply: function (a, b) {
-		return (Number(a) || 0) * (Number(b) || 0);
+	// Använd den förbättrade formatPrice-funktionen från emailTemplates.js
+	formatPrice: function (price) {
+		return formatPrice(price);
 	},
 
 	eq: function (a, b) {
 		return a === b;
+	},
+
+	// Lägg till en hjälpfunktion för att formatera betalningsmetod
+	formatPaymentMethod: function (method) {
+		if (!method) return 'Ej angiven';
+
+		switch (method.toLowerCase()) {
+			case 'card':
+			case 'stripe':
+				return 'Kortbetalning';
+			case 'invoice':
+				return 'Faktura';
+			default:
+				return method;
+		}
 	}
 });
 
@@ -93,6 +96,51 @@ Handlebars.registerHelper('formatPrice', function (price) {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 0
 	}).format(price || 0);
+});
+
+// Lägg till dessa hjälpfunktioner för Handlebars
+const handlebarsHelpers = {
+	formatDate: (date) => {
+		if (!date) return '';
+		const d = new Date(date);
+		return d.toLocaleDateString('sv-SE');
+	},
+	formatPrice: (price) => {
+		if (price === undefined || price === null) return '0';
+		return Math.round(price)
+			.toString()
+			.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+	},
+	subtract: (a, b) => {
+		return a - b;
+	},
+	default: (value, defaultValue) => {
+		return value !== undefined && value !== null ? value : defaultValue;
+	}
+};
+
+// registrera handlebars helpers
+Handlebars.registerHelper('multiply', function (a, b) {
+	return (a || 0) * (b || 0);
+});
+
+Handlebars.registerHelper('eq', function (a, b) {
+	return a === b;
+});
+
+Handlebars.registerHelper('formatPrice', function (price) {
+	if (price === undefined || price === null) return '0';
+	return Math.round(price)
+		.toString()
+		.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+});
+
+Handlebars.registerHelper('subtract', function (a, b) {
+	return a - b;
+});
+
+Handlebars.registerHelper('default', function (value, defaultValue) {
+	return value !== undefined && value !== null ? value : defaultValue;
 });
 
 // uppdatera bokningsbekräftelsemallen
@@ -569,12 +617,31 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 	}
 }
 
-// uppdatera sendBookingConfirmation funktionen
+// Uppdatera sendBookingConfirmation funktionen
 export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
 	try {
 		// detaljerad loggning av inkommande data
 		console.log('=== BOKNINGSBEKRÄFTELSE STARTAR ===');
 		console.log('Inkommande bokningsdata:', JSON.stringify(bookingData, null, 2));
+
+		// Hämta den senaste bokningsdatan från databasen för att säkerställa korrekt amount_total
+		if (bookingData.id) {
+			try {
+				const {
+					rows: [latestBooking]
+				} = await query('SELECT amount_total FROM bookings WHERE id = $1', [bookingData.id]);
+
+				if (latestBooking && latestBooking.amount_total) {
+					console.log('Uppdaterar amount_total från databasen:', {
+						original: bookingData.amount_total,
+						fromDb: latestBooking.amount_total
+					});
+					bookingData.amount_total = latestBooking.amount_total;
+				}
+			} catch (dbError) {
+				console.error('Fel vid hämtning av senaste bokningsdata:', dbError);
+			}
+		}
 
 		// validera nödvändiga fält
 		const requiredFields = [
@@ -597,7 +664,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 
 		// standardisera startlocation-fälten
 		let startLocationId = bookingData.startlocation;
-		let startLocationName = bookingData.startLocationName;
+		let startLocationName = bookingData.startlocation_name || bookingData.startLocationName;
 
 		// hämta startplatsinfo om id finns men namn saknas
 		if (startLocationId && !startLocationName) {
@@ -623,9 +690,49 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			...bookingData,
 			startLocationName: startLocationName || 'Ej angiven',
 			startlocation: startLocationId, // behåll originalfältet
-			adultPrice: bookingData.adultPrice || 0,
-			date_time_created: bookingData.date_time_created || new Date().toISOString()
+			adultPrice: bookingData.adultPrice || bookingData.adult_price || 0,
+			date_time_created: bookingData.date_time_created || new Date().toISOString(),
+
+			// Använd endast de nya priskolumnerna
+			subtotal: bookingData.amount_total_exc_vat || 0,
+			vat:
+				bookingData.amount_total_inc_vat && bookingData.amount_total_exc_vat
+					? bookingData.amount_total_inc_vat - bookingData.amount_total_exc_vat
+					: 0,
+			total: bookingData.amount_total_inc_vat || 0,
+
+			// Beräkna totalpris för tillvalsprodukter om det finns
+			optional_products_total: Array.isArray(bookingData.optional_products)
+				? bookingData.optional_products.reduce(
+						(sum, product) => sum + parseInt(product.total_price || 0),
+						0
+					)
+				: 0,
+
+			// Säkerställ att payment_method finns och är korrekt
+			payment_method: bookingData.payment_method || (isInvoiceBooking ? 'invoice' : 'card'),
+
+			// lägg till priser och summering med de nya priskolumnerna
+			summary: {
+				subtotal: bookingData.amount_total_exc_vat || 0,
+				vat:
+					bookingData.amount_total_inc_vat && bookingData.amount_total_exc_vat
+						? bookingData.amount_total_inc_vat - bookingData.amount_total_exc_vat
+						: 0,
+				total: bookingData.amount_total_inc_vat || 0
+			}
 		};
+
+		// Lägg till loggning för att se exakta värden
+		console.log('Prisberäkning i e-post:', {
+			amount_total: bookingData.amount_total,
+			amount_total_exc_vat: bookingData.amount_total_exc_vat,
+			amount_total_inc_vat: bookingData.amount_total_inc_vat,
+			optional_products_total: enrichedBookingData.optional_products_total,
+			subtotal: enrichedBookingData.subtotal,
+			vat: enrichedBookingData.vat,
+			total: enrichedBookingData.total
+		});
 
 		console.log('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
 
@@ -704,7 +811,6 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 				end_time: bookingData.end_time,
 				number_of_adults: bookingData.number_of_adults,
 				number_of_children: bookingData.number_of_children,
-				amount_total: bookingData.amount_total,
 				// addon information
 				addons_info: bookingData.addons_info || [],
 				// optional products
@@ -713,11 +819,14 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 				startlocation_name: bookingData.startlocation_name,
 				adult_price: bookingData.adult_price
 			},
-			// lägg till priser och summering
+			// lägg till priser och summering med de nya priskolumnerna
 			summary: {
-				subtotal: Math.round(bookingData.amount_total / 1.25),
-				vat: Math.round(bookingData.amount_total - bookingData.amount_total / 1.25),
-				total: bookingData.amount_total
+				subtotal: bookingData.amount_total_exc_vat || 0,
+				vat:
+					bookingData.amount_total_inc_vat && bookingData.amount_total_exc_vat
+						? bookingData.amount_total_inc_vat - bookingData.amount_total_exc_vat
+						: 0,
+				total: bookingData.amount_total_inc_vat || 0
 			}
 		};
 

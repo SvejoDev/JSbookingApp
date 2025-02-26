@@ -1,4 +1,5 @@
 import { query } from '$lib/db.js';
+import { stripe } from '$lib/stripe.js';
 
 export async function load({ params }) {
 	try {
@@ -162,4 +163,79 @@ async function getAvailableCapacity(experienceId, date, startTime) {
 	const maxAllowed = parseInt(maxCapacity.rows[0]?.max_participants || 0);
 
 	return maxAllowed - totalBooked;
+}
+
+async function createStripeSession(experience, formData, url) {
+	// Beräkna totalpris exklusive moms
+	const basePrice = parseInt(experience.price) * parseInt(formData.number_of_adults);
+	const optionalProductsTotal = experience.optional_products.reduce(
+		(sum, product) => sum + parseInt(product.total_price || 0),
+		0
+	);
+	const totalPriceExcVat = basePrice + optionalProductsTotal;
+	const totalPriceIncVat = Math.round(totalPriceExcVat * 1.25);
+
+	// Skapa Stripe-session
+	const session = await stripe.checkout.sessions.create({
+		payment_method_types: ['card'],
+		line_items: [
+			{
+				price_data: {
+					currency: 'sek',
+					product_data: {
+						name: `${experience.name} - ${formData.number_of_adults} vuxna`,
+						description: `Bokning för ${formData.start_date} kl ${formData.start_time}`
+					},
+					unit_amount: totalPriceIncVat * 100 // Stripe använder minsta valutaenhet (öre)
+				},
+				quantity: 1
+			}
+		],
+		mode: 'payment',
+		success_url: `${url.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+		cancel_url: `${url.origin}/booking/${experience.id}?canceled=true`,
+		metadata: {
+			amount_total_exc_vat: totalPriceExcVat.toString(),
+			amount_total_inc_vat: totalPriceIncVat.toString()
+		}
+	});
+
+	// Spara både exkl. och inkl. moms i databasen
+	const result = await query(
+		`INSERT INTO bookings (
+			experience_id, start_date, start_time, end_date, end_time, 
+			number_of_adults, number_of_children, 
+			amount_total_exc_vat, amount_total_inc_vat,
+			startlocation, customer_comment, booking_name, booking_lastname, 
+			customer_email, customer_phone, status, stripe_session_id, 
+			experience, start_slot, end_slot, total_slots, booking_type, payment_method
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING id`,
+		[
+			experience.id,
+			formData.start_date,
+			formData.start_time,
+			formData.end_date,
+			formData.end_time,
+			formData.number_of_adults,
+			formData.number_of_children,
+			totalPriceExcVat,
+			totalPriceIncVat,
+			formData.startlocation,
+			formData.customer_comment,
+			formData.booking_name,
+			formData.booking_lastname,
+			formData.customer_email,
+			formData.customer_phone,
+			'pending_payment',
+			session.id,
+			experience.name,
+			formData.start_slot,
+			formData.end_slot,
+			formData.total_slots,
+			'stripe',
+			'stripe'
+		]
+	);
+
+	return session.id;
 }

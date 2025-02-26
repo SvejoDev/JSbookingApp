@@ -97,11 +97,12 @@ export async function POST({ request }) {
 							startLocationName: session.metadata.startlocation_name,
 							startlocation: booking.startlocation,
 							adultPrice: parseInt(session.metadata.adult_price),
-							subtotal: parseInt(session.metadata.amount_total) / 1.25,
+							subtotal: booking.amount_total_exc_vat || 0,
 							vat:
-								parseInt(session.metadata.amount_total) -
-								parseInt(session.metadata.amount_total) / 1.25,
-							total: parseInt(session.metadata.amount_total),
+								booking.amount_total_inc_vat && booking.amount_total_exc_vat
+									? booking.amount_total_inc_vat - booking.amount_total_exc_vat
+									: 0,
+							total: booking.amount_total_inc_vat || 0,
 							date_time_created: booking.date_time_created,
 							start_date: session.metadata.start_date,
 							end_date: session.metadata.end_date,
@@ -119,7 +120,10 @@ export async function POST({ request }) {
 								{ name: 'Kajak', amount: booking.amount_kayak },
 								{ name: 'SUP', amount: booking.amount_sup }
 							],
-							optional_products: JSON.parse(session.metadata.optional_products || '[]')
+							optional_products: JSON.parse(session.metadata.optional_products || '[]'),
+							optional_products_total: JSON.parse(
+								session.metadata.optional_products || '[]'
+							).reduce((sum, product) => sum + parseInt(product.total_price || 0), 0)
 						};
 
 						console.log(
@@ -330,11 +334,11 @@ async function createBooking(client, metadata, session) {
 	// säkerställ att alla numeriska värden är giltiga integers
 	const numberOfAdults = parseInt(metadata.number_of_adults) || 0;
 	const numberOfChildren = parseInt(metadata.number_of_children) || 0;
+	const amountTotalExcVat = parseInt(metadata.amount_total_exc_vat) || 0;
+	const amountTotalIncVat = parseInt(metadata.amount_total_inc_vat) || 0;
 	const amountCanoes = parseInt(metadata.amount_canoes) || 0;
 	const amountKayak = parseInt(metadata.amount_kayak) || 0;
 	const amountSup = parseInt(metadata.amount_sup) || 0;
-	const amountTotal = parseInt(metadata.amount_total) || 0;
-	const startlocation = parseInt(metadata.startlocation) || null;
 
 	// beräkna start_slot, end_slot och total_slots
 	const startSlot = metadata.start_slot
@@ -348,6 +352,8 @@ async function createBooking(client, metadata, session) {
 	// bestäm booking_type (day eller overnight)
 	const bookingType =
 		metadata.booking_type || (metadata.start_date === metadata.end_date ? 'day' : 'overnight');
+
+	const startlocation = parseInt(metadata.startlocation) || null;
 
 	// logga startlocation-värdet för felsökning
 	console.log('Startlocation-värde som ska sparas:', {
@@ -376,7 +382,8 @@ async function createBooking(client, metadata, session) {
 			end_time, 
 			number_of_adults, 
 			number_of_children, 
-			amount_total, 
+			amount_total_exc_vat,
+			amount_total_inc_vat,
 			startlocation, 
 			customer_comment, 
 			amount_canoes, 
@@ -394,7 +401,7 @@ async function createBooking(client, metadata, session) {
 			booking_type, 
 			payment_method, 
 			customer_phone
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		RETURNING *`,
 		[
 			metadata.experience_id,
@@ -405,7 +412,8 @@ async function createBooking(client, metadata, session) {
 			metadata.end_time,
 			numberOfAdults,
 			numberOfChildren,
-			amountTotal,
+			amountTotalExcVat,
+			amountTotalIncVat,
 			startlocation,
 			metadata.customer_comment,
 			amountCanoes,
@@ -456,7 +464,13 @@ async function createBookingOptionalProducts(client, bookingId, metadata) {
 		}
 
 		// parsa optional_products från metadata
-		const optionalProducts = JSON.parse(metadata.optional_products || '[]');
+		let optionalProducts;
+		try {
+			optionalProducts = JSON.parse(metadata.optional_products || '[]');
+		} catch (error) {
+			console.error('Fel vid parsning av optional_products:', error);
+			return;
+		}
 
 		console.log('Sparar optional products:', optionalProducts);
 

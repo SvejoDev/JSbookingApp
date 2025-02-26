@@ -12,13 +12,14 @@ export async function POST({ request }) {
 		const data = await request.json();
 		console.log('Checkout Request Data:', data);
 
-		// Beräkna totalpris inklusive tillvalsprodukter
+		// Beräkna totalpris exklusive moms
+		const basePrice = parseInt(data.base_price) * parseInt(data.number_of_adults);
 		const optionalProductsTotal = (data.optional_products || []).reduce(
 			(sum, product) => sum + (parseInt(product.total_price) || 0),
 			0
 		);
-
-		const totalPrice = parseInt(data.amount_total) + optionalProductsTotal;
+		const totalPriceExcVat = basePrice + optionalProductsTotal;
+		const totalPriceIncVat = Math.round(totalPriceExcVat * 1.25);
 
 		// Skapa Stripe checkout session
 		const session = await stripe.checkout.sessions.create({
@@ -31,7 +32,7 @@ export async function POST({ request }) {
 							name: `${data.experience} - ${data.number_of_adults} vuxna`,
 							description: `Datum: ${data.start_date}, Tid: ${data.start_time}`
 						},
-						unit_amount: totalPrice * 100 // Stripe använder minsta valutaenhet (öre)
+						unit_amount: totalPriceIncVat * 100 // Stripe använder minsta valutaenhet (öre)
 					},
 					quantity: 1
 				}
@@ -43,30 +44,17 @@ export async function POST({ request }) {
 				experience_id: data.experience_id,
 				experience: data.experience,
 				start_date: data.start_date,
-				end_date: data.end_date || data.start_date,
+				end_date: data.end_date,
 				start_time: data.start_time,
 				end_time: data.end_time,
 				number_of_adults: data.number_of_adults,
 				number_of_children: data.number_of_children,
-				booking_name: data.booking_name,
-				booking_lastname: data.booking_lastname,
-				customer_email: data.customer_email,
-				customer_phone: data.customer_phone,
-				customer_comment: data.customer_comment || '',
-				startlocation: data.selectedStartLocation,
-				startlocation_name: data.startLocationName,
-				adult_price: data.adultPrice,
-				amount_total: totalPrice,
-				totalAdultsExclVat: data.totalAdultsExclVat,
-				optionalProductsTotal: optionalProductsTotal,
-				amount_canoes: data.addons?.amount_canoes || 0,
-				amount_kayak: data.addons?.amount_kayak || 0,
-				amount_sup: data.addons?.amount_sup || 0,
-				optional_products: JSON.stringify(data.optional_products || []),
-				start_slot: data.start_slot,
-				end_slot: data.end_slot,
-				total_slots: data.total_slots,
-				booking_type: data.booking_type || 'day'
+				amount_total_exc_vat: totalPriceExcVat.toString(),
+				amount_total_inc_vat: totalPriceIncVat.toString(),
+				adult_price: data.base_price,
+				startlocation: data.startlocation,
+				startlocation_name: data.startlocation_name,
+				optional_products: JSON.stringify(data.optional_products || [])
 			}
 		});
 

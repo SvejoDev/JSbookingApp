@@ -32,46 +32,77 @@ export const bookingConfirmationTemplate = `
             gap: 10px;
             margin-bottom: 20px;
         }
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .price-total {
+            font-weight: bold;
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h2>Bokningsbekräftelse - Stisses</h2>
-        <p>Bokningsnummer: {{booking.id}}</p>
-        <p>Skapades: {{formatDateTime booking.date_time_created}}</p>
+        <p>Bokningsnummer: #{{booking.id}}</p>
     </div>
 
     <div class="section">
         <h3>Bokningsdetaljer</h3>
         <div class="details-grid">
             <p><strong>Upplevelse:</strong> {{booking.experience}}</p>
-            <p><strong>Datum:</strong> {{formatDate booking.start_date}}</p>
-            <p><strong>Tid:</strong> {{booking.start_time}} - {{booking.end_time}}</p>
             <p><strong>Startplats:</strong> {{booking.startLocationName}}</p>
+            <p><strong>Datum:</strong> {{formatDate booking.start_date}} kl. {{booking.start_time}}</p>
+            <p><strong>Slutdatum:</strong> {{formatDate booking.end_date}} kl. {{booking.end_time}}</p>
+            <p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+            <p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
         </div>
     </div>
 
+    {{#if booking.payment_method}}
     <div class="section">
-        <h3>Deltagare och utrustning</h3>
+        <h3>Betalningsinformation</h3>
+        <p><strong>Betalningsmetod:</strong> {{formatPaymentMethod booking.payment_method}}</p>
+        
+        {{#eq booking.payment_method "invoice"}}
+        {{#if booking.invoice_details}}
+        <h3>Fakturauppgifter</h3>
         <div class="details-grid">
-            <p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
-            <p><strong>Pris per vuxen:</strong> {{formatPrice booking.adultPrice}}</p>
-            {{#if booking.number_of_children}}
-            <p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+            <p><strong>Organisation:</strong> {{booking.invoice_details.organization}}</p>
+            <p><strong>Adress:</strong> {{booking.invoice_details.address}}</p>
+            <p><strong>Postnummer:</strong> {{booking.invoice_details.postal_code}}</p>
+            <p><strong>Ort:</strong> {{booking.invoice_details.city}}</p>
+            {{#if booking.invoice_details.marking}}
+            <p><strong>Märkning:</strong> {{booking.invoice_details.marking}}</p>
             {{/if}}
+            {{#if booking.invoice_details.gln_peppol_id}}
+            <p><strong>GLN/PEPPOL-ID:</strong> {{booking.invoice_details.gln_peppol_id}}</p>
+            {{/if}}
+            <p><strong>Faktura skickas till:</strong> {{booking.customer_email}}</p>
         </div>
+        {{/if}}
+        {{/eq}}
+    </div>
+    {{/if}}
 
-        {{#if booking.addons.length}}
-        <h4>Utrustning</h4>
+    {{#if booking.addons}}
+    <div class="section">
+        <h3>Bokade produkter</h3>
         <ul>
             {{#each booking.addons}}
-            <li>{{name}}: {{amount}}</li>
+            {{#if amount}}
+            <li>{{name}}: {{amount}} st</li>
+            {{/if}}
             {{/each}}
         </ul>
-        {{/if}}
     </div>
+    {{/if}}
 
-    {{#if booking.optional_products.length}}
+    {{#if booking.optional_products}}
     <div class="section">
         <h3>Tillvalsprodukter</h3>
         <ul>
@@ -82,12 +113,19 @@ export const bookingConfirmationTemplate = `
     </div>
     {{/if}}
 
-    <div class="section">
-        <h3>Prissammanställning</h3>
-        <div class="details-grid">
-            <p><strong>Delsumma:</strong> {{formatPrice booking.subtotal}}</p>
-            <p><strong>Moms (25%):</strong> {{formatPrice booking.vat}}</p>
-            <p><strong>Totalt:</strong> {{formatPrice booking.total}}</p>
+    <div class="price-details">
+        <h3>Prisdetaljer</h3>
+        <div class="price-row">
+            <span>Delsumma (exkl. moms):</span>
+            <span>{{formatPrice booking.subtotal}} kr</span>
+        </div>
+        <div class="price-row">
+            <span>Moms (25%):</span>
+            <span>{{formatPrice booking.vat}} kr</span>
+        </div>
+        <div class="price-row price-total">
+            <span>Totalt att betala:</span>
+            <span>{{formatPrice booking.total}} kr</span>
         </div>
     </div>
 
