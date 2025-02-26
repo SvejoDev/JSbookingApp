@@ -69,22 +69,21 @@ export const bookingConfirmationTemplate = `
         <p><strong>Betalningsmetod:</strong> {{formatPaymentMethod booking.payment_method}}</p>
         
         {{#eq booking.payment_method "invoice"}}
-        {{#if booking.invoice_details}}
-        <h3>Fakturauppgifter</h3>
-        <div class="details-grid">
-            <p><strong>Organisation:</strong> {{booking.invoice_details.organization}}</p>
-            <p><strong>Adress:</strong> {{booking.invoice_details.address}}</p>
-            <p><strong>Postnummer:</strong> {{booking.invoice_details.postal_code}}</p>
-            <p><strong>Ort:</strong> {{booking.invoice_details.city}}</p>
-            {{#if booking.invoice_details.marking}}
-            <p><strong>Märkning:</strong> {{booking.invoice_details.marking}}</p>
+            {{#if booking.invoice_details}}
+            <div class="invoice-details">
+                <p><strong>Organisation:</strong> {{booking.invoice_details.organization}}</p>
+                <p><strong>Adress:</strong> {{booking.invoice_details.address}}</p>
+                <p><strong>Postnummer:</strong> {{booking.invoice_details.postal_code}}</p>
+                <p><strong>Ort:</strong> {{booking.invoice_details.city}}</p>
+                {{#if booking.invoice_details.marking}}
+                <p><strong>Märkning:</strong> {{booking.invoice_details.marking}}</p>
+                {{/if}}
+                {{#if booking.invoice_details.gln_peppol_id}}
+                <p><strong>GLN/PEPPOL-ID:</strong> {{booking.invoice_details.gln_peppol_id}}</p>
+                {{/if}}
+                <p><strong>Faktura skickas till:</strong> {{booking.customer_email}}</p>
+            </div>
             {{/if}}
-            {{#if booking.invoice_details.gln_peppol_id}}
-            <p><strong>GLN/PEPPOL-ID:</strong> {{booking.invoice_details.gln_peppol_id}}</p>
-            {{/if}}
-            <p><strong>Faktura skickas till:</strong> {{booking.customer_email}}</p>
-        </div>
-        {{/if}}
         {{/eq}}
     </div>
     {{/if}}

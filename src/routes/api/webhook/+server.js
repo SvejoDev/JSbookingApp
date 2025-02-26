@@ -92,6 +92,17 @@ export async function POST({ request }) {
 					await updateAvailabilityForBooking(client, session.metadata);
 
 					if (!session.metadata.confirmation_sent) {
+						// hämta alla addons
+						const { rows: addons } = await client.query('SELECT name, column_name FROM addons');
+
+						// skapa dynamisk addonslista
+						const bookingAddons = addons
+							.map((addon) => ({
+								name: addon.name,
+								amount: booking[addon.column_name] || 0
+							}))
+							.filter((addon) => addon.amount > 0);
+
 						const formattedBooking = {
 							...booking,
 							id: booking.id,
@@ -116,11 +127,7 @@ export async function POST({ request }) {
 							experience: booking.experience,
 							number_of_adults: booking.number_of_adults,
 							number_of_children: booking.number_of_children,
-							addons: [
-								{ name: 'Kanot', amount: booking.amount_canoes },
-								{ name: 'Kajak', amount: booking.amount_kayak },
-								{ name: 'SUP', amount: booking.amount_sup }
-							],
+							addons: bookingAddons,
 							optional_products: JSON.parse(session.metadata.optional_products || '[]'),
 							optional_products_total: JSON.parse(
 								session.metadata.optional_products || '[]'
@@ -337,9 +344,13 @@ async function createBooking(client, metadata, session) {
 	const numberOfChildren = parseInt(metadata.number_of_children) || 0;
 	const amountTotalExcVat = parseInt(metadata.amount_total_exc_vat) || 0;
 	const amountTotalIncVat = parseInt(metadata.amount_total_inc_vat) || 0;
-	const amountCanoes = parseInt(metadata.amount_canoes) || 0;
-	const amountKayak = parseInt(metadata.amount_kayak) || 0;
-	const amountSup = parseInt(metadata.amount_sup) || 0;
+
+	// hämta alla addons och deras kolumnnamn
+	const { rows: addons } = await client.query('SELECT id, name, column_name FROM addons');
+
+	// skapa dynamiska kolumner och värden för addons
+	const addonColumns = addons.map((addon) => addon.column_name);
+	const addonValues = addons.map((addon) => parseInt(metadata[addon.column_name]) || 0);
 
 	// beräkna start_slot, end_slot och total_slots
 	const startSlot = metadata.start_slot
@@ -350,109 +361,132 @@ async function createBooking(client, metadata, session) {
 		: calculateTimeSlot(metadata.end_time);
 	const totalSlots = metadata.total_slots ? parseInt(metadata.total_slots) : endSlot - startSlot;
 
-	// bestäm booking_type (day eller overnight)
+	// bestäm booking_type
 	const bookingType =
 		metadata.booking_type || (metadata.start_date === metadata.end_date ? 'day' : 'overnight');
 
 	const startlocation = parseInt(metadata.startlocation) || null;
 
-	// logga startlocation-värdet för felsökning
-	logger.info('Startlocation-värde som ska sparas:', {
-		raw: metadata.startlocation,
-		parsed: startlocation,
-		name: metadata.startlocation_name
-	});
+	// skapa dynamisk SQL-fråga
+	const columns = [
+		'experience_id',
+		'experience',
+		'start_date',
+		'end_date',
+		'start_time',
+		'end_time',
+		'number_of_adults',
+		'number_of_children',
+		'amount_total_exc_vat',
+		'amount_total_inc_vat',
+		'startlocation',
+		'customer_comment',
+		'booking_name',
+		'booking_lastname',
+		'customer_email',
+		'status',
+		'stripe_session_id',
+		'booking_status',
+		'start_slot',
+		'end_slot',
+		'total_slots',
+		'booking_type',
+		'payment_method',
+		'customer_phone',
+		...addonColumns
+	];
 
-	// logga slots och booking_type för felsökning
-	logger.info('Slots och booking_type som ska sparas:', {
+	const placeholders = Array.from({ length: columns.length }, (_, i) => `$${i + 1}`);
+
+	const values = [
+		metadata.experience_id,
+		metadata.experience,
+		metadata.start_date,
+		metadata.end_date,
+		metadata.start_time,
+		metadata.end_time,
+		numberOfAdults,
+		numberOfChildren,
+		amountTotalExcVat,
+		amountTotalIncVat,
+		startlocation,
+		metadata.customer_comment || '',
+		metadata.booking_name,
+		metadata.booking_lastname,
+		metadata.customer_email,
+		'confirmed',
+		session.id,
+		'pending',
 		startSlot,
 		endSlot,
 		totalSlots,
-		bookingType
-	});
+		bookingType,
+		'stripe',
+		metadata.customer_phone,
+		...addonValues
+	];
 
 	const {
 		rows: [booking]
 	} = await client.query(
-		`INSERT INTO bookings (
-			experience_id, 
-			experience, 
-			start_date, 
-			start_time, 
-			end_date, 
-			end_time, 
-			number_of_adults, 
-			number_of_children, 
-			amount_total_exc_vat,
-			amount_total_inc_vat,
-			startlocation, 
-			customer_comment, 
-			amount_canoes, 
-			amount_kayak, 
-			amount_sup, 
-			booking_name, 
-			booking_lastname, 
-			customer_email, 
-			status, 
-			stripe_session_id, 
-			booking_status, 
-			start_slot, 
-			end_slot, 
-			total_slots, 
-			booking_type, 
-			payment_method, 
-			customer_phone
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
-		RETURNING *`,
-		[
-			metadata.experience_id,
-			metadata.experience,
-			metadata.start_date,
-			metadata.start_time,
-			metadata.end_date,
-			metadata.end_time,
-			numberOfAdults,
-			numberOfChildren,
-			amountTotalExcVat,
-			amountTotalIncVat,
-			startlocation,
-			metadata.customer_comment,
-			amountCanoes,
-			amountKayak,
-			amountSup,
-			metadata.booking_name,
-			metadata.booking_lastname,
-			metadata.customer_email,
-			'pending',
-			metadata.stripe_session_id,
-			'pending',
-			startSlot,
-			endSlot,
-			totalSlots,
-			bookingType,
-			'stripe',
-			metadata.customer_phone
-		]
+		`INSERT INTO bookings (${columns.join(', ')})
+		 VALUES (${placeholders.join(', ')})
+		 RETURNING *`,
+		values
 	);
 
-	logger.info('Skapad bokning:', booking);
 	return booking;
 }
 
-async function createBookingAddons(client, bookingId, metadata) {
-	// hämta alla addons för denna experience
-	const { rows: addons } = await client.query('SELECT id, column_name FROM addons');
+async function createBookingAddons(client, bookingId, addons) {
+	try {
+		// kontrollera om det redan finns addons för denna bokning
+		const { rows: existingAddons } = await client.query(
+			'SELECT addon_id FROM booking_addons WHERE booking_id = $1',
+			[bookingId]
+		);
 
-	// skapa booking_addons poster
-	for (const addon of addons) {
-		const amount = parseInt(metadata[addon.column_name]) || 0;
-		if (amount > 0) {
-			await client.query(
-				`INSERT INTO booking_addons (booking_id, addon_id, amount)
-				 VALUES ($1, $2, $3)`,
-				[bookingId, addon.id, amount]
-			);
+		// skapa en uppslagstabell för befintliga addons
+		const existingAddonIds = new Set(existingAddons.map((row) => row.addon_id));
+
+		// hämta alla tillgängliga addons för att få deras id och column_name
+		const { rows: allAddons } = await client.query('SELECT id, column_name FROM addons');
+
+		// skapa en mappning mellan column_name och id
+		const addonColumnToId = {};
+		allAddons.forEach((addon) => {
+			addonColumnToId[addon.column_name] = addon.id;
+		});
+
+		// skapa en array för att lagra alla insättningar
+		const insertPromises = [];
+
+		// gå igenom alla addons och lägg till dem om de inte redan finns
+		for (const [key, value] of Object.entries(addons)) {
+			if (key.startsWith('amount_') && value > 0) {
+				const addonId = addonColumnToId[key];
+
+				if (addonId && !existingAddonIds.has(addonId)) {
+					// lägg bara till om addon inte redan finns för denna bokning
+					insertPromises.push(
+						client.query(
+							'INSERT INTO booking_addons (booking_id, addon_id, amount) VALUES ($1, $2, $3)',
+							[bookingId, addonId, value]
+						)
+					);
+				}
+			}
 		}
+
+		// kör alla insättningar parallellt
+		if (insertPromises.length > 0) {
+			await Promise.all(insertPromises);
+		}
+
+		return true;
+	} catch (error) {
+		console.error('Fel vid skapande av booking_addons:', error);
+		throw error;
 	}
 }
 

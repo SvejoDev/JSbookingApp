@@ -51,10 +51,6 @@ Handlebars.registerHelper({
 		return formatPrice(price);
 	},
 
-	eq: function (a, b) {
-		return a === b;
-	},
-
 	// Lägg till en hjälpfunktion för att formatera betalningsmetod
 	formatPaymentMethod: function (method) {
 		if (!method) return 'Ej angiven';
@@ -125,8 +121,12 @@ Handlebars.registerHelper('multiply', function (a, b) {
 	return (a || 0) * (b || 0);
 });
 
-Handlebars.registerHelper('eq', function (a, b) {
-	return a === b;
+Handlebars.registerHelper('eq', function (a, b, options) {
+	if (!options || typeof options.fn !== 'function' || typeof options.inverse !== 'function') {
+		logger.error('Felaktig användning av eq helper:', { a, b, options });
+		return false;
+	}
+	return a === b ? options.fn(this) : options.inverse(this);
 });
 
 Handlebars.registerHelper('formatPrice', function (price) {
@@ -888,9 +888,28 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		logger.info('Addons efter konvertering:', JSON.stringify(enrichedBookingData.addons, null, 2));
 		logger.info('Invoice details:', JSON.stringify(enrichedBookingData.invoice_details, null, 2));
 
+		// Lägg till före template-kompilering
+		logger.info('Payment Method Type:', {
+			paymentMethod: bookingData.payment_method,
+			type: typeof bookingData.payment_method
+		});
+
+		logger.info('Formatted Booking Data:', {
+			payment_method: enrichedBookingData.payment_method,
+			type: typeof enrichedBookingData.payment_method,
+			fullData: enrichedBookingData
+		});
+
 		// Registrera Handlebars-hjälpfunktioner
 		Handlebars.registerHelper('eq', function (a, b, options) {
-			return a === b ? options.fn(this) : options.options.inverse(this);
+			logger.info('EQ Helper Called:', {
+				value1: a,
+				value2: b,
+				value1Type: typeof a,
+				value2Type: typeof b,
+				hasInverse: !!options.inverse
+			});
+			return a === b ? options.fn(this) : options.inverse(this);
 		});
 
 		Handlebars.registerHelper('formatPaymentMethod', function (method) {
