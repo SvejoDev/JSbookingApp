@@ -49,15 +49,29 @@ export async function POST({ request }) {
 		console.log('Experience data:', experience);
 
 		if (!experience?.open_time || !experience?.close_time) {
-			console.log('Missing opening hours:', {
+			console.error('Missing opening hours:', {
+				experience_id: experienceId,
 				open_time: experience?.open_time,
 				close_time: experience?.close_time
 			});
 			return json({
-				error: 'Öppettider saknas för denna upplevelse',
+				error: 'Kunde inte hitta öppettider för denna upplevelse',
 				availableStartTimes: []
 			});
 		}
+
+		// validera att öppettiderna är i rätt format
+		const openTime = experience.open_time.slice(0, 5); // ta bara "HH:MM"
+		const closeTime = experience.close_time.slice(0, 5);
+
+		console.log('Validated opening hours:', {
+			openTime,
+			closeTime,
+			original: {
+				open: experience.open_time,
+				close: experience.close_time
+			}
+		});
 
 		// hämta addons data
 		const { rows: addonsList } = await query(
@@ -103,8 +117,34 @@ export async function POST({ request }) {
 			console.log('Generated possible times:', possibleTimes);
 
 			// filtrera bort tider som redan är passerade
-			const validStartTimes = await filterPastTimes(possibleTimes, date, experienceId);
-			console.log('Valid start times after filtering past times:', validStartTimes);
+			const validStartTimes = possibleTimes.filter((time) => {
+				const [hours, minutes] = time.split(':').map(Number);
+				const timeInMinutes = hours * 60 + minutes;
+
+				// kontrollera att tiden är inom öppettiderna
+				const [openHours, openMinutes] = openTime.split(':').map(Number);
+				const openTimeInMinutes = openHours * 60 + openMinutes;
+
+				// kontrollera att tiden plus bokningslängden inte går över stängningstiden
+				const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
+				const closeTimeInMinutes = closeHours * 60 + closeMinutes;
+
+				// beräkna sluttiden baserat på bokningslängden
+				const endTimeInMinutes = timeInMinutes + durationHours * 60;
+
+				return (
+					timeInMinutes >= openTimeInMinutes && // tiden är efter öppning
+					endTimeInMinutes <= closeTimeInMinutes // sluttiden är före stängning
+				);
+			});
+
+			console.log('Time filtering debug:', {
+				openTime,
+				closeTime,
+				durationHours,
+				possibleTimes: possibleTimes.length,
+				validStartTimes: validStartTimes.length
+			});
 
 			// kontrollera tillgänglighet för addons
 			const availableTimes = await checkAvailability({
@@ -265,7 +305,34 @@ async function checkAvailability({
 	);
 
 	// filtrera tider som är i det förflutna
-	const validStartTimes = await filterPastTimes(possibleTimes, date, experienceId);
+	const validStartTimes = possibleTimes.filter((time) => {
+		const [hours, minutes] = time.split(':').map(Number);
+		const timeInMinutes = hours * 60 + minutes;
+
+		// kontrollera att tiden är inom öppettiderna
+		const [openHours, openMinutes] = openTime.split(':').map(Number);
+		const openTimeInMinutes = openHours * 60 + openMinutes;
+
+		// kontrollera att tiden plus bokningslängden inte går över stängningstiden
+		const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
+		const closeTimeInMinutes = closeHours * 60 + closeMinutes;
+
+		// beräkna sluttiden baserat på bokningslängden
+		const endTimeInMinutes = timeInMinutes + durationHours * 60;
+
+		return (
+			timeInMinutes >= openTimeInMinutes && // tiden är efter öppning
+			endTimeInMinutes <= closeTimeInMinutes // sluttiden är före stängning
+		);
+	});
+
+	console.log('Time filtering debug:', {
+		openTime,
+		closeTime,
+		durationHours,
+		possibleTimes: possibleTimes.length,
+		validStartTimes: validStartTimes.length
+	});
 
 	if (validStartTimes.length === 0) {
 		return [];

@@ -572,49 +572,88 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 // uppdatera sendBookingConfirmation funktionen
 export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
 	try {
-		console.log('Förbereder bokningsbekräftelse med data:', bookingData);
+		// detaljerad loggning av inkommande data
+		console.log('=== BOKNINGSBEKRÄFTELSE STARTAR ===');
+		console.log('Inkommande bokningsdata:', JSON.stringify(bookingData, null, 2));
 
-		// Hämta startplatsens information
-		const {
-			rows: [location]
-		} = await query('SELECT sl.price, sl.location as name FROM start_locations sl WHERE id = $1', [
-			bookingData.startlocation
-		]);
+		// validera nödvändiga fält
+		const requiredFields = [
+			'id',
+			'experience',
+			'start_date',
+			'end_date',
+			'start_time',
+			'end_time',
+			'number_of_adults',
+			'customer_email',
+			'booking_name',
+			'booking_lastname'
+		];
 
-		// Berika bokningsdatan
+		const missingFields = requiredFields.filter((field) => !bookingData[field]);
+		if (missingFields.length > 0) {
+			console.warn('saknade obligatoriska fält i bokningsdata:', missingFields);
+		}
+
+		// standardisera startlocation-fälten
+		let startLocationId = bookingData.startlocation;
+		let startLocationName = bookingData.startLocationName;
+
+		// hämta startplatsinfo om id finns men namn saknas
+		if (startLocationId && !startLocationName) {
+			try {
+				const {
+					rows: [location]
+				} = await query(
+					'SELECT sl.price, sl.location as name FROM start_locations sl WHERE id = $1',
+					[startLocationId]
+				);
+
+				if (location) {
+					startLocationName = location.name;
+					bookingData.adultPrice = bookingData.adultPrice || location.price || 0;
+				}
+			} catch (locError) {
+				console.error('fel vid hämtning av startplats:', locError);
+			}
+		}
+
+		// skapa en berikad version av bokningsdatan
 		const enrichedBookingData = {
 			...bookingData,
-			price_per_adult: location?.price || 0,
-			startLocation: location?.name || 'Ej angiven',
-			date_time_created: bookingData.date_time_created || new Date().toISOString(),
-			// Säkerställ att amount_total är ett nummer
-			amount_total: Number(bookingData.amount_total) || 0
+			startLocationName: startLocationName || 'Ej angiven',
+			startlocation: startLocationId, // behåll originalfältet
+			adultPrice: bookingData.adultPrice || 0,
+			date_time_created: bookingData.date_time_created || new Date().toISOString()
 		};
 
-		console.log('Berikad bokningsdata:', enrichedBookingData);
+		console.log('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
 
-		// välj rätt mall baserat på bokningstyp
-		const template = Handlebars.compile(
-			isInvoiceBooking ? invoiceBookingTemplate : bookingTemplate
-		);
-
-		// kompilera template med all bokningsdata
+		// kompilera mallen med handlebars
+		const template = Handlebars.compile(bookingConfirmationTemplate);
 		const html = template({
-			booking: enrichedBookingData,
-			invoice: isInvoiceBooking ? bookingData : null
+			booking: enrichedBookingData
 		});
 
-		// skicka e-postmeddelandet
+		// logga html för felsökning
+		console.log(
+			'Genererad HTML för bokningsbekräftelse (första 500 tecken):',
+			html.substring(0, 500) + '...'
+		);
+
+		// skicka e-post
 		await sendEmail({
-			to: bookingData.customer_email,
+			to: enrichedBookingData.customer_email,
 			subject: 'Bokningsbekräftelse - Stisses',
 			html,
 			type: 'booking'
 		});
 
-		console.log('✉️ Bokningsbekräftelse skickad till:', bookingData.customer_email);
+		console.log('✉️ Bokningsbekräftelse skickad till:', enrichedBookingData.customer_email);
+		console.log('=== BOKNINGSBEKRÄFTELSE SLUTFÖRD ===');
 	} catch (error) {
-		console.error('Fel vid skickande av bokningsbekräftelse:', error);
+		console.error('Detaljerat fel i sendBookingConfirmation:', error);
+		console.error('Felstack:', error.stack);
 		throw error;
 	}
 }

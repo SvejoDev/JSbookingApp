@@ -21,7 +21,7 @@ export const load = async ({ url }) => {
 				`WITH booking_base AS (
 					SELECT b.* 
 					FROM bookings b 
-					WHERE ${bookingId ? 'b.id = $1' : 'b.stripe_session_id = $1'}
+					WHERE ${bookingId ? 'b.id = $1::integer' : 'b.stripe_session_id = $1::text'}
 					FOR UPDATE
 				)
 				SELECT 

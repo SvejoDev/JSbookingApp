@@ -3,6 +3,7 @@ import { query, transaction } from '$lib/db.js';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
 import { timeToSlot, calculateTotalSlots } from '$lib/utils/timeSlots.js';
+import { sendBookingConfirmation } from '$lib/email.js';
 
 dotenv.config();
 
@@ -68,10 +69,61 @@ export async function POST({ request }) {
 						}
 					}
 
-					// Skapa bokningen
-					const booking = await createBooking(client, session.metadata, session);
+					// Add this logging before creating the booking
+					console.log('Creating booking with data:', {
+						metadata: session.metadata,
+						sessionId: session.id,
+						startLocation: session.metadata.startlocation
+					});
+
+					// Modify createBooking function to ensure startlocation is properly saved
+					const booking = await createBooking(client, {
+						...session.metadata,
+						startlocation: session.metadata.startlocation, // Ensure this matches your database column name
+						stripe_session_id: session.id
+					});
 					await createBookingAddons(client, booking.id, session.metadata);
 					await updateAvailabilityForBooking(client, session.metadata);
+
+					if (!session.metadata.confirmation_sent) {
+						const formattedBooking = {
+							...booking,
+							id: booking.id,
+							startLocationName: session.metadata.startlocation_name,
+							startlocation: booking.startlocation,
+							adultPrice: session.metadata.adult_price,
+							subtotal: Math.round(
+								session.metadata.totalAdultsExclVat + session.metadata.optionalProductsTotal / 1.25
+							),
+							vat: Math.round(
+								(session.metadata.totalAdultsExclVat +
+									session.metadata.optionalProductsTotal / 1.25) *
+									0.25
+							),
+							total: session.metadata.amount_total,
+							date_time_created: booking.date_time_created || new Date().toISOString(),
+							customer_email: booking.customer_email,
+							customer_phone: booking.customer_phone,
+							booking_name: booking.booking_name,
+							booking_lastname: booking.booking_lastname
+						};
+
+						console.log(
+							'Fullständig bokningsdata för bekräftelse:',
+							JSON.stringify(formattedBooking, null, 2)
+						);
+
+						await client.query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [
+							booking.id
+						]);
+
+						try {
+							await sendBookingConfirmation(formattedBooking, false);
+							console.log('✅ Bokningsbekräftelse skickad framgångsrikt');
+						} catch (emailError) {
+							console.error('Fel vid sändning av bokningsbekräftelse:', emailError);
+						}
+					}
 
 					return booking;
 				});
@@ -250,72 +302,82 @@ async function createBooking(client, metadata, session) {
 	const amountCanoes = parseInt(metadata.amount_canoes) || 0;
 	const amountKayak = parseInt(metadata.amount_kayak) || 0;
 	const amountSup = parseInt(metadata.amount_sup) || 0;
+	const amountTotal = parseInt(metadata.amount_total) || 0;
+	const startlocation = parseInt(metadata.startlocation) || null;
 
-	// beräkna slots baserat på start- och sluttid
-	const startSlot = timeToSlot(metadata.start_time);
-	const endSlot = timeToSlot(metadata.end_time);
-	const totalSlots = calculateTotalSlots(startSlot, endSlot, metadata.booking_type === 'overnight');
+	// logga startlocation-värdet för felsökning
+	console.log('Startlocation-värde som ska sparas:', {
+		raw: metadata.startlocation,
+		parsed: startlocation,
+		name: metadata.startlocation_name
+	});
 
 	const {
 		rows: [booking]
 	} = await client.query(
 		`INSERT INTO bookings (
-			experience_id,
-			start_date,
-			end_date,
-			start_time,
-			end_time,
-			number_of_adults,
-			number_of_children,
-			booking_name,
-			booking_lastname,
-			customer_email,
-			customer_phone,
-			customer_comment,
-			status,
-			booking_type,
-			startlocation,
-			amount_canoes,
-			amount_kayak,
-			amount_sup,
-			stripe_session_id,
-			experience,
-			amount_total,
-			start_slot,
-			end_slot,
-			total_slots,
-			confirmation_sent
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-		RETURNING *`,
+			experience_id, 
+			experience, 
+			start_date, 
+			start_time, 
+			end_date, 
+			end_time, 
+			number_of_adults, 
+			number_of_children, 
+			amount_total, 
+			startlocation, 
+			customer_comment, 
+			amount_canoes, 
+			amount_kayak, 
+			amount_sup, 
+			booking_name, 
+			booking_lastname, 
+			customer_email, 
+			status, 
+			stripe_session_id, 
+			date_time_created, 
+			booking_status, 
+			start_slot, 
+			end_slot, 
+			total_slots, 
+			booking_type, 
+			payment_method, 
+			customer_phone
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 
+			NOW(), $20, $21, $22, $23, $24, $25, $26
+		) RETURNING *`,
 		[
 			metadata.experience_id,
+			metadata.experience,
 			metadata.start_date,
-			metadata.end_date,
 			metadata.start_time,
+			metadata.end_date,
 			metadata.end_time,
 			numberOfAdults,
 			numberOfChildren,
-			metadata.booking_name,
-			metadata.booking_lastname,
-			metadata.customer_email,
-			metadata.customer_phone,
+			amountTotal,
+			startlocation, // använd den parsade versionen
 			metadata.customer_comment,
-			'confirmed',
-			metadata.booking_type,
-			metadata.selectedStartLocation,
 			amountCanoes,
 			amountKayak,
 			amountSup,
-			session.id,
-			metadata.experience,
-			session.amount_total / 100, // konvertera från ören till kronor
-			startSlot,
-			endSlot,
-			totalSlots,
-			false // sätt confirmation_sent till false när bokningen skapas
+			metadata.booking_name,
+			metadata.booking_lastname,
+			metadata.customer_email,
+			'confirmed',
+			metadata.stripe_session_id,
+			'confirmed',
+			metadata.start_slot,
+			metadata.end_slot,
+			metadata.total_slots,
+			metadata.booking_type,
+			'card',
+			metadata.customer_phone
 		]
 	);
 
+	console.log('Skapad bokning:', booking);
 	return booking;
 }
 
