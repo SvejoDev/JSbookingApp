@@ -21,26 +21,36 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
 		invoiceEmail: invoiceData.invoiceEmail || ''
 	};
 
-	// Formatera addons-information
-	const addonsHtml =
+	// formatera bokade produkter (addons) på samma sätt som i bookingConfirmationTemplate
+	const addonsSection =
 		bookingData.addons && bookingData.addons.length > 0
 			? `
-			<tr>
-				<td colspan="2" style="padding: 10px 0; border-top: 1px solid #eee;">
-					<strong>Bokade produkter:</strong>
-				</td>
-			</tr>
-			${bookingData.addons
-				.filter((addon) => addon.amount > 0)
-				.map(
-					(addon) => `
-					<tr>
-						<td style="padding: 5px 0;">${addon.name}</td>
-						<td style="padding: 5px 0; text-align: right;">${addon.amount} st</td>
-					</tr>
-				`
-				)
-				.join('')}`
+		<div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px;">
+			<h3>Bokade produkter</h3>
+			<ul>
+				${bookingData.addons
+					.filter((addon) => addon.amount > 0)
+					.map((addon) => `<li>${addon.name}: ${addon.amount} st</li>`)
+					.join('')}
+			</ul>
+		</div>`
+			: '';
+
+	// formatera tillvalsprodukter på samma sätt som i bookingConfirmationTemplate
+	const optionalProductsSection =
+		bookingData.optional_products && bookingData.optional_products.length > 0
+			? `
+		<div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px;">
+			<h3>Tillvalsprodukter</h3>
+			<ul>
+				${bookingData.optional_products
+					.map(
+						(product) =>
+							`<li>${product.name} - ${product.quantity}st (${formatPrice(product.total_price)} kr)</li>`
+					)
+					.join('')}
+			</ul>
+		</div>`
 			: '';
 
 	return `
@@ -49,80 +59,96 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
     <head>
         <meta charset="utf-8">
         <style>
-            /* Behåll befintlig styling */
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            .header {
+                background-color: #f8f9fa;
+                padding: 20px;
+                margin-bottom: 30px;
+                border-radius: 5px;
+            }
+            .section {
+                margin-bottom: 30px;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 20px;
+            }
+            .price-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+            }
+            .price-total {
+                font-weight: bold;
+                border-top: 1px solid #eee;
+                padding-top: 8px;
+                margin-top: 8px;
+            }
         </style>
     </head>
     <body>
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div class="header">
             <h2>Fakturabegäran mottagen</h2>
+            <p>Bokningsnummer: #${safeBookingData.id}</p>
+        </div>
             
-            <p>Hej ${safeBookingData.booking_name},</p>
-            
-            <p>Vi har mottagit din begäran om PDF-faktura för din bokning.</p>
-            
-            <h3>Bokningsdetaljer:</h3>
-            <ul>
-                <li>Bokningsnummer: ${safeBookingData.id}</li>
-                <li>Datum: ${safeBookingData.start_date}</li>
-                <li>Tid: ${safeBookingData.start_time}</li>
-                <li>Antal vuxna: ${safeBookingData.number_of_adults}</li>
-                <li>Antal barn: ${safeBookingData.number_of_children}</li>
-                <li>Totalt belopp: ${safeBookingData.amount_total} kr</li>
-            </ul>
-            
-            <h3>Faktureringsinformation:</h3>
-            <ul>
-                <li>Organisation: ${safeInvoiceData.organization}</li>
-                <li>Adress: ${safeInvoiceData.address}</li>
-                <li>Postnummer: ${safeInvoiceData.postalCode}</li>
-                <li>Stad: ${safeInvoiceData.city}</li>
-                ${safeInvoiceData.marking ? `<li>Märkning: ${safeInvoiceData.marking}</li>` : ''}
-            </ul>
-            
-            <p>Vi kommer att skicka fakturan till: ${safeInvoiceData.invoiceEmail}</p>
-            
-            <p>Om du har några frågor, vänligen kontakta oss.</p>
-            
-            <p>Med vänliga hälsningar,<br>Stisses</p>
+        <div class="section">
+            <h3>Bokningsdetaljer</h3>
+            <p><strong>Upplevelse:</strong> ${bookingData.experience || 'Ej angiven'}</p>
+            <p><strong>Startplats:</strong> ${bookingData.startLocationName || bookingData.startLocation || 'Ej angiven'}</p>
+            <p><strong>Datum:</strong> ${safeBookingData.start_date} kl. ${safeBookingData.start_time}</p>
+            <p><strong>Antal vuxna:</strong> ${safeBookingData.number_of_adults}</p>
+            <p><strong>Antal barn:</strong> ${safeBookingData.number_of_children}</p>
         </div>
         
-        <!-- Lägg till addons-information före prisinformationen -->
-        <table style="width: 100%; margin-top: 20px;">
-            ${addonsHtml}
-            <!-- Resten av din befintliga tabell -->
-        </table>
-
-        <div class="invoice-details">
-            ${
-							bookingData.optional_products && bookingData.optional_products.length > 0
-								? `
-                <div class="optional-products">
-                    <h3>Tillvalsprodukter</h3>
-                    <table>
-                        <tr>
-                            <th>Produkt</th>
-                            <th>Antal</th>
-                            <th>Pris per enhet</th>
-                            <th>Totalt</th>
-                        </tr>
-                        ${bookingData.optional_products
-													.map(
-														(product) => `
-                            <tr>
-                                <td>${product.name}</td>
-                                <td>${product.quantity}</td>
-                                <td>${formatPrice(product.price)} kr</td>
-                                <td>${formatPrice(product.total_price)} kr</td>
-                            </tr>
-                        `
-													)
-													.join('')}
-                    </table>
-                </div>
-            `
-								: ''
-						}
+        <!-- bokade produkter (addons) -->
+        ${addonsSection}
+        
+        <!-- tillvalsprodukter -->
+        ${optionalProductsSection}
+        
+        <div class="section">
+            <h3>Prisdetaljer</h3>
+            <div class="price-row">
+                <span>Delsumma (exkl. moms):</span>
+                <span>${formatPrice(bookingData.subtotal || 0)} kr</span>
+            </div>
+            <div class="price-row">
+                <span>Moms (25%):</span>
+                <span>${formatPrice(bookingData.vat || 0)} kr</span>
+            </div>
+            <div class="price-row price-total">
+                <span>Totalt att betala:</span>
+                <span>${formatPrice(bookingData.total || safeBookingData.amount_total)} kr</span>
+            </div>
         </div>
+            
+        <div class="section">
+            <h3>Faktureringsinformation</h3>
+            <p><strong>Organisation:</strong> ${safeInvoiceData.organization}</p>
+            <p><strong>Adress:</strong> ${safeInvoiceData.address}</p>
+            <p><strong>Postnummer:</strong> ${safeInvoiceData.postalCode}</p>
+            <p><strong>Stad:</strong> ${safeInvoiceData.city}</p>
+            ${safeInvoiceData.marking ? `<p><strong>Märkning:</strong> ${safeInvoiceData.marking}</p>` : ''}
+            <p><strong>E-post för faktura:</strong> ${safeInvoiceData.invoiceEmail}</p>
+        </div>
+        
+        <div class="section">
+            <h3>Kontaktinformation</h3>
+            <p><strong>Namn:</strong> ${bookingData.booking_name || ''} ${bookingData.booking_lastname || ''}</p>
+            <p><strong>E-post:</strong> ${bookingData.customer_email || ''}</p>
+            <p><strong>Telefon:</strong> ${bookingData.customer_phone || ''}</p>
+            ${bookingData.customer_comment ? `<p><strong>Meddelande:</strong> ${bookingData.customer_comment}</p>` : ''}
+        </div>
+        
+        <p>Om du har några frågor, vänligen kontakta oss.</p>
+        
+        <p>Med vänliga hälsningar,<br>Stisses</p>
     </body>
     </html>
     `;

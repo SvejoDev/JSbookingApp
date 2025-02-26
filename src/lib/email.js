@@ -357,58 +357,163 @@ const invoiceRequestTemplate = `
 	<style>
 		body {
 			font-family: Arial, sans-serif;
+			line-height: 1.6;
+			color: #333;
 			max-width: 800px;
 			margin: 0 auto;
 			padding: 20px;
 		}
-		.section {
-			margin-bottom: 20px;
-			padding: 15px;
-			background-color: #f5f5f5;
+		.header {
+			background-color: #f8f9fa;
+			padding: 20px;
+			margin-bottom: 30px;
 			border-radius: 5px;
+		}
+		.section {
+			margin-bottom: 30px;
+			border-bottom: 1px solid #eee;
+			padding-bottom: 20px;
+		}
+		.details-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 10px;
+			margin-bottom: 20px;
 		}
 		.section-title {
 			font-size: 18px;
 			font-weight: bold;
 			margin-bottom: 10px;
 		}
+		.price-table {
+			width: 100%;
+			border-collapse: collapse;
+			margin-bottom: 20px;
+		}
+		.price-table th, .price-table td {
+			padding: 10px;
+			border-bottom: 1px solid #eee;
+			text-align: left;
+		}
+		.price-row {
+			display: flex;
+			justify-content: space-between;
+			margin-bottom: 8px;
+		}
+		.price-total {
+			font-weight: bold;
+			border-top: 1px solid #eee;
+			padding-top: 8px;
+			margin-top: 8px;
+		}
 	</style>
 </head>
 <body>
-	<h1>Ny fakturaförfrågan</h1>
+	<div class="header">
+		<h1>Ny fakturaförfrågan</h1>
+		<p>Bokningsnummer: #{{booking.id}}</p>
+		<p>Skapades: {{formatDateTime booking.date_time_created}}</p>
+	</div>
 	
 	<div class="section">
 		<div class="section-title">Bokningsinformation</div>
-		<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
-		<p><strong>Startplats:</strong> {{booking.startLocation}}</p>
-		<p><strong>Datum:</strong> {{booking.start_date}}{{#if booking.end_date}} - {{booking.end_date}}{{/if}}</p>
-		<p><strong>Tid:</strong> {{booking.start_time}} - {{booking.end_time}}</p>
-		<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
-		{{#if booking.number_of_children}}
-		<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
-		{{/if}}
-		<p><strong>Totalt belopp:</strong> {{booking.amount_total}} kr</p>
+		<div class="details-grid">
+			<p><strong>Upplevelse:</strong> {{booking.experience}}</p>
+			<p><strong>Startplats:</strong> {{booking.startLocationName}}</p>
+			<p><strong>Datum:</strong> {{formatDate booking.start_date}} kl. {{booking.start_time}}</p>
+			<p><strong>Slutdatum:</strong> {{formatDate booking.end_date}} kl. {{booking.end_time}}</p>
+			<p><strong>Antal vuxna:</strong> {{booking.number_of_adults}}</p>
+			{{#if booking.number_of_children}}
+			<p><strong>Antal barn:</strong> {{booking.number_of_children}}</p>
+			{{/if}}
+		</div>
+	</div>
+
+	{{#if booking.addons}}
+	<div class="section">
+		<div class="section-title">Bokade produkter</div>
+		<ul>
+			{{#each booking.addons}}
+			{{#if amount}}
+			<li>{{name}}: {{amount}} st</li>
+			{{/if}}
+			{{/each}}
+		</ul>
+	</div>
+	{{/if}}
+
+	{{#if booking.optional_products}}
+	<div class="section">
+		<div class="section-title">Tillvalsprodukter</div>
+		<table class="price-table">
+			<thead>
+				<tr>
+					<th>Produkt</th>
+					<th>Antal</th>
+					<th>Pris/st</th>
+					<th>Totalt</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{#each booking.optional_products}}
+				<tr>
+					<td>{{name}}</td>
+					<td>{{quantity}}</td>
+					<td>{{formatPrice price}} kr</td>
+					<td>{{formatPrice total_price}} kr</td>
+				</tr>
+				{{/each}}
+			</tbody>
+		</table>
+	</div>
+	{{/if}}
+
+	<div class="section">
+		<div class="section-title">Prisdetaljer</div>
+		<div class="price-row">
+			<span>Delsumma (exkl. moms):</span>
+			<span>{{formatPrice booking.subtotal}} kr</span>
+		</div>
+		<div class="price-row">
+			<span>Moms (25%):</span>
+			<span>{{formatPrice booking.vat}} kr</span>
+		</div>
+		<div class="price-row price-total">
+			<span>Totalt att betala:</span>
+			<span>{{formatPrice booking.total}} kr</span>
+		</div>
 	</div>
 
 	<div class="section">
 		<div class="section-title">Fakturainformation</div>
-		<p><strong>Fakturatyp:</strong> {{invoice.invoiceType}}</p>
-		<p><strong>Organisation:</strong> {{invoice.organization}}</p>
-		<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
-		<p><strong>Märkning:</strong> {{invoice.marking}}</p>
-		<p><strong>Adress:</strong> {{invoice.address}}</p>
-		<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
-		<p><strong>Ort:</strong> {{invoice.city}}</p>
+		<div class="details-grid">
+			<p><strong>Fakturatyp:</strong> {{invoice.invoiceType}}</p>
+			<p><strong>Organisation:</strong> {{invoice.organization}}</p>
+			{{#if invoice.invoiceEmail}}
+			<p><strong>E-postadress för faktura:</strong> {{invoice.invoiceEmail}}</p>
+			{{/if}}
+			{{#if invoice.glnPeppolId}}
+			<p><strong>GLN/PEPPOL-ID:</strong> {{invoice.glnPeppolId}}</p>
+			{{/if}}
+			{{#if invoice.marking}}
+			<p><strong>Märkning:</strong> {{invoice.marking}}</p>
+			{{/if}}
+			<p><strong>Adress:</strong> {{invoice.address}}</p>
+			<p><strong>Postnummer:</strong> {{invoice.postalCode}}</p>
+			<p><strong>Ort:</strong> {{invoice.city}}</p>
+		</div>
 	</div>
 
 	<div class="section">
 		<div class="section-title">Kontaktinformation</div>
-		<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
-		<p><strong>E-post:</strong> {{booking.customer_email}}</p>
-		<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
-		{{#if booking.customer_comment}}
-		<p><strong>Kommentar:</strong> {{booking.customer_comment}}</p>
-		{{/if}}
+		<div class="details-grid">
+			<p><strong>Namn:</strong> {{booking.booking_name}} {{booking.booking_lastname}}</p>
+			<p><strong>E-post:</strong> {{booking.customer_email}}</p>
+			<p><strong>Telefon:</strong> {{booking.customer_phone}}</p>
+			{{#if booking.customer_comment}}
+			<p><strong>Kommentar:</strong> {{booking.customer_comment}}</p>
+			{{/if}}
+		</div>
 	</div>
 </body>
 </html>
@@ -851,51 +956,81 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 		// kompilera handlebars template
 		const template = Handlebars.compile(invoiceRequestTemplate);
 
-		// formatera datum och tid
-		const formattedStartDate = new Date(bookingData.start_date).toLocaleDateString('sv-SE');
-		const formattedEndDate = new Date(bookingData.end_date).toLocaleDateString('sv-SE');
+		// säkerställ att vi har startLocationName
+		let startLocationName = bookingData.startLocationName || '';
+		if (!startLocationName && bookingData.startlocation) {
+			try {
+				const {
+					rows: [location]
+				} = await query('SELECT location FROM start_locations WHERE id = $1', [
+					bookingData.startlocation
+				]);
+				if (location) {
+					startLocationName = location.location;
+				}
+			} catch (error) {
+				console.error('Fel vid hämtning av startplats:', error);
+			}
+		}
+
+		// Konvertera addons-objekt till array om det behövs
+		let addonsArray = [];
+		if (bookingData.addons) {
+			if (Array.isArray(bookingData.addons)) {
+				// Om det redan är en array, använd den
+				addonsArray = bookingData.addons;
+			} else if (typeof bookingData.addons === 'object') {
+				// Konvertera från objekt till array
+				addonsArray = Object.entries(bookingData.addons)
+					.filter(([key, value]) => value > 0 && key.startsWith('amount_'))
+					.map(([key, value]) => {
+						// Extrahera namnet från nyckeln (t.ex. amount_canoes -> canoes)
+						const name = key.replace('amount_', '');
+						return {
+							name: name.charAt(0).toUpperCase() + name.slice(1), // Första bokstaven stor
+							amount: value
+						};
+					});
+			}
+		}
+
+		// beräkna priser om de saknas
+		const subtotal = bookingData.amount_total_exc_vat || bookingData.subtotal || 0;
+		const total =
+			bookingData.amount_total_inc_vat || bookingData.total || bookingData.amount_total || 0;
+		const vat = total - subtotal;
 
 		// förbered data för templaten
 		const templateData = {
 			booking: {
 				...bookingData,
-				// lägg till saknad information
-				experience: bookingData.experience,
-				start_date: bookingData.start_date,
-				end_date: bookingData.end_date,
-				start_time: bookingData.start_time,
-				end_time: bookingData.end_time,
-				number_of_adults: bookingData.number_of_adults,
-				number_of_children: bookingData.number_of_children,
-				// addon information
-				addons_info: bookingData.addons_info || [],
-				// optional products
-				optional_products: bookingData.optional_products || [],
-				// startplats information
-				startlocation_name: bookingData.startlocation_name,
-				adult_price: bookingData.adult_price
+				startLocationName: startLocationName || bookingData.startLocation || 'Ej angiven',
+				date_time_created: bookingData.date_time_created || new Date().toISOString(),
+				subtotal: subtotal,
+				vat: vat,
+				total: total,
+				// använd den konverterade addons-arrayen
+				addons: addonsArray,
+				// säkerställ att optional_products är en array
+				optional_products: Array.isArray(bookingData.optional_products)
+					? bookingData.optional_products
+					: []
 			},
-			// lägg till priser och summering med de nya priskolumnerna
-			summary: {
-				subtotal: bookingData.amount_total_exc_vat || 0,
-				vat:
-					bookingData.amount_total_inc_vat && bookingData.amount_total_exc_vat
-						? bookingData.amount_total_inc_vat - bookingData.amount_total_exc_vat
-						: 0,
-				total: bookingData.amount_total_inc_vat || 0
-			}
+			invoice: invoiceData
 		};
 
-		console.log('Renderar e-postmall med data:', templateData);
+		console.log('Renderar e-postmall med data:', JSON.stringify(templateData, null, 2));
+		console.log('Addons efter konvertering:', JSON.stringify(templateData.booking.addons, null, 2));
 
 		// rendera html innehåll
 		const htmlContent = template(templateData);
 
 		// skicka e-post
 		await sendEmail({
-			to: process.env.INVOICE_EMAIL,
+			to: process.env.INVOICE_EMAIL || EMAIL_CONFIG.INVOICE_RECIPIENTS,
 			subject: `Ny fakturabegäran - ${bookingData.booking_name} ${bookingData.booking_lastname}`,
-			html: htmlContent
+			html: htmlContent,
+			type: 'invoice'
 		});
 
 		console.log('Fakturabegäran skickad framgångsrikt');
