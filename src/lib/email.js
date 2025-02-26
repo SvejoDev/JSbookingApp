@@ -624,19 +624,22 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		console.log('=== BOKNINGSBEKRÄFTELSE STARTAR ===');
 		console.log('Inkommande bokningsdata:', JSON.stringify(bookingData, null, 2));
 
-		// Hämta den senaste bokningsdatan från databasen för att säkerställa korrekt amount_total
+		// Hämta den senaste bokningsdatan från databasen för att säkerställa korrekt belopp
 		if (bookingData.id) {
 			try {
 				const {
 					rows: [latestBooking]
-				} = await query('SELECT amount_total FROM bookings WHERE id = $1', [bookingData.id]);
+				} = await query('SELECT amount_total_inc_vat FROM bookings WHERE id = $1', [
+					bookingData.id
+				]);
 
-				if (latestBooking && latestBooking.amount_total) {
+				if (latestBooking && latestBooking.amount_total_inc_vat) {
 					console.log('Uppdaterar amount_total från databasen:', {
 						original: bookingData.amount_total,
-						fromDb: latestBooking.amount_total
+						fromDb: latestBooking.amount_total_inc_vat
 					});
-					bookingData.amount_total = latestBooking.amount_total;
+					// Använd amount_total_inc_vat istället för amount_total
+					bookingData.amount_total = latestBooking.amount_total_inc_vat;
 				}
 			} catch (dbError) {
 				console.error('Fel vid hämtning av senaste bokningsdata:', dbError);
