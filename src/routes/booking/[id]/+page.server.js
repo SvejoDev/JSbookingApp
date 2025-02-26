@@ -1,4 +1,5 @@
 import { query } from '$lib/db.js';
+import { logger } from '$lib/utils/logger';
 import { stripe } from '$lib/stripe.js';
 
 export async function load({ params }) {
@@ -118,7 +119,7 @@ export async function load({ params }) {
 				};
 			} else {
 				// Logga bara om det är en guidad upplevelse och saknar öppettider
-				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
+				logger.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
 		}
 

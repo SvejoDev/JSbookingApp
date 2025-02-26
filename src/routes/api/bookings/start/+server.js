@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query } from '$lib/db.js';
 
 export async function POST({ request }) {
@@ -13,7 +14,7 @@ export async function POST({ request }) {
 		return json({ success: true });
 	} catch (error) {
 		await query('ROLLBACK');
-		console.error('Error starting booking:', error);
+		logger.error('Error starting booking:', error);
 		return json({ error: 'Failed to start booking' }, { status: 500 });
 	}
 }

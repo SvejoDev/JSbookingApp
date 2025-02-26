@@ -1,5 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
+import { logger } from '$lib/utils/logger';
 	import { Card } from '$lib/components/ui/card';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -88,7 +89,7 @@
 				toast.error('Kunde inte starta bokningen');
 			}
 		} catch (error) {
-			console.error('Fel vid start av bokning:', error);
+			logger.error('Fel vid start av bokning:', error);
 			toast.error('Ett fel uppstod');
 		}
 	}
@@ -112,7 +113,7 @@
 				toast.error('Kunde inte slutföra bokningen');
 			}
 		} catch (error) {
-			console.error('Fel vid slutförande av bokning:', error);
+			logger.error('Fel vid slutförande av bokning:', error);
 			toast.error('Ett fel uppstod');
 		}
 	}

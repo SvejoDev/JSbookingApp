@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query } from '$lib/db.js';
 import { sendInvoiceRequest, sendBookingConfirmation } from '$lib/email.js';
 import { timeToSlot, calculateTotalSlots, timeToMinutes } from '$lib/utils/timeSlots.js';
@@ -6,7 +7,7 @@ import { timeToSlot, calculateTotalSlots, timeToMinutes } from '$lib/utils/timeS
 export async function POST({ request }) {
 	try {
 		const { bookingData, invoiceData } = await request.json();
-		console.log('Mottagen invoiceData:', {
+		logger.info('Mottagen invoiceData:', {
 			...invoiceData,
 			invoiceEmail: invoiceData.invoiceEmail // Kontrollera specifikt detta fält
 		});
@@ -14,9 +15,9 @@ export async function POST({ request }) {
 		// Spara addons och optional products separat
 		const optionalProducts = bookingData.optional_products || [];
 
-		console.log('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
-		console.log('🎁 Sparade addons:', bookingData.addons);
-		console.log('Received optional products:', optionalProducts);
+		logger.info('📦 Ursprunglig bookingData:', JSON.stringify(bookingData, null, 2));
+		logger.info('🎁 Sparade addons:', bookingData.addons);
+		logger.info('Received optional products:', optionalProducts);
 
 		// Beräkna slots med säker konvertering
 		const startSlot = parseInt(timeToSlot(bookingData.start_time)) || 0;
@@ -72,7 +73,7 @@ export async function POST({ request }) {
 		totalPriceIncVat = isNaN(totalPriceIncVat) ? 0 : totalPriceIncVat;
 		totalPriceExcVat = isNaN(totalPriceExcVat) ? 0 : totalPriceExcVat;
 
-		console.log('Beräknade priser:', { totalPriceExcVat, totalPriceIncVat });
+		logger.info('Beräknade priser:', { totalPriceExcVat, totalPriceIncVat });
 
 		// Säkerställ att alla numeriska värden är giltiga
 		const safeBookingData = {
@@ -152,7 +153,7 @@ export async function POST({ request }) {
 			'SELECT id, name, column_name, availability_table_name FROM addons'
 		);
 
-		console.log('🔍 Hämtade addons från DB:', addons);
+		logger.info('🔍 Hämtade addons från DB:', addons);
 
 		// Skapa booking-objektet med addons inkluderade
 		const allColumns = [...baseColumns, ...addons.map((addon) => addon.column_name)];
@@ -163,8 +164,8 @@ export async function POST({ request }) {
 			...addons.map((addon) => parseInt(bookingData.addons[addon.column_name] || 0))
 		];
 
-		console.log('Inserting booking with columns:', allColumns);
-		console.log('and values:', allValues);
+		logger.info('Inserting booking with columns:', allColumns);
+		logger.info('and values:', allValues);
 
 		// Spara bokningen med säkra värden
 		const bookingResult = await query(
@@ -214,7 +215,7 @@ export async function POST({ request }) {
 
 		// Spara tillvalsprodukter
 		if (optionalProducts.length > 0) {
-			console.log('Sparar tillvalsprodukter:', optionalProducts);
+			logger.info('Sparar tillvalsprodukter:', optionalProducts);
 
 			for (const product of optionalProducts) {
 				try {
@@ -230,9 +231,9 @@ export async function POST({ request }) {
 							parseInt(product.total_price)
 						]
 					);
-					console.log(`✅ Sparat tillvalsprodukt: ${product.name}`);
+					logger.info(`✅ Sparat tillvalsprodukt: ${product.name}`);
 				} catch (error) {
-					console.error('Fel vid sparande av tillvalsprodukt:', {
+					logger.error('Fel vid sparande av tillvalsprodukt:', {
 						product,
 						error: error.message
 					});
@@ -244,7 +245,7 @@ export async function POST({ request }) {
 		// Spara fakturauppgifter i invoice_details-tabellen
 		if (invoiceData) {
 			try {
-				console.log('Sparar fakturauppgifter:', invoiceData);
+				logger.info('Sparar fakturauppgifter:', invoiceData);
 
 				const invoiceResult = await query(
 					`INSERT INTO invoice_details (
@@ -272,15 +273,15 @@ export async function POST({ request }) {
 					]
 				);
 
-				console.log('✅ Fakturauppgifter sparade med ID:', invoiceResult.rows[0].id);
+				logger.info('✅ Fakturauppgifter sparade med ID:', invoiceResult.rows[0].id);
 			} catch (error) {
-				console.error('Fel vid sparande av fakturauppgifter:', error);
+				logger.error('Fel vid sparande av fakturauppgifter:', error);
 				// Fortsätt processen även om fakturauppgifterna inte kunde sparas
 			}
 		}
 
 		// Lägg till extra loggning före e-postutskick
-		console.log('Preparing to send invoice request with data:', {
+		logger.info('Preparing to send invoice request with data:', {
 			bookingId,
 			invoiceType: invoiceData.invoiceType,
 			invoiceEmail: invoiceData.invoiceEmail
@@ -289,10 +290,10 @@ export async function POST({ request }) {
 		// Skicka både fakturabegäran och bokningsbekräftelse
 		try {
 			await sendInvoiceRequest({ ...safeBookingData, id: bookingId }, invoiceData);
-			console.log('✅ Fakturabegäran skickad framgångsrikt');
+			logger.info('✅ Fakturabegäran skickad framgångsrikt');
 
 			await sendBookingConfirmation({ ...safeBookingData, id: bookingId });
-			console.log('✅ Bokningsbekräftelse skickad framgångsrikt');
+			logger.info('✅ Bokningsbekräftelse skickad framgångsrikt');
 
 			// Uppdatera endast confirmation_sent
 			await query(
@@ -308,7 +309,7 @@ export async function POST({ request }) {
 				url: `/success?booking_id=${bookingId}&type=invoice`
 			});
 		} catch (error) {
-			console.error('Fel i handle-invoice:', error);
+			logger.error('Fel i handle-invoice:', error);
 			return json(
 				{
 					error: 'Ett fel uppstod vid hantering av fakturan',
@@ -319,7 +320,7 @@ export async function POST({ request }) {
 			);
 		}
 	} catch (error) {
-		console.error('Error in handle-invoice:', error);
+		logger.error('Error in handle-invoice:', error);
 		return json(
 			{
 				error: 'Ett fel uppstod vid hantering av fakturan',
@@ -353,7 +354,7 @@ function calculateBasePrice(bookingData) {
 // Uppdatera updateAvailability funktionen
 async function updateAvailability(bookingData) {
 	try {
-		console.log('🎯 Starting updateAvailability with data:', {
+		logger.info('🎯 Starting updateAvailability with data:', {
 			bookingData: JSON.stringify(bookingData, null, 2),
 			addons: bookingData.addons
 		});
@@ -369,7 +370,7 @@ async function updateAvailability(bookingData) {
 		for (const addon of addons) {
 			const amount = parseInt(bookingData.addons[addon.column_name]) || 0;
 
-			console.log(`🎲 Processing ${addon.name}:`, {
+			logger.info(`🎲 Processing ${addon.name}:`, {
 				amount,
 				columnName: addon.column_name
 			});
@@ -400,7 +401,7 @@ async function updateAvailability(bookingData) {
 						endMinutes = timeToMinutes(bookingData.end_time);
 					}
 
-					console.log('Time range:', {
+					logger.info('Time range:', {
 						date: dateStr,
 						isFirstDay,
 						isMiddleDay,
@@ -426,20 +427,20 @@ async function updateAvailability(bookingData) {
 					}
 
 					if (slots.length > 0) {
-						console.log(`Uppdaterar tillgänglighet för ${addon.name} på datum ${dateStr}`);
+						logger.info(`Uppdaterar tillgänglighet för ${addon.name} på datum ${dateStr}`);
 						await query(
 							`UPDATE ${addon.availability_table_name}
 							 SET ${slots.join(', ')}
 							 WHERE date = $1`,
 							[dateStr]
 						);
-						console.log(`✅ Tillgänglighet uppdaterad för ${addon.name}`);
+						logger.info(`✅ Tillgänglighet uppdaterad för ${addon.name}`);
 					}
 				}
 			}
 		}
 	} catch (error) {
-		console.error('Error in updateAvailability:', error);
+		logger.error('Error in updateAvailability:', error);
 		throw error;
 	}
 }

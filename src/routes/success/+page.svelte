@@ -1,5 +1,6 @@
 <script>
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
+import { logger } from '$lib/utils/logger';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { ArrowLeft } from 'lucide-svelte';
@@ -7,8 +8,8 @@
 	export let data;
 	const { booking, isInvoiceBooking } = data;
 
-	// Lägg till console.log för debugging
-	console.log('Booking data:', booking);
+	// Lägg till logger.info för debugging
+	logger.info('Booking data:', booking);
 
 	// Price formatting
 	const formatPrice = (price) => {

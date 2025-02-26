@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query, transaction } from '$lib/db.js';
 import { sendBookingConfirmation } from '$lib/email.js';
 
@@ -108,7 +109,7 @@ export const load = async ({ url }) => {
 						// uppdatera confirmation_sent till true
 						await query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [booking.id]);
 					} catch (emailError) {
-						console.error('Fel vid skickande av bokningsbekräftelse:', emailError);
+						logger.error('Fel vid skickande av bokningsbekräftelse:', emailError);
 					}
 				}
 
@@ -147,7 +148,7 @@ export const load = async ({ url }) => {
 					isInvoiceBooking
 				};
 			} catch (error) {
-				console.error('Fel vid hämtning av bokning:', error);
+				logger.error('Fel vid hämtning av bokning:', error);
 				// vänta 1 sekund innan nästa försök
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
@@ -155,7 +156,7 @@ export const load = async ({ url }) => {
 
 		throw new Error('Kunde inte hitta bokningen efter flera försök');
 	} catch (error) {
-		console.error('Fel i success-sidan:', error);
+		logger.error('Fel i success-sidan:', error);
 		throw redirect(302, '/');
 	}
 };

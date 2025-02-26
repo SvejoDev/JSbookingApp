@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { logger } from '$lib/utils/logger';
 import dotenv from 'dotenv';
 import { json } from '@sveltejs/kit';
 import { query } from '$lib/db';
@@ -10,7 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export async function POST({ request }) {
 	try {
 		const data = await request.json();
-		console.log('Checkout Request Data:', data);
+		logger.info('Checkout Request Data:', data);
 
 		// Beräkna totalpris exklusive moms
 		const basePrice = parseInt(data.base_price) * parseInt(data.number_of_adults);
@@ -60,7 +61,7 @@ export async function POST({ request }) {
 
 		return json({ url: session.url });
 	} catch (error) {
-		console.error('Error creating checkout session:', error);
+		logger.error('Error creating checkout session:', error);
 		return json({ error: error.message }, { status: 400 });
 	}
 }

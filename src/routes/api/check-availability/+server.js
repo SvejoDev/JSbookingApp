@@ -1,11 +1,12 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query } from '$lib/db.js';
 
 export async function POST({ request }) {
 	try {
 		const { date, bookingLength, addons, experienceId } = await request.json();
 
-		console.log('Received request:', { date, bookingLength, addons, experienceId });
+		logger.info('Received request:', { date, bookingLength, addons, experienceId });
 
 		// hämta upplevelsens data med öppettider
 		const {
@@ -46,10 +47,10 @@ export async function POST({ request }) {
 			[experienceId, date]
 		);
 
-		console.log('Experience data:', experience);
+		logger.info('Experience data:', experience);
 
 		if (!experience?.open_time || !experience?.close_time) {
-			console.error('Missing opening hours:', {
+			logger.error('Missing opening hours:', {
 				experience_id: experienceId,
 				open_time: experience?.open_time,
 				close_time: experience?.close_time
@@ -64,7 +65,7 @@ export async function POST({ request }) {
 		const openTime = experience.open_time.slice(0, 5); // ta bara "HH:MM"
 		const closeTime = experience.close_time.slice(0, 5);
 
-		console.log('Validated opening hours:', {
+		logger.info('Validated opening hours:', {
 			openTime,
 			closeTime,
 			original: {
@@ -83,7 +84,7 @@ export async function POST({ request }) {
 			[experienceId]
 		);
 
-		console.log('Addons list:', addonsList);
+		logger.info('Addons list:', addonsList);
 
 		// hantera både public och business_school på samma sätt
 		if (
@@ -94,7 +95,7 @@ export async function POST({ request }) {
 			let openTime = experience.open_time;
 			let closeTime = experience.close_time;
 
-			console.log('Using times:', { openTime, closeTime });
+			logger.info('Using times:', { openTime, closeTime });
 
 			// validera öppettider
 			if (!openTime || !closeTime) {
@@ -110,11 +111,11 @@ export async function POST({ request }) {
 				closeTime
 			);
 
-			console.log('Parsed booking length:', { durationHours, numberOfNights });
+			logger.info('Parsed booking length:', { durationHours, numberOfNights });
 
 			// generera möjliga tider baserat på öppettider
 			const possibleTimes = generateTimeSlots(openTime, closeTime, durationHours, bookingLength);
-			console.log('Generated possible times:', possibleTimes);
+			logger.info('Generated possible times:', possibleTimes);
 
 			// filtrera bort tider som redan är passerade
 			const validStartTimes = possibleTimes.filter((time) => {
@@ -138,7 +139,7 @@ export async function POST({ request }) {
 				);
 			});
 
-			console.log('Time filtering debug:', {
+			logger.info('Time filtering debug:', {
 				openTime,
 				closeTime,
 				durationHours,
@@ -159,7 +160,7 @@ export async function POST({ request }) {
 				bookingLength
 			});
 
-			console.log('Final available times:', availableTimes);
+			logger.info('Final available times:', availableTimes);
 
 			return json({
 				success: true,
@@ -176,7 +177,7 @@ export async function POST({ request }) {
 			// lägg till övrig relevant data här
 		});
 	} catch (error) {
-		console.error('Error checking availability:', error);
+		logger.error('Error checking availability:', error);
 		return json({ error: 'Ett fel uppstod vid kontroll av tillgänglighet' }, { status: 500 });
 	}
 }
@@ -326,7 +327,7 @@ async function checkAvailability({
 		);
 	});
 
-	console.log('Time filtering debug:', {
+	logger.info('Time filtering debug:', {
 		openTime,
 		closeTime,
 		durationHours,
@@ -381,7 +382,7 @@ async function checkAddonAvailability({
 }) {
 	if (!amount || amount <= 0) return true;
 
-	console.log('Checking availability for addon:', {
+	logger.info('Checking availability for addon:', {
 		addonId,
 		amount,
 		maxQuantity,
@@ -395,11 +396,11 @@ async function checkAddonAvailability({
 	} = await query('SELECT availability_table_name, name FROM addons WHERE id = $1', [addonId]);
 
 	if (!addon) {
-		console.error(`Addon not found: ${addonId}`);
+		logger.error(`Addon not found: ${addonId}`);
 		throw new Error(`tillägg med id ${addonId} hittades inte`);
 	}
 
-	console.log('Found addon:', addon);
+	logger.info('Found addon:', addon);
 
 	const totalDays = numberOfNights + 1;
 	const dates = Array.from({ length: totalDays }, (_, i) => {
@@ -408,7 +409,7 @@ async function checkAddonAvailability({
 		return date.toISOString().split('T')[0];
 	});
 
-	console.log('Checking dates:', dates);
+	logger.info('Checking dates:', dates);
 
 	for (const [index, currentDate] of dates.entries()) {
 		const isFirstDay = index === 0;
@@ -417,7 +418,7 @@ async function checkAddonAvailability({
 		let dayStartMinutes = isFirstDay ? timeToMinutes(startTime) : timeToMinutes('00:00');
 		let dayEndMinutes = isLastDay ? timeToMinutes(closeTime) : timeToMinutes('23:59');
 
-		console.log('Checking time range:', {
+		logger.info('Checking time range:', {
 			date: currentDate,
 			start: dayStartMinutes,
 			end: dayEndMinutes
@@ -429,7 +430,7 @@ async function checkAddonAvailability({
 			currentDate
 		]);
 
-		console.log('Availability data:', availabilityData);
+		logger.info('Availability data:', availabilityData);
 
 		if (availabilityData) {
 			for (let minutes = dayStartMinutes; minutes < dayEndMinutes; minutes += 15) {
@@ -438,7 +439,7 @@ async function checkAddonAvailability({
 				const availableSlots = maxQuantity - bookedAmount;
 
 				if (amount > availableSlots) {
-					console.log('Insufficient availability:', {
+					logger.info('Insufficient availability:', {
 						time: columnName,
 						bookedAmount,
 						availableSlots,
@@ -450,6 +451,6 @@ async function checkAddonAvailability({
 		}
 	}
 
-	console.log('Addon is available');
+	logger.info('Addon is available');
 	return true;
 }

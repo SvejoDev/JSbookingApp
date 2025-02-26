@@ -1,3 +1,5 @@
+import { logger } from '$lib/utils/logger';
+
 // Gemensamma hjälpfunktioner för e-post
 export function formatDateTime(date, time) {
 	if (!date || !time) return 'Ej angivet';
@@ -11,7 +13,7 @@ export function formatDateTime(date, time) {
 		const formattedTime = time.split(':').slice(0, 2).join(':');
 		return `${formattedDate} kl. ${formattedTime}`;
 	} catch (error) {
-		console.error('Fel vid datumformatering:', error);
+		logger.error('Fel vid datumformatering:', error);
 		return 'Ogiltigt datum/tid';
 	}
 }
@@ -68,7 +70,7 @@ export function formatDate(dateString) {
 			day: 'numeric'
 		});
 	} catch (error) {
-		console.error('Fel vid datumformatering:', error);
+		logger.error('Fel vid datumformatering:', error);
 		return 'Ogiltigt datum';
 	}
 }

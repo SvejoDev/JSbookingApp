@@ -1,4 +1,5 @@
 import { auth } from '$lib/server/lucia';
+import { logger } from '$lib/utils/logger';
 import { fail, redirect } from '@sveltejs/kit';
 import { validateInvitation, markInvitationAsUsed } from '$lib/server/invitation';
 import { validatePassword } from '$lib/server/password';
@@ -81,7 +82,7 @@ export const actions = {
 				}
 			};
 		} catch (error) {
-			console.error(error);
+			logger.error(error);
 			return fail(500, {
 				message: 'kunde inte skapa konto'
 			});

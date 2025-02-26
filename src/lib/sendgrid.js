@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { logger } from '$lib/utils/logger';
 import dotenv from 'dotenv';
 
 // ladda miljövariabler
@@ -27,12 +28,12 @@ export async function sendEmail({ to, subject, html, type = 'general' }) {
 
 		// skicka e-post
 		const response = await sgMail.send(msg);
-		console.log(`✅ ${type} e-post skickad till ${to} (status: ${response[0].statusCode})`);
+		logger.info(`✅ ${type} e-post skickad till ${to} (status: ${response[0].statusCode})`);
 		return response;
 	} catch (error) {
-		console.error(`❌ Kunde inte skicka ${type} e-post:`, error);
+		logger.error(`❌ Kunde inte skicka ${type} e-post:`, error);
 		if (error.response) {
-			console.error('SendGrid API svar:', error.response.body);
+			logger.error('SendGrid API svar:', error.response.body);
 		}
 		throw error;
 	}

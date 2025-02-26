@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query, transaction } from '$lib/db.js';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
@@ -15,12 +16,12 @@ export async function POST({ request }) {
 		const sig = request.headers.get('stripe-signature');
 		const event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
 
-		console.log(`Webhook mottagen: ${event.type} vid ${new Date().toISOString()}`);
+		logger.info(`Webhook mottagen: ${event.type} vid ${new Date().toISOString()}`);
 
 		if (event.type === 'checkout.session.completed') {
 			const session = event.data.object;
-			console.log('Session metadata:', session.metadata);
-			console.log('Session ID:', session.id);
+			logger.info('Session metadata:', session.metadata);
+			logger.info('Session ID:', session.id);
 
 			try {
 				await transaction(async (client) => {
@@ -70,7 +71,7 @@ export async function POST({ request }) {
 					}
 
 					// Add this logging before creating the booking
-					console.log('Creating booking with data:', {
+					logger.info('Creating booking with data:', {
 						metadata: session.metadata,
 						sessionId: session.id,
 						startLocation: session.metadata.startlocation
@@ -126,7 +127,7 @@ export async function POST({ request }) {
 							).reduce((sum, product) => sum + parseInt(product.total_price || 0), 0)
 						};
 
-						console.log(
+						logger.info(
 							'Fullständig bokningsdata för bekräftelse:',
 							JSON.stringify(formattedBooking, null, 2)
 						);
@@ -137,15 +138,15 @@ export async function POST({ request }) {
 
 						try {
 							await sendBookingConfirmation(formattedBooking, false);
-							console.log('✅ Bokningsbekräftelse skickad framgångsrikt');
+							logger.info('✅ Bokningsbekräftelse skickad framgångsrikt');
 						} catch (emailError) {
-							console.error('Fel vid sändning av bokningsbekräftelse:', emailError);
+							logger.error('Fel vid sändning av bokningsbekräftelse:', emailError);
 						}
 					}
 
 					// Efter att bokningen är skapad
-					console.log('Bokning skapad med session ID:', session.id);
-					console.log('Redirect URL:', `/success?session_id=${session.id}`);
+					logger.info('Bokning skapad med session ID:', session.id);
+					logger.info('Redirect URL:', `/success?session_id=${session.id}`);
 
 					// Uppdatera status till confirmed men behåll booking_status som pending
 					await client.query('UPDATE bookings SET status = $1 WHERE stripe_session_id = $2', [
@@ -163,19 +164,19 @@ export async function POST({ request }) {
 					});
 				});
 
-				console.log('✅ Booking Complete');
-				console.log(`Webhook behandlad: ${event.type}`);
+				logger.info('✅ Booking Complete');
+				logger.info(`Webhook behandlad: ${event.type}`);
 				return json({ received: true, message: 'bokning genomförd' }, { status: 200 });
 			} catch (error) {
-				console.error('fel vid bokning:', error);
+				logger.error('fel vid bokning:', error);
 				throw error;
 			}
 		}
 
-		console.log(`Webhook behandlad: ${event.type}`);
+		logger.info(`Webhook behandlad: ${event.type}`);
 		return json({ received: true });
 	} catch (error) {
-		console.error('Webhook Error:', error.message);
+		logger.error('Webhook Error:', error.message);
 		return json({ error: error.message }, { status: 400 });
 	}
 }
@@ -218,18 +219,18 @@ async function updateAvailabilityForBooking(client, bookingData) {
 						if (isFirstDay) {
 							startMinutes = timeToMinutes(bookingData.start_time);
 							endMinutes = 1440;
-							console.log(`\n=== Första dagen (${dateStr}) ===`);
-							console.log(`Blockerar från ${formatMinutes(startMinutes)} till 00:00`);
+							logger.info(`\n=== Första dagen (${dateStr}) ===`);
+							logger.info(`Blockerar från ${formatMinutes(startMinutes)} till 00:00`);
 						} else if (isMiddleDay) {
 							startMinutes = 0;
 							endMinutes = 1440;
-							console.log(`\n=== Mellandag (${dateStr}) ===`);
-							console.log(`Blockerar hela dagen (00:00-00:00)`);
+							logger.info(`\n=== Mellandag (${dateStr}) ===`);
+							logger.info(`Blockerar hela dagen (00:00-00:00)`);
 						} else if (isLastDay) {
 							startMinutes = 0;
 							endMinutes = timeToMinutes(bookingData.end_time);
-							console.log(`\n=== Sista dagen (${dateStr}) ===`);
-							console.log(`Blockerar från 00:00 till ${formatMinutes(endMinutes)}`);
+							logger.info(`\n=== Sista dagen (${dateStr}) ===`);
+							logger.info(`Blockerar från 00:00 till ${formatMinutes(endMinutes)}`);
 						}
 					} else {
 						// Dagsbokning eller hela dagen
@@ -237,12 +238,12 @@ async function updateAvailabilityForBooking(client, bookingData) {
 						endMinutes = timeToMinutes(bookingData.end_time);
 
 						if (process.env.NODE_ENV === 'development') {
-							console.log(`=== Bokning (${dateStr}) ===`);
-							console.log(`Tid: ${formatMinutes(startMinutes)} till ${formatMinutes(endMinutes)}`);
+							logger.info(`=== Bokning (${dateStr}) ===`);
+							logger.info(`Tid: ${formatMinutes(startMinutes)} till ${formatMinutes(endMinutes)}`);
 						}
 					}
 
-					console.log('Debug:', {
+					logger.info('Debug:', {
 						date: dateStr,
 						isFirstDay,
 						isMiddleDay,
@@ -272,7 +273,7 @@ async function updateAvailabilityForBooking(client, bookingData) {
 			}
 		}
 	} catch (error) {
-		console.error('Fel vid uppdatering av tillgänglighet:', error);
+		logger.error('Fel vid uppdatering av tillgänglighet:', error);
 		throw error;
 	}
 }
@@ -306,7 +307,7 @@ function generateDateRange(startDate, endDate) {
 		currentDate.setUTCDate(currentDate.getUTCDate() + 1);
 	}
 
-	console.log('Generated date range:', dates);
+	logger.info('Generated date range:', dates);
 	return dates;
 }
 
@@ -356,14 +357,14 @@ async function createBooking(client, metadata, session) {
 	const startlocation = parseInt(metadata.startlocation) || null;
 
 	// logga startlocation-värdet för felsökning
-	console.log('Startlocation-värde som ska sparas:', {
+	logger.info('Startlocation-värde som ska sparas:', {
 		raw: metadata.startlocation,
 		parsed: startlocation,
 		name: metadata.startlocation_name
 	});
 
 	// logga slots och booking_type för felsökning
-	console.log('Slots och booking_type som ska sparas:', {
+	logger.info('Slots och booking_type som ska sparas:', {
 		startSlot,
 		endSlot,
 		totalSlots,
@@ -434,7 +435,7 @@ async function createBooking(client, metadata, session) {
 		]
 	);
 
-	console.log('Skapad bokning:', booking);
+	logger.info('Skapad bokning:', booking);
 	return booking;
 }
 
@@ -459,7 +460,7 @@ async function createBookingOptionalProducts(client, bookingId, metadata) {
 	try {
 		// kontrollera om det finns optional_products i metadata
 		if (!metadata.optional_products) {
-			console.log('Inga optional products att spara');
+			logger.info('Inga optional products att spara');
 			return;
 		}
 
@@ -468,11 +469,11 @@ async function createBookingOptionalProducts(client, bookingId, metadata) {
 		try {
 			optionalProducts = JSON.parse(metadata.optional_products || '[]');
 		} catch (error) {
-			console.error('Fel vid parsning av optional_products:', error);
+			logger.error('Fel vid parsning av optional_products:', error);
 			return;
 		}
 
-		console.log('Sparar optional products:', optionalProducts);
+		logger.info('Sparar optional products:', optionalProducts);
 
 		// spara varje optional product
 		for (const product of optionalProducts) {
@@ -484,9 +485,9 @@ async function createBookingOptionalProducts(client, bookingId, metadata) {
 			);
 		}
 
-		console.log(`✅ Sparat ${optionalProducts.length} optional products för bokning ${bookingId}`);
+		logger.info(`✅ Sparat ${optionalProducts.length} optional products för bokning ${bookingId}`);
 	} catch (error) {
-		console.error('Fel vid sparande av optional products:', error);
+		logger.error('Fel vid sparande av optional products:', error);
 		throw error;
 	}
 }

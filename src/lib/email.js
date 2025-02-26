@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { logger } from '$lib/utils/logger';
 import dotenv from 'dotenv';
 import Handlebars from 'handlebars';
 import html_to_pdf from 'html-pdf-node';
@@ -25,7 +26,7 @@ Handlebars.registerHelper({
 				minute: 'numeric'
 			}).format(dateObj);
 		} catch (error) {
-			console.error('Fel vid datumformatering:', error);
+			logger.error('Fel vid datumformatering:', error);
 			return '';
 		}
 	},
@@ -40,7 +41,7 @@ Handlebars.registerHelper({
 				day: 'numeric'
 			});
 		} catch (error) {
-			console.error('Fel vid datumformatering:', error);
+			logger.error('Fel vid datumformatering:', error);
 			return '';
 		}
 	},
@@ -676,7 +677,7 @@ async function generatePDF(booking, template = bookingTemplate) {
 		const buffer = await html_to_pdf.generatePdf({ content: html }, options);
 		return buffer;
 	} catch (error) {
-		console.error('Fel vid generering av PDF:', error);
+		logger.error('Fel vid generering av PDF:', error);
 		throw error;
 	}
 }
@@ -684,7 +685,7 @@ async function generatePDF(booking, template = bookingTemplate) {
 // Definiera sendEmail funktionen
 async function sendEmail({ to, subject, html, type = 'booking' }) {
 	try {
-		console.log('Attempting to send email:', {
+		logger.info('Attempting to send email:', {
 			to,
 			subject,
 			type,
@@ -699,7 +700,7 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 		};
 
 		// Lägg till verifiering innan sändning
-		console.log('Verifierar e-postinställningar:', {
+		logger.info('Verifierar e-postinställningar:', {
 			toAddress: msg.to,
 			fromAddress: msg.from.email,
 			apiKeyLength: apiKey.length,
@@ -707,7 +708,7 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 		});
 
 		const response = await sgMail.send(msg);
-		console.log('SendGrid response:', response[0].statusCode);
+		logger.info('SendGrid response:', response[0].statusCode);
 		return response;
 	} catch (error) {
 		// Förbättrad felhantering
@@ -717,7 +718,7 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 			response: error.response?.body,
 			stack: error.stack
 		};
-		console.error('Detaljerat SendGrid-fel:', JSON.stringify(errorDetails, null, 2));
+		logger.error('Detaljerat SendGrid-fel:', JSON.stringify(errorDetails, null, 2));
 		throw error;
 	}
 }
@@ -726,8 +727,8 @@ async function sendEmail({ to, subject, html, type = 'booking' }) {
 export async function sendBookingConfirmation(bookingData, isInvoiceBooking = false) {
 	try {
 		// detaljerad loggning av inkommande data
-		console.log('=== BOKNINGSBEKRÄFTELSE STARTAR ===');
-		console.log('Inkommande bokningsdata:', JSON.stringify(bookingData, null, 2));
+		logger.info('=== BOKNINGSBEKRÄFTELSE STARTAR ===');
+		logger.info('Inkommande bokningsdata:', JSON.stringify(bookingData, null, 2));
 
 		// Hämta den senaste bokningsdatan från databasen för att säkerställa korrekt belopp
 		if (bookingData.id) {
@@ -739,7 +740,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 				]);
 
 				if (latestBooking && latestBooking.amount_total_inc_vat) {
-					console.log('Uppdaterar amount_total från databasen:', {
+					logger.info('Uppdaterar amount_total från databasen:', {
 						original: bookingData.amount_total,
 						fromDb: latestBooking.amount_total_inc_vat
 					});
@@ -747,7 +748,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 					bookingData.amount_total = latestBooking.amount_total_inc_vat;
 				}
 			} catch (dbError) {
-				console.error('Fel vid hämtning av senaste bokningsdata:', dbError);
+				logger.error('Fel vid hämtning av senaste bokningsdata:', dbError);
 			}
 		}
 
@@ -768,7 +769,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		// kontrollera att alla nödvändiga fält finns
 		for (const field of requiredFields) {
 			if (bookingData[field] === undefined) {
-				console.warn(`Varning: Fältet ${field} saknas i bokningsdata`);
+				logger.warn(`Varning: Fältet ${field} saknas i bokningsdata`);
 			}
 		}
 
@@ -785,7 +786,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 					startLocationName = location.location;
 				}
 			} catch (error) {
-				console.error('Fel vid hämtning av startplats:', error);
+				logger.error('Fel vid hämtning av startplats:', error);
 			}
 		}
 
@@ -831,10 +832,10 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 
 				if (rows.length > 0) {
 					invoiceDetails = rows[0];
-					console.log('Hämtade fakturauppgifter från databasen:', invoiceDetails);
+					logger.info('Hämtade fakturauppgifter från databasen:', invoiceDetails);
 				}
 			} catch (error) {
-				console.error('Fel vid hämtning av fakturauppgifter:', error);
+				logger.error('Fel vid hämtning av fakturauppgifter:', error);
 			}
 		}
 
@@ -873,7 +874,7 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		};
 
 		// Lägg till loggning för att se exakta värden
-		console.log('Prisberäkning i e-post:', {
+		logger.info('Prisberäkning i e-post:', {
 			amount_total: bookingData.amount_total,
 			amount_total_exc_vat: bookingData.amount_total_exc_vat,
 			amount_total_inc_vat: bookingData.amount_total_inc_vat,
@@ -883,9 +884,9 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			total: enrichedBookingData.total
 		});
 
-		console.log('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
-		console.log('Addons efter konvertering:', JSON.stringify(enrichedBookingData.addons, null, 2));
-		console.log('Invoice details:', JSON.stringify(enrichedBookingData.invoice_details, null, 2));
+		logger.info('Berikad bokningsdata:', JSON.stringify(enrichedBookingData, null, 2));
+		logger.info('Addons efter konvertering:', JSON.stringify(enrichedBookingData.addons, null, 2));
+		logger.info('Invoice details:', JSON.stringify(enrichedBookingData.invoice_details, null, 2));
 
 		// Registrera Handlebars-hjälpfunktioner
 		Handlebars.registerHelper('eq', function (a, b, options) {
@@ -905,8 +906,8 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 		});
 
 		// logga hela html för felsökning
-		console.log('HELA HTML FÖR BOKNINGSBEKRÄFTELSE:');
-		console.log(html);
+		logger.info('HELA HTML FÖR BOKNINGSBEKRÄFTELSE:');
+		logger.info(html);
 
 		// skicka e-post
 		await sendEmail({
@@ -916,10 +917,10 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			type: 'booking'
 		});
 
-		console.log('✉️ Bokningsbekräftelse skickad till:', enrichedBookingData.customer_email);
-		console.log('=== BOKNINGSBEKRÄFTELSE SLUTFÖRD ===');
+		logger.info('✉️ Bokningsbekräftelse skickad till:', enrichedBookingData.customer_email);
+		logger.info('=== BOKNINGSBEKRÄFTELSE SLUTFÖRD ===');
 
-		console.log('Booking data för e-post:', {
+		logger.info('Booking data för e-post:', {
 			rawData: bookingData,
 			formattedData: enrichedBookingData,
 			addons: enrichedBookingData.addons,
@@ -927,8 +928,8 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 			invoiceDetails: enrichedBookingData.invoice_details
 		});
 	} catch (error) {
-		console.error('Detaljerat fel i sendBookingConfirmation:', error);
-		console.error('Felstack:', error.stack);
+		logger.error('Detaljerat fel i sendBookingConfirmation:', error);
+		logger.error('Felstack:', error.stack);
 		throw error;
 	}
 }
@@ -951,7 +952,7 @@ async function generateBookingConfirmationEmail(bookingData) {
 // Uppdatera sendInvoiceRequest funktionen
 export async function sendInvoiceRequest(bookingData, invoiceData) {
 	try {
-		console.log('Förbereder fakturabegäran med data:', { bookingData, invoiceData });
+		logger.info('Förbereder fakturabegäran med data:', { bookingData, invoiceData });
 
 		// kompilera handlebars template
 		const template = Handlebars.compile(invoiceRequestTemplate);
@@ -969,7 +970,7 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 					startLocationName = location.location;
 				}
 			} catch (error) {
-				console.error('Fel vid hämtning av startplats:', error);
+				logger.error('Fel vid hämtning av startplats:', error);
 			}
 		}
 
@@ -1019,8 +1020,8 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 			invoice: invoiceData
 		};
 
-		console.log('Renderar e-postmall med data:', JSON.stringify(templateData, null, 2));
-		console.log('Addons efter konvertering:', JSON.stringify(templateData.booking.addons, null, 2));
+		logger.info('Renderar e-postmall med data:', JSON.stringify(templateData, null, 2));
+		logger.info('Addons efter konvertering:', JSON.stringify(templateData.booking.addons, null, 2));
 
 		// rendera html innehåll
 		const htmlContent = template(templateData);
@@ -1033,9 +1034,9 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 			type: 'invoice'
 		});
 
-		console.log('Fakturabegäran skickad framgångsrikt');
+		logger.info('Fakturabegäran skickad framgångsrikt');
 	} catch (error) {
-		console.error('Fel vid sändning av fakturabegäran:', error);
+		logger.error('Fel vid sändning av fakturabegäran:', error);
 		throw error;
 	}
 }

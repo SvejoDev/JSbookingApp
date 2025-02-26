@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { logger } from '$lib/utils/logger';
 import { env } from '$env/dynamic/private';
 
 // skapar en pool av databasanslutningar som kan återanvändas
@@ -17,7 +18,7 @@ const pool = new pg.Pool({
 
 // lyssnar på anslutningsfel
 pool.on('error', (err) => {
-	console.error('oväntat fel på idle-klient', err);
+	logger.error('oväntat fel på idle-klient', err);
 	process.exit(-1);
 });
 
@@ -29,7 +30,7 @@ export async function query(text, params) {
 		const result = await client.query(text, params);
 		return result;
 	} catch (error) {
-		console.error('databasfel:', error);
+		logger.error('databasfel:', error);
 		throw error;
 	} finally {
 		// släpp alltid klienten tillbaka till poolen
@@ -56,8 +57,8 @@ export async function transaction(callback) {
 // testa anslutningen vid start
 pool.query('SELECT NOW()', (err, res) => {
 	if (err) {
-		console.error('fel vid anslutning till databasen:', err);
+		logger.error('fel vid anslutning till databasen:', err);
 	} else {
-		console.log('databasanslutning lyckades');
+		logger.info('databasanslutning lyckades');
 	}
 });

@@ -1,4 +1,5 @@
 import { error, fail } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { createInvitation } from '$lib/server/invitation';
 import { query } from '$lib/db';
 import { Roles } from '$lib/server/lucia';
@@ -40,14 +41,14 @@ export const actions = {
 			const inviteUrl = `${SITE_URL}/admin/auth/signup?token=${invitation.token}`;
 
 			// här skulle du normalt skicka ett email med länken
-			console.log('inbjudningslänk:', inviteUrl);
+			logger.info('inbjudningslänk:', inviteUrl);
 
 			return {
 				success: true,
 				message: 'inbjudan har skickats'
 			};
 		} catch (err) {
-			console.error('fel vid inbjudan:', err);
+			logger.error('fel vid inbjudan:', err);
 			return fail(500, {
 				error: 'kunde inte skapa inbjudan',
 				email: email

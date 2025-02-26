@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query } from '$lib/db';
 
 export async function GET({ url }) {
@@ -18,7 +19,7 @@ export async function GET({ url }) {
 	}
 
 	try {
-		console.error('Capacity Check Parameters:', {
+		logger.error('Capacity Check Parameters:', {
 			experienceId,
 			date,
 			time
@@ -40,17 +41,17 @@ export async function GET({ url }) {
 			[experienceId]
 		);
 
-		console.error('Experience Data:', experience);
+		logger.error('Experience Data:', experience);
 
 		// om det inte är en guidad upplevelse, returnera null
 		if (experience?.experience_type !== 'guided') {
-			console.error('Not a guided experience');
+			logger.error('Not a guided experience');
 			return json({ availableCapacity: null });
 		}
 
 		// om ingen kapacitet är satt, returnera fel
 		if (!experience.max_participants) {
-			console.error('No capacity set for guided experience:', experience.name);
+			logger.error('No capacity set for guided experience:', experience.name);
 			return json({
 				error: 'Ingen kapacitet satt för denna upplevelse',
 				availableCapacity: 0
@@ -80,7 +81,7 @@ export async function GET({ url }) {
 			bookedCount: bookings?.booked_count || 0
 		});
 	} catch (error) {
-		console.error('Fel vid kapacitetskontroll:', error);
+		logger.error('Fel vid kapacitetskontroll:', error);
 		return json(
 			{
 				error: 'Kunde inte kontrollera kapacitet',

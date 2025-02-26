@@ -1,4 +1,5 @@
 import { auth } from '$lib/server/lucia';
+import { logger } from '$lib/utils/logger';
 import { fail } from '@sveltejs/kit';
 import { LuciaError } from 'lucia';
 
@@ -25,7 +26,7 @@ export const actions = {
 				location: '/admin'
 			};
 		} catch (error) {
-			console.error('Login error:', error);
+			logger.error('Login error:', error);
 			if (
 				error instanceof LuciaError &&
 				(error.message === 'AUTH_INVALID_KEY_ID' || error.message === 'AUTH_INVALID_PASSWORD')

@@ -1,6 +1,7 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
 	import { Button } from '$lib/components/ui/button';
+import { logger } from '$lib/utils/logger';
 	import {
 		Card,
 		CardHeader,
@@ -178,7 +179,7 @@
 			if (data.startLocations?.length > 0) {
 				// Only log errors for invalid values in guided experiences
 				if (!selectedStartLocation || numAdults < 0 || !data.openHours?.guidedHours) {
-					console.error('Guided Experience Error:', {
+					logger.error('Guided Experience Error:', {
 						missingStartLocation: !selectedStartLocation,
 						missingOpenHours: !data.openHours?.guidedHours,
 						invalidAdults: numAdults < 0,
@@ -216,7 +217,7 @@
 					});
 				}
 			} else {
-				console.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
+				logger.warn('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			}
 		}
 	}
@@ -455,7 +456,7 @@
 			returnTime = returnDateTime.toTimeString().substring(0, 5);
 		} catch (error) {
 			// hantera fel tyst men logga för felsökning i produktion
-			console.error('Error calculating return date:', error);
+			logger.error('Error calculating return date:', error);
 		}
 	}
 
@@ -520,7 +521,7 @@
 
 			window.location.href = result.url;
 		} catch (error) {
-			console.error('Checkout error:', error);
+			logger.error('Checkout error:', error);
 			alert(`Ett fel uppstod vid checkout: ${error.message}`);
 		}
 	}
@@ -576,7 +577,7 @@
 			// Omdirigera till success-sidan med booking_id
 			window.location.href = `/success?booking_id=${bookingId}`;
 		} catch (error) {
-			console.error('Error submitting invoice:', error);
+			logger.error('Error submitting invoice:', error);
 			alert('Ett fel uppstod vid hantering av fakturan. Vänligen försök igen.');
 		} finally {
 			isSubmittingInvoice = false;
@@ -594,10 +595,10 @@
 				'pk_test_51Q3N7cP8OFkPaMUNpmkTh09dCDHBxYz4xWIC15fBXB4UerJpV9qXhX5PhT0f1wxwdcGVlenqQaKw0m6GpKUZB0jj00HBzDqWig';
 			stripePromise = await loadStripe(PUBLIC_STRIPE_KEY);
 			if (!stripePromise) {
-				console.error('Failed to initialize Stripe');
+				logger.error('Failed to initialize Stripe');
 			}
 		} catch (error) {
-			console.error('Error initializing Stripe:', error);
+			logger.error('Error initializing Stripe:', error);
 		}
 
 		minDate = new Date();
@@ -718,7 +719,7 @@
 	function getAvailableTimeIntervals(date, openHours) {
 		// only log if there's an issue with the time intervals
 		if (!date || !openHours || (!openHours.specificDates.length && !openHours.periods.length)) {
-			console.error('Time Intervals Error:', {
+			logger.error('Time Intervals Error:', {
 				missingDate: !date,
 				missingOpenHours: !openHours,
 				noAvailableDates: !openHours?.specificDates.length && !openHours?.periods.length,
@@ -803,7 +804,7 @@
 				const result = await response.json();
 
 				if (result.error) {
-					console.error('kapacitetsfel:', result.error);
+					logger.error('kapacitetsfel:', result.error);
 					return;
 				}
 
@@ -819,7 +820,7 @@
 				await tick();
 				await scrollToElement('participants-section');
 			} catch (error) {
-				console.error('fel vid kapacitetskontroll:', error);
+				logger.error('fel vid kapacitetskontroll:', error);
 			}
 		} else {
 			startTime = time;
@@ -879,7 +880,7 @@
 			maxCapacity = result.maxCapacity;
 			availableSpots = availableCapacity;
 		} catch (error) {
-			console.error('Kapacitetsfel:', error);
+			logger.error('Kapacitetsfel:', error);
 			availableCapacity = 0;
 			maxCapacity = 0;
 			availableSpots = 0;
@@ -891,7 +892,7 @@
 		if (startDate && data.experience?.experience_type === 'guided') {
 			const guidedHours = data.openHours?.guidedHours;
 			if (!guidedHours) {
-				console.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
+				logger.error('Varning: Inga öppettider konfigurerade för guidad upplevelse');
 			} else {
 				possibleStartTimes = generateGuidedTimes(guidedHours.openTime, guidedHours.closeTime);
 			}
@@ -902,7 +903,7 @@
 	function generateGuidedTimes(openTime, closeTime) {
 		try {
 			if (!openTime || !closeTime) {
-				console.error('Missing open or close time');
+				logger.error('Missing open or close time');
 				return [];
 			}
 
@@ -918,7 +919,7 @@
 			// Returnera endast starttiden för guidade upplevelser
 			return [openTime];
 		} catch (error) {
-			console.error('Error generating guided times:', error);
+			logger.error('Error generating guided times:', error);
 			return [];
 		}
 	}
@@ -957,7 +958,7 @@
 				scrollToElement('contact-section');
 			});
 		} catch (error) {
-			console.error('Error:', error);
+			logger.error('Error:', error);
 			alert('Ett fel uppstod. Vänligen försök igen.');
 		} finally {
 			isLoadingContact = false;
@@ -971,11 +972,11 @@
 	function updateOptionalProductQuantity(productId, increment) {
 		const product = data.experience.optional_products.find((p) => p.id === parseInt(productId));
 		if (!product) {
-			console.error('Product not found:', productId);
+			logger.error('Product not found:', productId);
 			return;
 		}
 
-		console.log('Updating quantity:', {
+		logger.info('Updating quantity:', {
 			productId,
 			currentQuantity: selectedOptionalProducts[productId]?.quantity || 0,
 			increment,
@@ -1000,11 +1001,11 @@
 	// Uppdatera updateOptionalProductPrice funktionen
 	function updateOptionalProductPrice(product) {
 		if (!product) {
-			console.error('Invalid product provided');
+			logger.error('Invalid product provided');
 			return;
 		}
 
-		console.log('Updating per-person product:', {
+		logger.info('Updating per-person product:', {
 			productId: product.id,
 			currentSelection: perPersonSelections[product.id],
 			price: product.price
@@ -1030,7 +1031,7 @@
 	}
 
 	function calculateOptionalProductsTotal() {
-		console.log('Calculating total with:', {
+		logger.info('Calculating total with:', {
 			selectedProducts: selectedOptionalProducts,
 			numAdults
 		});
@@ -1038,7 +1039,7 @@
 		return Object.entries(selectedOptionalProducts).reduce((total, [productId, data]) => {
 			if (data.type === 'per_person') {
 				const subtotal = data.selected ? data.price * numAdults : 0;
-				console.log('Per-person product calculation:', {
+				logger.info('Per-person product calculation:', {
 					productId,
 					selected: data.selected,
 					price: data.price,
@@ -1048,7 +1049,7 @@
 				return total + subtotal;
 			} else if (data.type === 'fixed_quantity') {
 				const subtotal = (data.quantity || 0) * data.price;
-				console.log('Fixed quantity product calculation:', {
+				logger.info('Fixed quantity product calculation:', {
 					productId,
 					quantity: data.quantity || 0,
 					price: data.price,
@@ -1068,7 +1069,7 @@
 		// Beräkna total när något relevant ändras
 		if (selectedOptionalProducts || numAdults || perPersonSelections) {
 			optionalProductsTotal = calculateOptionalProductsTotal();
-			console.log('New total price:', {
+			logger.info('New total price:', {
 				optionalProductsTotal,
 				selectedProducts: selectedOptionalProducts,
 				perPersonSelections
@@ -1086,7 +1087,7 @@
 	$: {
 		if (selectedOptionalProducts || numAdults) {
 			optionalProductsTotal = calculateOptionalProductsTotal();
-			console.log('Recalculated total:', optionalProductsTotal);
+			logger.info('Recalculated total:', optionalProductsTotal);
 		}
 	}
 
@@ -1096,11 +1097,11 @@
 
 		// kontrollera att vi har tillgång till experience och optional_products
 		if (!data?.experience?.optional_products) {
-			console.log('No optional products data available');
+			logger.info('No optional products data available');
 			return [];
 		}
 
-		console.log('Processing optional products:', {
+		logger.info('Processing optional products:', {
 			perPersonSelections,
 			selectedOptionalProducts,
 			availableProducts: data.experience.optional_products
@@ -1148,7 +1149,7 @@
 			});
 		}
 
-		console.log('Prepared optional products:', products);
+		logger.info('Prepared optional products:', products);
 		return products;
 	}
 
@@ -1188,11 +1189,11 @@
 
 		try {
 			isSubmittingCard = true;
-			console.log('Initierar kortbetalning...');
+			logger.info('Initierar kortbetalning...');
 
 			// Formatera tillvalsprodukter för backend
 			const formattedOptionalProducts = prepareOptionalProductsForSubmission();
-			console.log('Formatted optional products:', formattedOptionalProducts);
+			logger.info('Formatted optional products:', formattedOptionalProducts);
 
 			const response = await fetch('/api/create-checkout-session', {
 				method: 'POST',
@@ -1235,7 +1236,7 @@
 			// Omdirigera till Stripe Checkout
 			window.location.href = url;
 		} catch (error) {
-			console.error('Error initiating card payment:', error);
+			logger.error('Error initiating card payment:', error);
 			alert('Ett fel uppstod vid betalningen. Vänligen försök igen.');
 		} finally {
 			isSubmittingCard = false;

@@ -1,3 +1,5 @@
+import { logger } from '$lib/utils/logger';
+
 export function validateBookingData(bookingData) {
 	const requiredFields = [
 		'startlocation',
@@ -10,7 +12,7 @@ export function validateBookingData(bookingData) {
 	const missingFields = requiredFields.filter((field) => !bookingData[field]);
 
 	if (missingFields.length > 0) {
-		console.warn('Missing required booking fields:', missingFields);
+		logger.warn('Missing required booking fields:', missingFields);
 		return false;
 	}
 

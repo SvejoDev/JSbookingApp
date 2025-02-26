@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
+import { logger } from '$lib/utils/logger';
 	import CalendarHeader from './CalendarHeader.svelte';
 	import CalendarGrid from './CalendarGrid.svelte';
 
@@ -86,7 +87,7 @@
 	function handleDateSelect(event) {
 		const date = event.detail;
 		if (!(date instanceof Date) || isNaN(date.getTime())) {
-			console.error('Invalid date received:', date);
+			logger.error('Invalid date received:', date);
 			return;
 		}
 

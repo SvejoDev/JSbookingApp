@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { logger } from '$lib/utils/logger';
 import { query, transaction } from '$lib/db.js';
 
 function generateDateRange(startDate, endDate) {
@@ -53,7 +54,7 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 			throw new Error('Bokning hittades inte');
 		}
 
-		console.log('Booking details:', booking);
+		logger.info('Booking details:', booking);
 
 		const { rows: addons } = await client.query(
 			'SELECT id, name, column_name, availability_table_name FROM addons'
@@ -67,11 +68,11 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 				bookingId
 			]);
 			addonAmounts[addon.column_name] = amount[addon.column_name];
-			console.log(`Addon ${addon.name} amount:`, amount[addon.column_name]);
+			logger.info(`Addon ${addon.name} amount:`, amount[addon.column_name]);
 		}
 
 		const dates = generateDateRange(booking.start_date, booking.end_date);
-		console.log('Dates to process:', dates);
+		logger.info('Dates to process:', dates);
 
 		const isMultiDayBooking = booking.booking_type === 'overnight';
 
@@ -101,7 +102,7 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 				}
 			}
 
-			console.log('Processing date:', {
+			logger.info('Processing date:', {
 				date: currentDate,
 				isFirstDay,
 				isMiddleDay,
@@ -134,7 +135,7 @@ async function restoreAvailabilityAfterBooking(client, bookingId) {
 
 		return true;
 	} catch (error) {
-		console.error('Fel vid återställning av tillgänglighet:', error);
+		logger.error('Fel vid återställning av tillgänglighet:', error);
 		throw error;
 	}
 }
@@ -149,7 +150,7 @@ async function restoreProductAvailability(
 	isMultiDayBooking
 ) {
 	try {
-		console.log('Restoring availability for:', {
+		logger.info('Restoring availability for:', {
 			tableName,
 			date,
 			startIndex,
@@ -176,7 +177,7 @@ async function restoreProductAvailability(
                 WHERE date = $1
             `;
 
-			console.log(`Updating ${updates.length} columns for ${date}`, {
+			logger.info(`Updating ${updates.length} columns for ${date}`, {
 				startMinutes: startIndex * 15,
 				endMinutes: endIndex * 15
 			});
@@ -184,7 +185,7 @@ async function restoreProductAvailability(
 			await client.query(query, values);
 		}
 	} catch (error) {
-		console.error(`Fel vid återställning av ${tableName} för ${date}:`, error);
+		logger.error(`Fel vid återställning av ${tableName} för ${date}:`, error);
 		throw error;
 	}
 }
@@ -205,11 +206,11 @@ export async function POST({ request }) {
 
 		await transaction(async (client) => {
 			console.group('🏁 Completing Booking');
-			console.log('🎫 Booking ID:', bookingId);
+			logger.info('🎫 Booking ID:', bookingId);
 
 			await restoreAvailabilityAfterBooking(client, bookingId);
 
-			console.log('✅ Booking Completed');
+			logger.info('✅ Booking Completed');
 			console.groupEnd();
 		});
 
@@ -218,7 +219,7 @@ export async function POST({ request }) {
 			message: 'Tillgänglighet har återställts och bokning är markerad som genomförd'
 		});
 	} catch (error) {
-		console.error('Fel vid återställning:', error);
+		logger.error('Fel vid återställning:', error);
 		return json(
 			{
 				success: false,
