@@ -54,10 +54,19 @@ export async function POST({ request }) {
 				customer_phone: data.customer_phone,
 				customer_comment: data.customer_comment || '',
 				startlocation: data.selectedStartLocation,
+				startlocation_name: data.startLocationName,
+				adult_price: data.adultPrice,
+				amount_total: totalPrice,
+				totalAdultsExclVat: data.totalAdultsExclVat,
+				optionalProductsTotal: optionalProductsTotal,
 				amount_canoes: data.addons?.amount_canoes || 0,
 				amount_kayak: data.addons?.amount_kayak || 0,
 				amount_sup: data.addons?.amount_sup || 0,
-				optional_products: JSON.stringify(data.optional_products || [])
+				optional_products: JSON.stringify(data.optional_products || []),
+				start_slot: data.start_slot,
+				end_slot: data.end_slot,
+				total_slots: data.total_slots,
+				booking_type: data.booking_type || 'day'
 			}
 		});
 

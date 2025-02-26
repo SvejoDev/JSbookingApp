@@ -77,12 +77,17 @@ export async function POST({ request }) {
 					});
 
 					// Modify createBooking function to ensure startlocation is properly saved
-					const booking = await createBooking(client, {
-						...session.metadata,
-						startlocation: session.metadata.startlocation, // Ensure this matches your database column name
-						stripe_session_id: session.id
-					});
+					const booking = await createBooking(
+						client,
+						{
+							...session.metadata,
+							startlocation: session.metadata.startlocation, // Ensure this matches your database column name
+							stripe_session_id: session.id
+						},
+						session
+					);
 					await createBookingAddons(client, booking.id, session.metadata);
+					await createBookingOptionalProducts(client, booking.id, session.metadata);
 					await updateAvailabilityForBooking(client, session.metadata);
 
 					if (!session.metadata.confirmation_sent) {
@@ -91,21 +96,30 @@ export async function POST({ request }) {
 							id: booking.id,
 							startLocationName: session.metadata.startlocation_name,
 							startlocation: booking.startlocation,
-							adultPrice: session.metadata.adult_price,
-							subtotal: Math.round(
-								session.metadata.totalAdultsExclVat + session.metadata.optionalProductsTotal / 1.25
-							),
-							vat: Math.round(
-								(session.metadata.totalAdultsExclVat +
-									session.metadata.optionalProductsTotal / 1.25) *
-									0.25
-							),
-							total: session.metadata.amount_total,
-							date_time_created: booking.date_time_created || new Date().toISOString(),
+							adultPrice: parseInt(session.metadata.adult_price),
+							subtotal: parseInt(session.metadata.amount_total) / 1.25,
+							vat:
+								parseInt(session.metadata.amount_total) -
+								parseInt(session.metadata.amount_total) / 1.25,
+							total: parseInt(session.metadata.amount_total),
+							date_time_created: booking.date_time_created,
+							start_date: session.metadata.start_date,
+							end_date: session.metadata.end_date,
+							start_time: session.metadata.start_time,
+							end_time: session.metadata.end_time,
 							customer_email: booking.customer_email,
 							customer_phone: booking.customer_phone,
 							booking_name: booking.booking_name,
-							booking_lastname: booking.booking_lastname
+							booking_lastname: booking.booking_lastname,
+							experience: booking.experience,
+							number_of_adults: booking.number_of_adults,
+							number_of_children: booking.number_of_children,
+							addons: [
+								{ name: 'Kanot', amount: booking.amount_canoes },
+								{ name: 'Kajak', amount: booking.amount_kayak },
+								{ name: 'SUP', amount: booking.amount_sup }
+							],
+							optional_products: JSON.parse(session.metadata.optional_products || '[]')
 						};
 
 						console.log(
@@ -125,7 +139,24 @@ export async function POST({ request }) {
 						}
 					}
 
-					return booking;
+					// Efter att bokningen är skapad
+					console.log('Bokning skapad med session ID:', session.id);
+					console.log('Redirect URL:', `/success?session_id=${session.id}`);
+
+					// Uppdatera status till confirmed men behåll booking_status som pending
+					await client.query('UPDATE bookings SET status = $1 WHERE stripe_session_id = $2', [
+						'confirmed',
+						session.id
+					]);
+
+					// Vänta lite innan redirect för att säkerställa att databasen har uppdaterats
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+
+					return json({
+						received: true,
+						message: 'bokning genomförd',
+						redirectUrl: `/success?session_id=${session.id}`
+					});
 				});
 
 				console.log('✅ Booking Complete');
@@ -305,11 +336,32 @@ async function createBooking(client, metadata, session) {
 	const amountTotal = parseInt(metadata.amount_total) || 0;
 	const startlocation = parseInt(metadata.startlocation) || null;
 
+	// beräkna start_slot, end_slot och total_slots
+	const startSlot = metadata.start_slot
+		? parseInt(metadata.start_slot)
+		: calculateTimeSlot(metadata.start_time);
+	const endSlot = metadata.end_slot
+		? parseInt(metadata.end_slot)
+		: calculateTimeSlot(metadata.end_time);
+	const totalSlots = metadata.total_slots ? parseInt(metadata.total_slots) : endSlot - startSlot;
+
+	// bestäm booking_type (day eller overnight)
+	const bookingType =
+		metadata.booking_type || (metadata.start_date === metadata.end_date ? 'day' : 'overnight');
+
 	// logga startlocation-värdet för felsökning
 	console.log('Startlocation-värde som ska sparas:', {
 		raw: metadata.startlocation,
 		parsed: startlocation,
 		name: metadata.startlocation_name
+	});
+
+	// logga slots och booking_type för felsökning
+	console.log('Slots och booking_type som ska sparas:', {
+		startSlot,
+		endSlot,
+		totalSlots,
+		bookingType
 	});
 
 	const {
@@ -335,7 +387,6 @@ async function createBooking(client, metadata, session) {
 			customer_email, 
 			status, 
 			stripe_session_id, 
-			date_time_created, 
 			booking_status, 
 			start_slot, 
 			end_slot, 
@@ -343,10 +394,8 @@ async function createBooking(client, metadata, session) {
 			booking_type, 
 			payment_method, 
 			customer_phone
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 
-			NOW(), $20, $21, $22, $23, $24, $25, $26
-		) RETURNING *`,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+		RETURNING *`,
 		[
 			metadata.experience_id,
 			metadata.experience,
@@ -357,7 +406,7 @@ async function createBooking(client, metadata, session) {
 			numberOfAdults,
 			numberOfChildren,
 			amountTotal,
-			startlocation, // använd den parsade versionen
+			startlocation,
 			metadata.customer_comment,
 			amountCanoes,
 			amountKayak,
@@ -365,14 +414,14 @@ async function createBooking(client, metadata, session) {
 			metadata.booking_name,
 			metadata.booking_lastname,
 			metadata.customer_email,
-			'confirmed',
+			'pending',
 			metadata.stripe_session_id,
-			'confirmed',
-			metadata.start_slot,
-			metadata.end_slot,
-			metadata.total_slots,
-			metadata.booking_type,
-			'card',
+			'pending',
+			startSlot,
+			endSlot,
+			totalSlots,
+			bookingType,
+			'stripe',
 			metadata.customer_phone
 		]
 	);
@@ -395,5 +444,35 @@ async function createBookingAddons(client, bookingId, metadata) {
 				[bookingId, addon.id, amount]
 			);
 		}
+	}
+}
+
+async function createBookingOptionalProducts(client, bookingId, metadata) {
+	try {
+		// kontrollera om det finns optional_products i metadata
+		if (!metadata.optional_products) {
+			console.log('Inga optional products att spara');
+			return;
+		}
+
+		// parsa optional_products från metadata
+		const optionalProducts = JSON.parse(metadata.optional_products || '[]');
+
+		console.log('Sparar optional products:', optionalProducts);
+
+		// spara varje optional product
+		for (const product of optionalProducts) {
+			await client.query(
+				`INSERT INTO booking_optional_products 
+				 (booking_id, optional_product_id, quantity, price_per_unit, total_price) 
+				 VALUES ($1, $2, $3, $4, $5)`,
+				[bookingId, product.id, product.quantity, product.price, product.total_price]
+			);
+		}
+
+		console.log(`✅ Sparat ${optionalProducts.length} optional products för bokning ${bookingId}`);
+	} catch (error) {
+		console.error('Fel vid sparande av optional products:', error);
+		throw error;
 	}
 }

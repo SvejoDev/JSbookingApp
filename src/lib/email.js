@@ -651,6 +651,13 @@ export async function sendBookingConfirmation(bookingData, isInvoiceBooking = fa
 
 		console.log('✉️ Bokningsbekräftelse skickad till:', enrichedBookingData.customer_email);
 		console.log('=== BOKNINGSBEKRÄFTELSE SLUTFÖRD ===');
+
+		console.log('Booking data för e-post:', {
+			rawData: bookingData,
+			formattedData: enrichedBookingData,
+			addons: bookingData.addons_info,
+			optionalProducts: bookingData.optional_products
+		});
 	} catch (error) {
 		console.error('Detaljerat fel i sendBookingConfirmation:', error);
 		console.error('Felstack:', error.stack);
@@ -688,30 +695,29 @@ export async function sendInvoiceRequest(bookingData, invoiceData) {
 		// förbered data för templaten
 		const templateData = {
 			booking: {
+				...bookingData,
+				// lägg till saknad information
 				experience: bookingData.experience,
-				start_date: formattedStartDate,
-				end_date: formattedEndDate,
+				start_date: bookingData.start_date,
+				end_date: bookingData.end_date,
 				start_time: bookingData.start_time,
 				end_time: bookingData.end_time,
 				number_of_adults: bookingData.number_of_adults,
 				number_of_children: bookingData.number_of_children,
 				amount_total: bookingData.amount_total,
-				startLocation: bookingData.startLocation,
-				booking_name: bookingData.booking_name,
-				booking_lastname: bookingData.booking_lastname,
-				customer_email: bookingData.customer_email,
-				customer_phone: bookingData.customer_phone,
-				customer_comment: bookingData.customer_comment
+				// addon information
+				addons_info: bookingData.addons_info || [],
+				// optional products
+				optional_products: bookingData.optional_products || [],
+				// startplats information
+				startlocation_name: bookingData.startlocation_name,
+				adult_price: bookingData.adult_price
 			},
-			invoice: {
-				invoiceType: invoiceData.invoiceType,
-				organization: invoiceData.organization,
-				glnPeppolId: invoiceData.glnPeppolId,
-				marking: invoiceData.marking,
-				address: invoiceData.address,
-				postalCode: invoiceData.postalCode,
-				city: invoiceData.city,
-				invoiceEmail: invoiceData.invoiceEmail
+			// lägg till priser och summering
+			summary: {
+				subtotal: Math.round(bookingData.amount_total / 1.25),
+				vat: Math.round(bookingData.amount_total - bookingData.amount_total / 1.25),
+				total: bookingData.amount_total
 			}
 		};
 
