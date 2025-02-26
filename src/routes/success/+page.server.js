@@ -19,95 +19,132 @@ export const load = async ({ url }) => {
 					const {
 						rows: [bookingData]
 					} = await client.query(
-						`SELECT 
-							b.*,
-							sl.location as startlocation_name,
-							sl.price as adult_price,
-							COALESCE(
-								json_agg(
-									json_build_object(
-										'name', a.name,
-										'amount', ba.amount
-									)
-								) FILTER (WHERE a.id IS NOT NULL), 
-								'[]'::json
-							) as addons,
-							COALESCE(
-								json_agg(
-									json_build_object(
-										'id', op.id,
-										'name', op.name,
-										'quantity', bop.quantity,
-										'price', bop.price_per_unit,
-										'total_price', bop.total_price
-									)
-								) FILTER (WHERE op.id IS NOT NULL), 
-								'[]'::json
-							) as optional_products,
-							COALESCE(
-								json_build_object(
-									'invoice_type', id.invoice_type,
-									'invoice_email', id.invoice_email,
-									'gln_peppol_id', id.gln_peppol_id,
-									'marking', id.marking,
-									'organization', id.organization,
-									'address', id.address,
-									'postal_code', id.postal_code,
-									'city', id.city
-								),
-								'{}'::json
-							) as invoice_details
-						FROM bookings b
-						LEFT JOIN start_locations sl ON b.startlocation = sl.id
-						LEFT JOIN booking_addons ba ON b.id = ba.booking_id
-						LEFT JOIN addons a ON ba.addon_id = a.id
-						LEFT JOIN booking_optional_products bop ON b.id = bop.booking_id
-						LEFT JOIN optional_products op ON bop.optional_product_id = op.id
-						LEFT JOIN invoice_details id ON b.id = id.booking_id
-						WHERE (b.stripe_session_id = $1 AND (b.payment_method = 'card' OR b.payment_method = 'stripe'))
-						   OR (b.id = $2)
-						GROUP BY b.id, sl.location, sl.price, id.invoice_type, id.invoice_email, id.gln_peppol_id, 
-							id.marking, id.organization, id.address, id.postal_code, id.city`,
-						[sessionId, bookingId]
+						`
+						SELECT 
+							b.*, 
+							e.name as experience,
+							COALESCE(id.invoice_type, '') as invoice_type,
+							COALESCE(id.invoice_email, '') as invoice_email,
+							COALESCE(id.gln_peppol_id, '') as gln_peppol_id,
+							COALESCE(id.marking, '') as marking,
+							COALESCE(id.organization, '') as organization,
+							COALESCE(id.address, '') as address,
+							COALESCE(id.postal_code, '') as postal_code,
+							COALESCE(id.city, '') as city
+						FROM 
+							bookings b
+						LEFT JOIN 
+							experiences e ON b.experience_id = e.id
+						LEFT JOIN 
+							invoice_details id ON b.id = id.booking_id
+						WHERE 
+							${sessionId ? 'b.stripe_session_id = $1' : 'b.id = $1'}
+						`,
+						[sessionId || bookingId]
 					);
 
 					if (!bookingData) {
-						console.log(
-							'Försök',
-							i + 1,
-							': Ingen bokning hittad för session',
-							sessionId,
-							'eller id',
-							bookingId
-						);
 						throw new Error('Bokning hittades inte');
 					}
 
-					return bookingData;
+					// Hämta startplatsnamn om det finns ett startlocation-id
+					let startLocationName = null;
+					if (bookingData.startlocation) {
+						const { rows: startLocationRows } = await client.query(
+							'SELECT location FROM start_locations WHERE id = $1',
+							[bookingData.startlocation]
+						);
+						if (startLocationRows.length > 0) {
+							startLocationName = startLocationRows[0].location;
+						}
+					}
+
+					// Hämta tillvalsprodukter
+					const { rows: optionalProducts } = await client.query(
+						`
+						SELECT 
+							bop.quantity, 
+							bop.price_per_unit as price, 
+							bop.total_price, 
+							op.name 
+						FROM 
+							booking_optional_products bop
+						JOIN 
+							optional_products op ON bop.optional_product_id = op.id
+						WHERE 
+							bop.booking_id = $1
+						`,
+						[bookingData.id]
+					);
+
+					// Hämta addons
+					const { rows: addons } = await client.query(
+						`
+						SELECT 
+							ba.amount, 
+							a.name 
+						FROM 
+							booking_addons ba
+						JOIN 
+							addons a ON ba.addon_id = a.id
+						WHERE 
+							ba.booking_id = $1
+						`,
+						[bookingData.id]
+					);
+
+					return {
+						...bookingData,
+						startLocationName,
+						optional_products: optionalProducts,
+						addons
+					};
 				});
+
+				// skicka bokningsbekräftelse om det inte redan är gjort
+				if (!booking.confirmation_sent) {
+					try {
+						await sendBookingConfirmation(booking, booking.payment_method === 'invoice');
+						// uppdatera confirmation_sent till true
+						await query('UPDATE bookings SET confirmation_sent = true WHERE id = $1', [booking.id]);
+					} catch (emailError) {
+						console.error('Fel vid skickande av bokningsbekräftelse:', emailError);
+					}
+				}
+
+				// formatera bokningsdata för frontend
+				const isInvoiceBooking = booking.payment_method === 'invoice';
+
+				// Beräkna totaler för tillvalsprodukter
+				const optionalProductsTotal = booking.optional_products.reduce(
+					(sum, product) => sum + product.total_price,
+					0
+				);
 
 				// Formatera bokningsdata för frontend
 				const formattedBooking = {
 					...booking,
-					// Använd endast de nya priskolumnerna
 					subtotal: booking.amount_total_exc_vat || 0,
-					vat:
-						booking.amount_total_inc_vat && booking.amount_total_exc_vat
-							? booking.amount_total_inc_vat - booking.amount_total_exc_vat
-							: 0,
+					vat: (booking.amount_total_inc_vat || 0) - (booking.amount_total_exc_vat || 0),
 					total: booking.amount_total_inc_vat || 0,
-
-					// Beräkna totalpris för tillvalsprodukter
-					optional_products_total: Array.isArray(booking.optional_products)
-						? booking.optional_products.reduce(
-								(sum, product) => sum + parseInt(product.total_price || 0),
-								0
-							)
-						: 0
+					optional_products_total: optionalProductsTotal,
+					invoice_details: isInvoiceBooking
+						? {
+								invoice_type: booking.invoice_type,
+								invoice_email: booking.invoice_email,
+								gln_peppol_id: booking.gln_peppol_id,
+								marking: booking.marking,
+								organization: booking.organization,
+								address: booking.address,
+								postal_code: booking.postal_code,
+								city: booking.city
+							}
+						: {}
 				};
 
 				return {
-					booking: formattedBooking
+					booking: formattedBooking,
+					isInvoiceBooking
 				};
 			} catch (error) {
 				console.error('Fel vid hämtning av bokning:', error);

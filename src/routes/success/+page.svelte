@@ -1,7 +1,7 @@
 <script>
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { ArrowLeft } from 'lucide-svelte';
 
 	export let data;
@@ -177,84 +177,81 @@
 					</div>
 				{/if}
 
-				{#if isInvoiceBooking}
-					<div class="mt-6 bg-yellow-50 p-4 rounded-lg">
-						<h3 class="font-semibold mb-2">Viktig information om fakturering</h3>
-						<div class="space-y-4">
+				<!-- Visa fakturainformation endast en gång med korrekt formatering -->
+				{#if isInvoiceBooking && booking.invoice_details}
+					<Card class="mt-6">
+						<CardHeader>
+							<CardTitle>Faktureringsinformation</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div class="space-y-4">
+								<div>
+									<p class="font-medium">Fakturatyp:</p>
+									<p>
+										{booking.invoice_details.invoice_type === 'pdf'
+											? 'PDF-faktura'
+											: 'Elektronisk faktura'}
+									</p>
+								</div>
+
+								{#if booking.invoice_details.invoice_type === 'pdf' && booking.invoice_details.invoice_email}
+									<div>
+										<p class="font-medium">E-postadress för faktura:</p>
+										<p>{booking.invoice_details.invoice_email}</p>
+									</div>
+								{/if}
+
+								{#if booking.invoice_details.invoice_type === 'electronic' && booking.invoice_details.gln_peppol_id}
+									<div>
+										<p class="font-medium">GLN/PEPPOL ID:</p>
+										<p>{booking.invoice_details.gln_peppol_id}</p>
+									</div>
+								{/if}
+
+								{#if booking.invoice_details.invoice_type === 'electronic' && booking.invoice_details.marking}
+									<div>
+										<p class="font-medium">Märkning:</p>
+										<p>{booking.invoice_details.marking}</p>
+									</div>
+								{/if}
+
+								<div>
+									<p class="font-medium">Organisation:</p>
+									<p>{booking.invoice_details.organization}</p>
+								</div>
+
+								<div>
+									<p class="font-medium">Adress:</p>
+									<p>{booking.invoice_details.address}</p>
+								</div>
+
+								<div>
+									<p class="font-medium">Postnummer:</p>
+									<p>{booking.invoice_details.postal_code}</p>
+								</div>
+
+								<div>
+									<p class="font-medium">Ort:</p>
+									<p>{booking.invoice_details.city}</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+
+					<!-- Viktig information om fakturering -->
+					<Card class="mt-6">
+						<CardHeader>
+							<CardTitle>Viktig information om fakturering</CardTitle>
+						</CardHeader>
+						<CardContent>
 							<p>
-								En faktura kommer att skickas {booking.invoiceType === 'electronic'
-									? 'till din e-postadress'
+								En faktura kommer att skickas {booking.invoice_details.invoice_type === 'pdf'
+									? 'via e-post'
 									: 'elektroniskt'} inom kort. Vänligen notera att bokningen inte är bekräftad förrän
 								fakturan är betald.
 							</p>
-
-							<div class="mt-4">
-								<h4 class="font-semibold mb-2">Faktureringsinformation</h4>
-								<div class="space-y-2">
-									<div class="flex justify-between">
-										<span>Fakturatyp:</span>
-										<span
-											>{booking.invoiceType === 'electronic'
-												? 'Elektronisk faktura'
-												: 'PDF-faktura'}</span
-										>
-									</div>
-
-									{#if booking.invoiceType === 'electronic'}
-										<div class="flex justify-between">
-											<span>GLN/PEPPOL-ID:</span>
-											<span>{formatValue(booking.glnPeppolId)}</span>
-										</div>
-										<div class="flex justify-between">
-											<span>Märkning:</span>
-											<span>{formatValue(booking.marking)}</span>
-										</div>
-									{:else}
-										<!-- Visa PDF-fakturainformation -->
-										<div class="flex justify-between">
-											<span>E-postadress för faktura:</span>
-											<span>{formatValue(booking.invoiceEmail)}</span>
-										</div>
-									{/if}
-
-									<!-- Gemensamma fält för båda fakturatyper -->
-									<div class="flex justify-between">
-										<span>Organisation:</span>
-										<span>{formatValue(booking.organization)}</span>
-									</div>
-									<div class="flex justify-between">
-										<span>Adress:</span>
-										<span>{formatValue(booking.address)}</span>
-									</div>
-									<div class="flex justify-between">
-										<span>Postnummer:</span>
-										<span>{formatValue(booking.postalCode)}</span>
-									</div>
-									<div class="flex justify-between">
-										<span>Ort:</span>
-										<span>{formatValue(booking.city)}</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- Efter faktureringsinformationen -->
-							{#if booking.addons && booking.addons.length > 0}
-								<div class="mt-4">
-									<h4 class="font-semibold mb-2">Bokade produkter</h4>
-									<div class="space-y-2">
-										{#each booking.addons as addon}
-											{#if addon.amount > 0}
-												<div class="flex justify-between">
-													<span>{addon.name}:</span>
-													<span>{addon.amount} st</span>
-												</div>
-											{/if}
-										{/each}
-									</div>
-								</div>
-							{/if}
-						</div>
-					</div>
+						</CardContent>
+					</Card>
 				{/if}
 
 				<!-- Prisdetaljer - Flyttad längst ner -->
