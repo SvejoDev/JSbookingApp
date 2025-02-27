@@ -29,10 +29,7 @@ export async function POST({ request }) {
 		// Säkerställ att selectedStartLocation är ett nummer
 		const startLocation = parseInt(bookingData.selectedStartLocation) || null;
 
-		// Beräkna momssats (25% är standard i Sverige)
-		const vatRate = 0.8;
-
-		// Beräkna priser med och utan moms
+		let vatRate = 1;
 		let totalPriceIncVat = 0;
 		let totalPriceExcVat = 0;
 
@@ -41,21 +38,6 @@ export async function POST({ request }) {
 			totalPriceIncVat = parseInt(bookingData.amount_total) || 0;
 			totalPriceExcVat = Math.round(totalPriceIncVat * vatRate);
 		} else {
-			// Annars beräkna från grundpriset och addons
-			// Grundpris för vuxna och barn
-			const adultPrice = 500; // Ersätt med faktiskt pris från din databas
-			const childPrice = 250; // Ersätt med faktiskt pris från din databas
-
-			const basePrice =
-				(parseInt(bookingData.number_of_adults) || 0) * adultPrice +
-				(parseInt(bookingData.number_of_children) || 0) * childPrice;
-
-			// Lägg till pris för addons
-			const addonsPrice =
-				(parseInt(bookingData.addons.amount_canoes) || 0) * 200 +
-				(parseInt(bookingData.addons.amount_kayak) || 0) * 250 +
-				(parseInt(bookingData.addons.amount_sup) || 0) * 300;
-
 			// Lägg till pris för optional products
 			const optionalProductsPrice = (bookingData.optional_products || []).reduce(
 				(sum, product) => sum + parseInt(product.total_price || 0),

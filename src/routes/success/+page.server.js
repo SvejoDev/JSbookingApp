@@ -91,15 +91,19 @@ export const load = async ({ url }) => {
 		const amountTotalIncVat = parseInt(booking.amount_total_inc_vat) || 0;
 		const optionalProductsTotal = parseInt(booking.optional_products_total) || 0;
 
-		// beräkna delsumma (exkl. moms)
+		let subtotal, total, vat;
 
-		// beräkna moms
-		const vat = amountTotalExcVat * 0.2;
-
-		const subtotal = amountTotalExcVat - vat;
-
-		// beräkna totalt
-		const total = amountTotalIncVat;
+		if (isInvoiceBooking) {
+			// beräkningar för fakturabetalning
+			subtotal = amountTotalExcVat;
+			total = Math.ceil(amountTotalIncVat * 1.25);
+			vat = Math.ceil(total * 0.2);
+		} else {
+			// beräkningar för kortbetalning/direktbetalning
+			subtotal = amountTotalExcVat - amountTotalExcVat * 0.2;
+			total = Math.ceil(amountTotalIncVat);
+			vat = Math.ceil(total * 0.2);
+		}
 
 		// beräkna grundpris (exkl. tillvalsprodukter)
 		const basePrice = subtotal - optionalProductsTotal;
