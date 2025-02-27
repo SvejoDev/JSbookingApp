@@ -92,10 +92,11 @@ export const load = async ({ url }) => {
 		const optionalProductsTotal = parseInt(booking.optional_products_total) || 0;
 
 		// beräkna delsumma (exkl. moms)
-		const subtotal = amountTotalExcVat;
 
 		// beräkna moms
-		const vat = amountTotalIncVat - amountTotalExcVat;
+		const vat = amountTotalExcVat * 0.2;
+
+		const subtotal = amountTotalExcVat - vat;
 
 		// beräkna totalt
 		const total = amountTotalIncVat;

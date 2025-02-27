@@ -1469,7 +1469,7 @@
 							</div>
 
 							<Alert>
-								<AlertTitle>Totalt pris</AlertTitle>
+								<AlertTitle>Totalt pris ink moms</AlertTitle>
 								<AlertDescription>{totalPrice}kr</AlertDescription>
 							</Alert>
 
@@ -1628,12 +1628,12 @@
 						: 'lg:translate-x-0'}"
 				>
 					<CardHeader>
-						<CardTitle>1. Välj startplats och bokningslängd</CardTitle>
+						<CardTitle>Välj startplats och bokningslängd</CardTitle>
 					</CardHeader>
 					<CardContent class="space-y-6">
 						<!-- StartLocation -->
 						<div class="space-y-2">
-							<Label for="startLocation">1. Välj startplats</Label>
+							<Label for="startLocation">Välj startplats</Label>
 							{#if data.startLocations.length === 1}
 								<div
 									class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
@@ -1664,7 +1664,7 @@
 						<!-- Booking Length -->
 						<div class="space-y-2">
 							<Label for="bookingLength">
-								2. Välj bokningslängd
+								Välj bokningslängd
 								{#if !selectedStartLocation}
 									<span class="text-sm text-muted-foreground ml-2">(Välj startplats först)</span>
 								{/if}
@@ -1907,7 +1907,7 @@
 					<CardContent class="space-y-4">
 						<!-- Adults -->
 						<div class="space-y-2">
-							<Label for="adults">Antal vuxna</Label>
+							<Label for="adults">Antal vuxna, ungdom (fyllt 10 år)</Label>
 							<div class="flex items-center space-x-2">
 								<Button
 									variant="outline"
@@ -1925,7 +1925,7 @@
 
 						<!-- Children -->
 						<div class="space-y-2">
-							<Label for="children">Antal barn (gratis)</Label>
+							<Label for="children">Antal barn (ej fyllt 10 år)</Label>
 							<div class="flex items-center space-x-2">
 								<Button
 									variant="outline"
@@ -1948,7 +1948,7 @@
 						</div>
 
 						<Alert>
-							<AlertTitle>Totalt pris</AlertTitle>
+							<AlertTitle>Totalt pris ink moms</AlertTitle>
 							<AlertDescription>{totalPrice}kr</AlertDescription>
 						</Alert>
 
@@ -2098,7 +2098,13 @@
 
 						<div class="flex items-center gap-2 mb-4">
 							<Checkbox bind:checked={acceptTerms} id="terms" />
-							<Label for="terms">I accept the booking agreement and the terms of purchase</Label>
+							<Label for="terms">
+								Jag accepterar <a
+									href="https://docs.google.com/document/d/1_yPsJAvOqOYUq8hXzkw6fVewr1K-asBe1wopZfyCVNA/edit?usp=sharing"
+									class="text-primary hover:underline"
+									target="_blank">bokningsavtalet och köpvillkoren</a
+								>
+							</Label>
 						</div>
 
 						<!-- Payment Section -->

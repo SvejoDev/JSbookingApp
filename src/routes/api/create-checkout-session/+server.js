@@ -53,7 +53,7 @@ export async function POST({ request }) {
 		}
 
 		// beräkna pris inklusive moms
-		const totalPriceIncVat = Math.round(totalPriceExcVat * 0.8);
+		const totalPriceIncVat = Math.round(totalPriceExcVat);
 
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ['card'],

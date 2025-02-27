@@ -39,7 +39,7 @@ export async function POST({ request }) {
 		// Om bookingData.amount_total finns, använd det som inklusive moms
 		if (bookingData.amount_total) {
 			totalPriceIncVat = parseInt(bookingData.amount_total) || 0;
-			totalPriceExcVat = Math.round(totalPriceIncVat / vatRate);
+			totalPriceExcVat = Math.round(totalPriceIncVat * vatRate);
 		} else {
 			// Annars beräkna från grundpriset och addons
 			// Grundpris för vuxna och barn
@@ -66,7 +66,7 @@ export async function POST({ request }) {
 			totalPriceIncVat = basePrice + addonsPrice + optionalProductsPrice;
 
 			// Beräkna pris exklusive moms
-			totalPriceExcVat = Math.round(totalPriceIncVat / (1 + vatRate));
+			totalPriceExcVat = Math.round(totalPriceIncVat * vatRate);
 		}
 
 		// Kontrollera att värdena är giltiga tal
