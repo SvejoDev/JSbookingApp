@@ -114,14 +114,20 @@ export const bookingConfirmationTemplate = `
 
     <div class="price-details">
         <h3>Prisdetaljer</h3>
+        
+        <!-- Delsumma -->
         <div class="price-row">
             <span>Delsumma (exkl. moms):</span>
-            <span>{{formatPrice (subtract booking.amount_total_exc_vat (multiply booking.amount_total_exc_vat 0.2))}} kr</span>
+            <span>{{formatPrice (multiply booking.amount_total_exc_vat 0.8)}} kr</span>
         </div>
+        
+        <!-- Moms -->
         <div class="price-row">
-            <span>Moms (20%):</span>
+            <span>Moms (25%):</span>
             <span>{{formatPrice (multiply booking.amount_total_exc_vat 0.2)}} kr</span>
         </div>
+        
+        <!-- Totalt -->
         <div class="price-row price-total">
             <span>Totalt att betala:</span>
             <span>{{formatPrice booking.amount_total_inc_vat}} kr</span>

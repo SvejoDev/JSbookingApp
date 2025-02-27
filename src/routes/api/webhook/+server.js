@@ -24,6 +24,17 @@ export async function POST({ request }) {
 			logger.info('Session ID:', session.id);
 
 			try {
+				// Kontrollera först om bokningen redan existerar
+				const existingBooking = await query(
+					'SELECT id FROM bookings WHERE stripe_session_id = $1',
+					[session.id]
+				);
+
+				if (existingBooking.rows.length > 0) {
+					logger.info('Bokning finns redan för session:', session.id);
+					return json({ received: true, message: 'bokning redan genomförd' });
+				}
+
 				await transaction(async (client) => {
 					// Hämta experience_type först
 					const {
@@ -172,8 +183,7 @@ export async function POST({ request }) {
 				});
 
 				logger.info('✅ Booking Complete');
-				logger.info(`Webhook behandlad: ${event.type}`);
-				return json({ received: true, message: 'bokning genomförd' }, { status: 200 });
+				return json({ received: true, message: 'bokning genomförd' });
 			} catch (error) {
 				logger.error('fel vid bokning:', error);
 				throw error;

@@ -118,7 +118,7 @@ const handlebarsHelpers = {
 
 // registrera handlebars helpers
 Handlebars.registerHelper('multiply', function (a, b) {
-	return (a || 0) * (b || 0);
+	return parseFloat(a) * parseFloat(b);
 });
 
 Handlebars.registerHelper('eq', function (a, b, options) {
