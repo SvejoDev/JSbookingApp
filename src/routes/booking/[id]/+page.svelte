@@ -1,7 +1,7 @@
 <!--src/routes/booking/[id]/+page.svelte-->
 <script>
 	import { Button } from '$lib/components/ui/button';
-import { logger } from '$lib/utils/logger';
+	import { logger } from '$lib/utils/logger';
 	import {
 		Card,
 		CardHeader,
@@ -1638,7 +1638,7 @@ import { logger } from '$lib/utils/logger';
 								<div
 									class="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
 								>
-									{data.startLocations[0].location} - {data.startLocations[0].price}kr
+									{data.startLocations[0].location}
 								</div>
 							{:else}
 								<select
@@ -1654,7 +1654,7 @@ import { logger } from '$lib/utils/logger';
 									<option value="" disabled selected>Välj startplats</option>
 									{#each data.startLocations as location}
 										<option value={location.id}>
-											{location.location} - {location.price}kr
+											{location.location}
 										</option>
 									{/each}
 								</select>
