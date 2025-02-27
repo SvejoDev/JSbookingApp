@@ -43,6 +43,7 @@
 	}
 
 	$: showConnectingLine = (isStartDay || isInBetweenDay) && bookingLength?.overnight;
+	$: isInRange = (isStartDay || isEndDay || isInBetweenDay) && bookingLength?.overnight;
 </script>
 
 <button
@@ -56,7 +57,7 @@
 	class:start-day={isStartDay}
 	class:end-day={isEndDay}
 	class:in-between-day={isInBetweenDay}
-	class:show-line={showConnectingLine}
+	class:in-range={isInRange}
 	on:click={handleClick}
 	disabled={disabled || isBlocked}
 >
@@ -169,5 +170,28 @@
 
 	.indicator.selected {
 		background-color: white;
+	}
+
+	.in-range {
+		background-color: hsl(var(--primary) / 0.1);
+	}
+
+	.start-day,
+	.end-day {
+		position: relative;
+		z-index: 2;
+	}
+
+	.in-between-day {
+		background-color: hsl(var(--primary) / 0.1);
+	}
+
+	/* Förbättra linjerna mellan datum */
+	.show-line.start-day::after,
+	.show-line.in-between-day::after,
+	.show-line.in-between-day::before,
+	.show-line.end-day::before {
+		height: 4px;
+		background-color: hsl(var(--primary) / 0.2);
 	}
 </style>

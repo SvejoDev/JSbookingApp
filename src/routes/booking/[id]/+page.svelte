@@ -414,49 +414,87 @@
 
 	// beräknar returdatum och tid
 	function calculateReturnDate() {
-		// kontrollera att vi har all nödvändig data
-		if (!selectedBookingLength || !startTime || !startDate || !data.openHours) {
+		if (!startDate || !startTime || !selectedBookingLength) {
+			console.log('Saknar nödvändig data för beräkning:', {
+				startDate,
+				startTime,
+				selectedBookingLength
+			});
 			return;
 		}
 
 		try {
+			// Debugga data-strukturen
+			console.log('Experience data:', {
+				experienceData: data.experience,
+				openHours: data.openHours,
+				hasCloseTime: data.experience?.close_time,
+				openHoursData: data.openHours?.periods?.[0]
+			});
+
+			// Skapa startdatum med vald tid
 			const startDateTime = new Date(`${startDate}T${startTime}`);
-			let returnDateTime = new Date(startDateTime);
 
-			const intervals = getAvailableTimeIntervals(returnDate || startDate, data.openHours);
-
-			if (!intervals || intervals.length === 0) {
-				return;
-			}
-
-			const closeTime = intervals[0].endTime;
-			if (!closeTime) {
-				return;
-			}
-
-			// för övernattningar
+			// För övernattningar
 			if (selectedBookingLength.includes('övernattning')) {
 				const nights = parseInt(selectedBookingLength);
-				returnDateTime.setDate(returnDateTime.getDate() + nights);
-				const [hours, minutes] = closeTime.split(':').map(Number);
-				returnDateTime.setHours(hours, minutes, 0);
-			}
-			// för bokningar som är i timmar
-			else if (selectedBookingLength.includes('h')) {
-				const hours = parseInt(selectedBookingLength);
-				returnDateTime.setHours(returnDateTime.getHours() + hours);
-			}
-			// för hela dagen bokningar
-			else if (selectedBookingLength === 'Hela dagen') {
-				const [hours, minutes] = closeTime.split(':').map(Number);
-				returnDateTime.setHours(hours, minutes, 0);
-			}
 
-			returnDate = returnDateTime.toISOString().split('T')[0];
-			returnTime = returnDateTime.toTimeString().substring(0, 5);
+				// Beräkna returdatum
+				const returnDateTime = new Date(startDateTime);
+				returnDateTime.setDate(startDateTime.getDate() + nights);
+
+				// Försök hämta stängningstid från olika källor
+				let closeTime;
+
+				// Kontrollera periods först
+				if (data.openHours?.periods?.[0]?.close_time) {
+					closeTime = data.openHours.periods[0].close_time;
+				}
+				// Sedan specifika datum
+				else if (data.openHours?.specificDates?.[0]?.close_time) {
+					closeTime = data.openHours.specificDates[0].close_time;
+				}
+				// Sist experience
+				else if (data.experience?.close_time) {
+					closeTime = data.experience.close_time;
+				}
+
+				console.log('Hittad stängningstid:', closeTime);
+
+				if (!closeTime) {
+					throw new Error('Kunde inte hitta stängningstid i data');
+				}
+
+				// Formatera tiden korrekt
+				let [hours, minutes] = closeTime.split(':');
+
+				// Uppdatera state-variabler
+				returnDate = returnDateTime.toISOString().split('T')[0];
+				returnTime = `${hours}:${minutes}`;
+
+				console.log('Övernattningsbokning beräknad:', {
+					startDate,
+					startTime,
+					returnDate,
+					returnTime,
+					nights,
+					closeTime
+				});
+			} else {
+				// För icke-övernattningar
+				returnDate = startDate;
+				returnTime = startTime;
+			}
 		} catch (error) {
-			// hantera fel tyst men logga för felsökning i produktion
-			logger.error('Error calculating return date:', error);
+			console.error('Fel vid beräkning av returdatum:', error);
+			// Lägg till mer detaljerad felhantering
+			console.error('Data state vid fel:', {
+				experience: data.experience,
+				openHours: data.openHours,
+				selectedBookingLength,
+				startDate,
+				startTime
+			});
 		}
 	}
 
@@ -485,7 +523,7 @@
 				endDate: returnDate || startDate,
 				startTime,
 				returnTime,
-				closeTime: data.openHours?.defaultCloseTimes?.[0] || '17:00:00',
+				closeTime: data.openHours?.defaultCloseTimes?.[0],
 				is_overnight: false, // sätt ett standardvärde
 				booking_length: selectedBookingLength || '3h', // sätt ett standardvärde
 				numAdults,
@@ -1155,30 +1193,60 @@
 
 	// Uppdatera handleSubmit funktionen
 	async function handleSubmit() {
-		isSubmitting = true;
-		const bookingData = {
-			experience_id: data.experience.id,
-			experience: data.experience.name,
-			startLocation: selectedStartLocation.location,
-			start_date: startDate,
-			start_time: startTime,
-			end_date: endDate,
-			end_time: endTime,
-			number_of_adults: numAdults,
-			number_of_children: numChildren,
-			amount_total: totalPrice + optionalProductsTotal, // Uppdatera totalpriset
-			booking_name: userName,
-			booking_lastname: userLastname,
-			customer_email: userEmail,
-			customer_phone: userPhone,
-			customer_comment: userComment,
-			selectedStartLocation: selectedStartLocation.id,
-			addons: selectedAddons,
-			optional_products: prepareOptionalProductsForSubmission(), // Lägg till tillvalsprodukterna
-			payment_method: selectedPaymentMethod
-		};
+		try {
+			const checkoutData = {
+				experience_id: data.experience.id,
+				experience: data.experience.name,
+				domain: window.location.origin,
+				start_date: startDate,
+				start_time: startTime,
+				end_date: returnDate || startDate, // Säkerställ att vi har ett slutdatum
+				end_time: returnTime || startTime, // Säkerställ att vi har en sluttid
+				numAdults,
+				numChildren: 0,
+				userName,
+				userLastname,
+				userEmail,
+				userPhone,
+				userComment,
+				selectedStartLocation,
+				amount: calculateTotalPrice(),
+				...selectedAddons
+			};
 
-		// Resten av din handleSubmit-funktion...
+			logger.info('Checkout data:', checkoutData);
+			console.log('Bokningsdata:', {
+				startDate,
+				startTime,
+				returnDate,
+				returnTime,
+				selectedBookingLength
+			});
+
+			const response = await fetch('/api/create-checkout-session', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(checkoutData)
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Kunde inte skapa checkout-session');
+			}
+
+			const result = await response.json();
+
+			if (!result.url) {
+				throw new Error('Ingen checkout-URL returnerades');
+			}
+
+			window.location.href = result.url;
+		} catch (error) {
+			logger.error('Checkout error:', error);
+			alert(`Ett fel uppstod vid checkout: ${error.message}`);
+		}
 	}
 
 	// Lägg till isSubmittingCard bland tillståndsvariablerna
@@ -1241,6 +1309,18 @@
 		} finally {
 			isSubmittingCard = false;
 		}
+	}
+
+	// När bokningslängden väljs
+	function handleBookingLengthChange(length) {
+		selectedBookingLength = length;
+		calculateReturnDate(); // Beräkna om returdatum direkt
+	}
+
+	// Lägg till detta reaktiva statement
+	$: if (startDate && startTime && selectedBookingLength?.includes('övernattning')) {
+		console.log('Anropar calculateReturnDate från reaktivt statement');
+		calculateReturnDate();
 	}
 </script>
 
@@ -1404,28 +1484,28 @@
 							<CardTitle class="text-2xl font-semibold">Din bokning</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div class="space-y-4">
-								<!-- startdatum och tid -->
-								{#if startDate}
-									<div>
-										<p class="font-medium">Startdatum: {startDate}</p>
-									</div>
-								{/if}
-
-								{#if startTime}
-									<div>
-										<p class="font-medium">Starttid: {startTime}</p>
-									</div>
-								{/if}
-
-								<!-- returdatum och tid -->
-								{#if returnDate && returnTime}
-									<div>
-										<p class="font-medium">Returdatum: {returnDate}</p>
-									</div>
-									<div>
-										<p class="font-medium">Returtid senast: {returnTime}</p>
-									</div>
+							<div class="space-y-2">
+								<p><strong>Startdatum:</strong> {startDate}</p>
+								<p><strong>Starttid:</strong> {startTime}</p>
+								{#if selectedBookingLength?.includes('övernattning')}
+									<p>
+										<strong>Returdatum:</strong>
+										{returnDate || 'Beräknar...'}
+										{#if !returnDate}
+											<span class="text-xs text-red-500">
+												(Kontrollera att startdatum och starttid är valda)
+											</span>
+										{/if}
+									</p>
+									<p>
+										<strong>Returtid senast:</strong>
+										{returnTime || 'Beräknar...'}
+										{#if !returnTime}
+											<span class="text-xs text-red-500">
+												(Kontrollera att stängningstid finns)
+											</span>
+										{/if}
+									</p>
 								{/if}
 							</div>
 						</CardContent>
@@ -1886,9 +1966,9 @@
 										<div class="space-y-2">
 											<p><strong>Startdatum:</strong> {startDate}</p>
 											<p><strong>Starttid:</strong> {startTime}</p>
-											{#if returnDate && returnTime}
-												<p><strong>Returdatum:</strong> {returnDate}</p>
-												<p><strong>Returtid senast:</strong> {returnTime}</p>
+											{#if selectedBookingLength?.includes('övernattning')}
+												<p><strong>Returdatum:</strong> {returnDate || 'Beräknar...'}</p>
+												<p><strong>Returtid senast:</strong> {returnTime || 'Beräknar...'}</p>
 											{/if}
 										</div>
 									</CardContent>

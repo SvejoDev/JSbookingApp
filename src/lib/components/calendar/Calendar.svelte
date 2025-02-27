@@ -1,6 +1,6 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
-import { logger } from '$lib/utils/logger';
+	import { logger } from '$lib/utils/logger';
 	import CalendarHeader from './CalendarHeader.svelte';
 	import CalendarGrid from './CalendarGrid.svelte';
 
@@ -162,6 +162,20 @@ import { logger } from '$lib/utils/logger';
 
 	// Generate key for forcing re-render
 	$: key = `${selectedDate}-${bookingLength?.length || ''}-${currentMonth?.getTime() || Date.now()}`;
+
+	// Lägg till denna validering
+	$: {
+		if (bookingLength?.overnight) {
+			// validera och normalisera return_day_offset
+			bookingLength = {
+				...bookingLength,
+				return_day_offset: Math.max(1, parseInt(bookingLength.return_day_offset) || 1)
+			};
+
+			// logga för felsökning
+			console.log('Validerad bookingLength:', bookingLength);
+		}
+	}
 </script>
 
 {#key key}
@@ -171,7 +185,12 @@ import { logger } from '$lib/utils/logger';
 			{currentMonth}
 			{selectedDate}
 			{endDate}
-			{bookingLength}
+			bookingLength={{
+				...bookingLength,
+				return_day_offset: bookingLength?.overnight
+					? Math.max(1, parseInt(bookingLength.return_day_offset) || 1)
+					: 0
+			}}
 			{minDate}
 			{maxDate}
 			{isDateOpen}

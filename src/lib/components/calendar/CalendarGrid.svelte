@@ -21,11 +21,21 @@
 	$: {
 		if (selectedDate && bookingLength?.overnight) {
 			const startDate = new Date(selectedDate);
-			startDate.setUTCHours(0, 0, 0, 0);
+			startDate.setHours(12, 0, 0, 0);
+
+			const nights = parseInt(bookingLength.return_day_offset) || 1;
 			const tempEndDate = new Date(startDate);
-			tempEndDate.setUTCDate(startDate.getUTCDate() + bookingLength.return_day_offset);
-			tempEndDate.setUTCHours(0, 0, 0, 0);
+			tempEndDate.setDate(startDate.getDate() + nights);
+			tempEndDate.setHours(12, 0, 0, 0);
+
 			endDate = formatDate(tempEndDate);
+
+			console.log('Övernattningsbokning:', {
+				startDate: formatDate(startDate),
+				endDate,
+				nights,
+				bookingLength
+			});
 		} else {
 			endDate = null;
 		}

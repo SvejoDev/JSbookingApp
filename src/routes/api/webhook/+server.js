@@ -349,6 +349,17 @@ function formatMinutes(minutes) {
 }
 
 async function createBooking(client, metadata, session) {
+	logger.info('Creating booking with complete metadata:', {
+		...metadata,
+		end_date: metadata.end_date,
+		end_time: metadata.end_time
+	});
+
+	// Validera tider innan SQL-frågan
+	if (!metadata.end_time) {
+		metadata.end_time = metadata.start_time;
+	}
+
 	// säkerställ att alla numeriska värden är giltiga integers
 	const numberOfAdults = parseInt(metadata.number_of_adults) || 0;
 	const numberOfChildren = parseInt(metadata.number_of_children) || 0;
