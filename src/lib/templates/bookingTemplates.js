@@ -115,22 +115,41 @@ export const bookingConfirmationTemplate = `
     <div class="price-details">
         <h3>Prisdetaljer</h3>
         
-        <!-- Delsumma -->
+        {{#if booking.number_of_adults}}
+        <div class="price-row">
+            <span>Vuxna ({{booking.number_of_adults}} st):</span>
+            <span>{{formatPrice booking.amount_total_inc_vat}} kr</span>
+        </div>
+        {{/if}}
+        
+        <!-- Delsumma (exkl. moms) -->
         <div class="price-row">
             <span>Delsumma (exkl. moms):</span>
-            <span>{{formatPrice (multiply booking.amount_total_exc_vat 0.8)}} kr</span>
+            {{#eq booking.payment_method "invoice"}}
+                <span>{{formatPrice booking.amount_total_exc_vat}} kr</span>
+            {{else}}
+                <span>{{formatPrice (subtract booking.amount_total_exc_vat (multiply booking.amount_total_exc_vat 0.2))}} kr</span>
+            {{/eq}}
         </div>
         
         <!-- Moms -->
         <div class="price-row">
             <span>Moms (25%):</span>
-            <span>{{formatPrice (multiply booking.amount_total_exc_vat 0.2)}} kr</span>
+            {{#eq booking.payment_method "invoice"}}
+                <span>{{formatPrice (multiply (ceil (multiply booking.amount_total_inc_vat 1.25)) 0.2)}} kr</span>
+            {{else}}
+                <span>{{formatPrice (multiply (ceil booking.amount_total_inc_vat) 0.2)}} kr</span>
+            {{/eq}}
         </div>
         
         <!-- Totalt -->
         <div class="price-row price-total">
             <span>Totalt att betala:</span>
-            <span>{{formatPrice booking.amount_total_inc_vat}} kr</span>
+            {{#eq booking.payment_method "invoice"}}
+                <span>{{formatPrice (ceil (multiply booking.amount_total_inc_vat 1.25))}} kr</span>
+            {{else}}
+                <span>{{formatPrice (ceil booking.amount_total_inc_vat)}} kr</span>
+            {{/eq}}
         </div>
     </div>
 

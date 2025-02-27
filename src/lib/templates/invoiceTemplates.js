@@ -1,6 +1,9 @@
 import { formatDateTime, formatPrice } from './emailTemplates.js';
 
 export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
+	// Definiera isInvoiceBooking baserat på payment_method
+	const isInvoiceBooking = bookingData.payment_method === 'invoice';
+
 	// validera data innan vi använder den
 	const safeBookingData = {
 		booking_name: bookingData.booking_name || 'Gäst',
@@ -116,15 +119,29 @@ export const pdfInvoiceTemplate = (bookingData, invoiceData) => {
             <h3>Prisdetaljer</h3>
             <div class="price-row">
                 <span>Delsumma (exkl. moms):</span>
-                <span>${formatPrice(bookingData.subtotal || 0)} kr</span>
+                <span>${formatPrice(
+									isInvoiceBooking
+										? bookingData.amount_total_exc_vat
+										: bookingData.amount_total_exc_vat - bookingData.amount_total_exc_vat * 0.2
+								)} kr</span>
             </div>
             <div class="price-row">
                 <span>Moms (25%):</span>
-                <span>${formatPrice(bookingData.vat || 0)} kr</span>
+                <span>${formatPrice(
+									Math.ceil(
+										isInvoiceBooking
+											? Math.ceil(bookingData.amount_total_inc_vat * 1.25) * 0.2
+											: Math.ceil(bookingData.amount_total_inc_vat) * 0.2
+									)
+								)} kr</span>
             </div>
             <div class="price-row price-total">
                 <span>Totalt att betala:</span>
-                <span>${formatPrice(bookingData.total || safeBookingData.amount_total)} kr</span>
+                <span>${formatPrice(
+									isInvoiceBooking
+										? Math.ceil(bookingData.amount_total_inc_vat * 1.25)
+										: Math.ceil(bookingData.amount_total_inc_vat)
+								)} kr</span>
             </div>
         </div>
             
