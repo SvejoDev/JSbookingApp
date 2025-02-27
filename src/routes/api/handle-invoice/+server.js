@@ -30,7 +30,7 @@ export async function POST({ request }) {
 		const startLocation = parseInt(bookingData.selectedStartLocation) || null;
 
 		// Beräkna momssats (25% är standard i Sverige)
-		const vatRate = 0.25;
+		const vatRate = 0.8;
 
 		// Beräkna priser med och utan moms
 		let totalPriceIncVat = 0;
@@ -39,7 +39,7 @@ export async function POST({ request }) {
 		// Om bookingData.amount_total finns, använd det som inklusive moms
 		if (bookingData.amount_total) {
 			totalPriceIncVat = parseInt(bookingData.amount_total) || 0;
-			totalPriceExcVat = Math.round(totalPriceIncVat / (1 + vatRate));
+			totalPriceExcVat = Math.round(totalPriceIncVat / vatRate);
 		} else {
 			// Annars beräkna från grundpriset och addons
 			// Grundpris för vuxna och barn
